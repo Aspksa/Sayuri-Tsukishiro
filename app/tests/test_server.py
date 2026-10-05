@@ -218,6 +218,56 @@ class ServerTests(unittest.TestCase):
                     self.assertEqual(payload["candidate"]["status"], "accepted")
                     self.assertEqual(payload["stats"]["personal"]["count"], 1)
 
+                with urllib.request.urlopen(base + "/api/sayuri/memory/v3", timeout=2) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+                    self.assertEqual(payload["stats"]["version"], "3.0")
+                    self.assertGreaterEqual(payload["stats"]["knowledge"], 1)
+                    self.assertGreaterEqual(payload["stats"]["graph_nodes"], 1)
+
+                request = urllib.request.Request(
+                    base + "/api/sayuri/memory/v3/maintenance",
+                    data=b"{}",
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(request, timeout=2) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+                    self.assertEqual(payload["status"], "готово")
+                    self.assertIn("retention", payload)
+
+                conflict_old = server.core.agent.memory.add(
+                    scope="personal",
+                    kind="preference",
+                    content="Я предпочитаю тёмный интерфейс",
+                    importance=4,
+                    confidence=0.9,
+                )
+                conflict_new = server.core.agent.memory.add(
+                    scope="personal",
+                    kind="preference",
+                    content="Я предпочитаю светлый интерфейс",
+                    importance=4,
+                    confidence=0.95,
+                    supersedes_id=conflict_old["id"],
+                )
+                conflict = server.core.agent.memory_v3.register_conflict(
+                    candidate_id="server-test-conflict",
+                    old_memory_id=conflict_old["id"],
+                    new_memory_id=conflict_new["id"],
+                    scope="personal",
+                )
+                resolution_body = json.dumps({"resolution": "prefer_new"}).encode("utf-8")
+                request = urllib.request.Request(
+                    base + f"/api/sayuri/memory/v3/conflicts/{conflict['id']}/resolve",
+                    data=resolution_body,
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(request, timeout=2) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+                    self.assertEqual(payload["conflict"]["status"], "resolved")
+                    self.assertEqual(payload["conflict"]["resolution"], "prefer_new")
+
                 png = (
                     b"\x89PNG\r\n\x1a\n"
                     + b"\x00\x00\x00\x0dIHDR"
