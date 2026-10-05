@@ -165,6 +165,132 @@ class SayuriCore:
         except AgentRuntimeError as exc:
             raise BadRequestError(str(exc)) from exc
 
+    def plan_sayuri_action(self, *, text: str, context: Any = None) -> dict[str, Any]:
+        try:
+            result = self.agent.plan_action(text=text, context=context)
+        except AgentRuntimeError as exc:
+            raise BadRequestError(str(exc)) from exc
+        if result.get("action"):
+            self.database.record_event(
+                "Sayuri",
+                "Действие ожидает подтверждения",
+                details={
+                    "action_id": result["action"]["id"],
+                    "tool": result["action"]["tool"],
+                    "risk": result["action"]["risk"],
+                },
+            )
+        return result
+
+    def sayuri_actions(self, limit: int = 30) -> dict[str, Any]:
+        return self.agent.recent_actions(limit)
+
+    def _resolve_action_destination(self, destination: str) -> str | None:
+        name = (destination or "").strip()
+        if name.casefold() in {"", "/", "корень", "диск sayuri", "диск сayuри", "диск саюри"}:
+            return None
+        folders = self.disk.folder_tree()
+        exact_path = [item for item in folders if item["path"].casefold() == name.casefold()]
+        if len(exact_path) == 1:
+            return exact_path[0]["id"]
+        exact_name = [item for item in folders if item["name"].casefold() == name.casefold()]
+        if len(exact_name) == 1:
+            return exact_name[0]["id"]
+        if not exact_name:
+            raise ValueError(f"Папка назначения «{name}» не найдена.")
+        raise ValueError(f"Найдено несколько папок «{name}». Укажите полный путь.")
+
+    def _execute_sayuri_action(self, action: dict[str, Any]) -> dict[str, Any]:
+        tool = action.get("tool")
+        payload = action.get("payload") if isinstance(action.get("payload"), dict) else {}
+
+        if tool == "disk.create_folder":
+            folder = self.disk.create_folder(
+                str(payload.get("name") or ""),
+                payload.get("parent_id") or None,
+            )
+            return {"status": "выполнено", "tool": tool, "folder": folder}
+
+        if tool == "disk.set_favorite":
+            item = payload.get("item")
+            if not isinstance(item, dict):
+                raise ValueError("Некорректный объект избранного.")
+            result = self.disk.set_favorite([item], bool(payload.get("favorite")))
+            return {"status": "выполнено", "tool": tool, **result}
+
+        if tool == "disk.trash_current":
+            item = payload.get("item")
+            if not isinstance(item, dict):
+                raise ValueError("Некорректный объект корзины.")
+            result = self.disk.trash([item])
+            return {"status": "выполнено", "tool": tool, **result}
+
+        if tool == "disk.move_current":
+            item = payload.get("item")
+            if not isinstance(item, dict):
+                raise ValueError("Некорректный объект перемещения.")
+            destination_id = self._resolve_action_destination(str(payload.get("destination") or ""))
+            result = self.disk.move([item], destination_id)
+            return {"status": "выполнено", "tool": tool, **result}
+
+        if tool == "memory.remember":
+            result = self.agent.remember(
+                scope=str(payload.get("scope") or ""),
+                kind=str(payload.get("kind") or ""),
+                content=str(payload.get("content") or ""),
+                importance=int(payload.get("importance") or 3),
+                source="confirmed_action",
+            )
+            return {
+                "status": "выполнено",
+                "tool": tool,
+                "entry": result["entry"],
+                "stats": result["stats"],
+            }
+
+        raise ValueError("Инструмент Sayuri не разрешён.")
+
+    def confirm_sayuri_action(self, action_id: str) -> dict[str, Any]:
+        try:
+            action = self.agent.begin_action(action_id)
+        except AgentRuntimeError as exc:
+            raise BadRequestError(str(exc)) from exc
+
+        if not action.get("claimed"):
+            return action
+
+        try:
+            result = self._execute_sayuri_action(action)
+        except Exception as exc:
+            failed = self.agent.fail_action(action_id, str(exc))
+            self.database.record_event(
+                "Sayuri",
+                "Действие завершилось ошибкой",
+                details={"action_id": action_id, "tool": action.get("tool"), "error": str(exc)[:500]},
+            )
+            return failed
+
+        completed = self.agent.complete_action(action_id, result)
+        self.database.record_event(
+            "Sayuri",
+            "Подтверждённое действие выполнено",
+            details={"action_id": action_id, "tool": action.get("tool")},
+        )
+        return completed
+
+    def cancel_sayuri_action(self, action_id: str) -> dict[str, Any]:
+        try:
+            result = self.agent.cancel_action(action_id)
+        except AgentRuntimeError as exc:
+            raise BadRequestError(str(exc)) from exc
+        if result.get("status") == "cancelled":
+            self.database.record_event(
+                "Sayuri",
+                "Действие отменено пользователем",
+                details={"action_id": action_id, "tool": result.get("tool")},
+            )
+        return result
+
     def configure_sayuri_provider(self, *, api_key: str | None, clear: bool = False) -> dict[str, Any]:
         try:
             result = self.agent.configure_provider(api_key=api_key, clear=clear)
