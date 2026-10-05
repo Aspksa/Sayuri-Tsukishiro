@@ -22,6 +22,13 @@ const phoneState = {
   frameUrl: null,
   pointer: null,
   viewActive: false,
+  floatingOpen: localStorage.getItem('sayuri-phone-float-open') === '1',
+  floatingMinimized: false,
+  rotation: Number(localStorage.getItem('sayuri-phone-rotation') || 0) % 360,
+  drag: null,
+  resizeObserver: null,
+  textBuffer: '',
+  textTimer: null,
   lastFrameAt: 0
 };
 
@@ -82,7 +89,7 @@ function selectedDiskItems() {
 
 function showView(name) {
   phoneState.viewActive = name === 'phone';
-  if (!phoneState.viewActive) {
+  if (!phoneState.viewActive && !phoneState.floatingOpen) {
     stopPhoneFrameLoop();
     stopPhoneReconnectLoop();
   }
@@ -1445,6 +1452,14 @@ function phoneDeviceLabel(device) {
   return device.model || device.product || device.device || device.serial;
 }
 
+function phoneStatusActive() {
+  return phoneState.viewActive || phoneState.floatingOpen;
+}
+
+function phoneStreamActive() {
+  return phoneState.floatingOpen && !phoneState.floatingMinimized;
+}
+
 function stopPhoneFrameLoop() {
   phoneState.frameGeneration += 1;
   if (phoneState.frameTimer) {
@@ -1462,11 +1477,11 @@ function stopPhoneReconnectLoop() {
 }
 
 function schedulePhoneReconnect(delay = 2500) {
-  if (!phoneState.viewActive || phoneState.selectedSerial) return;
+  if (!phoneStatusActive() || phoneState.selectedSerial) return;
   stopPhoneReconnectLoop();
   phoneState.reconnectTimer = window.setTimeout(async () => {
     phoneState.reconnectTimer = null;
-    if (!phoneState.viewActive || phoneState.selectedSerial) return;
+    if (!phoneStatusActive() || phoneState.selectedSerial) return;
     try {
       await loadPhone();
     } catch (error) {
@@ -1481,6 +1496,8 @@ function clearPhoneFrameImage() {
   const image = byId('phone-screen');
   image.classList.add('hidden');
   image.removeAttribute('src');
+  image.style.width = '';
+  image.style.height = '';
   byId('phone-screen-placeholder').classList.remove('hidden');
   if (phoneState.frameUrl) {
     URL.revokeObjectURL(phoneState.frameUrl);
@@ -1496,8 +1513,8 @@ function handlePhoneDisconnected(message = 'Телефон отключён.') {
   clearPhoneFrameImage();
 
   byId('phone-selected-device').textContent = '—';
-  byId('phone-live-title').textContent = 'Телефон отключён';
-  byId('phone-live-subtitle').textContent = 'Sayuri ждёт повторного подключения Android.';
+  byId('phone-live-title').textContent = 'Телефон Sayuri';
+  byId('phone-live-subtitle').textContent = 'Sayuri ждёт повторного подключения Android';
   byId('phone-live-badge').textContent = 'ОТКЛЮЧЁН';
   byId('phone-live-badge').classList.remove('live');
   byId('phone-frame-status').textContent = message;
@@ -1506,21 +1523,39 @@ function handlePhoneDisconnected(message = 'Телефон отключён.') {
     button.disabled = true;
   });
   showPhoneMessage(
-    'Связь с телефоном потеряна. Проверьте USB-кабель/отладку — Sayuri подключится снова автоматически.',
+    'Связь с телефоном потеряна. Проверьте USB-кабель или отладку — Sayuri подключится снова автоматически.',
     'error'
   );
   schedulePhoneReconnect(1200);
 }
 
 function schedulePhoneFrame(delay = 420) {
-  if (!phoneState.viewActive || !phoneState.selectedSerial) return;
+  if (!phoneStreamActive() || !phoneState.selectedSerial) return;
   if (phoneState.nativeSessions.has(phoneState.selectedSerial)) return;
   if (phoneState.frameTimer) window.clearTimeout(phoneState.frameTimer);
   phoneState.frameTimer = window.setTimeout(() => refreshPhoneFrame(), delay);
 }
 
+function fitPhoneImage() {
+  const image = byId('phone-screen');
+  const stage = byId('phone-screen-shell');
+  if (image.classList.contains('hidden') || !image.naturalWidth || !image.naturalHeight) return;
+
+  const stageWidth = Math.max(1, stage.clientWidth - 18);
+  const stageHeight = Math.max(1, stage.clientHeight - 18);
+  const sideways = phoneState.rotation === 90 || phoneState.rotation === 270;
+  const visualWidth = sideways ? image.naturalHeight : image.naturalWidth;
+  const visualHeight = sideways ? image.naturalWidth : image.naturalHeight;
+  const scale = Math.min(stageWidth / visualWidth, stageHeight / visualHeight);
+
+  image.style.width = `${Math.max(1, image.naturalWidth * scale)}px`;
+  image.style.height = `${Math.max(1, image.naturalHeight * scale)}px`;
+  image.style.transform = `rotate(${phoneState.rotation}deg)`;
+  byId('phone-rotation-state').textContent = `${phoneState.rotation}°`;
+}
+
 async function refreshPhoneFrame() {
-  if (!phoneState.viewActive || !phoneState.selectedSerial || phoneState.frameLoading) return;
+  if (!phoneStreamActive() || !phoneState.selectedSerial || phoneState.frameLoading) return;
   const generation = phoneState.frameGeneration;
   const serial = phoneState.selectedSerial;
   phoneState.frameLoading = true;
@@ -1543,6 +1578,7 @@ async function refreshPhoneFrame() {
       }
       throw new Error(message);
     }
+
     const blob = await response.blob();
     if (generation !== phoneState.frameGeneration || serial !== phoneState.selectedSerial) return;
 
@@ -1553,6 +1589,7 @@ async function refreshPhoneFrame() {
       if (previousUrl) URL.revokeObjectURL(previousUrl);
       byId('phone-screen-placeholder').classList.add('hidden');
       image.classList.remove('hidden');
+      fitPhoneImage();
     };
     image.src = nextUrl;
     phoneState.frameUrl = nextUrl;
@@ -1561,14 +1598,15 @@ async function refreshPhoneFrame() {
     const width = response.headers.get('X-Sayuri-Phone-Width');
     const height = response.headers.get('X-Sayuri-Phone-Height');
     byId('phone-frame-status').textContent = width && height
-      ? `LIVE · ${width}×${height} · локально`
+      ? `LIVE · ${width}×${height}`
       : 'LIVE · локально';
     byId('phone-live-badge').textContent = 'LIVE';
     byId('phone-live-badge').classList.add('live');
     schedulePhoneFrame(420);
   } catch (error) {
     if (generation !== phoneState.frameGeneration) return;
-    byId('phone-frame-status').textContent = `Кадр временно недоступен: ${error instanceof Error ? error.message : String(error)}`;
+    byId('phone-frame-status').textContent =
+      `Кадр временно недоступен: ${error instanceof Error ? error.message : String(error)}`;
     byId('phone-live-badge').textContent = 'ПОВТОР';
     byId('phone-live-badge').classList.remove('live');
     schedulePhoneFrame(1800);
@@ -1579,9 +1617,9 @@ async function refreshPhoneFrame() {
 
 function startPhoneFrameLoop() {
   stopPhoneFrameLoop();
-  if (!phoneState.viewActive || !phoneState.selectedSerial) return;
+  if (!phoneStreamActive() || !phoneState.selectedSerial) return;
   if (phoneState.nativeSessions.has(phoneState.selectedSerial)) {
-    byId('phone-frame-status').textContent = 'Встроенный поток на паузе: открыт режим 60 FPS.';
+    byId('phone-frame-status').textContent = 'Встроенный экран на паузе: открыт режим 60 FPS';
     byId('phone-live-badge').textContent = '60 FPS';
     byId('phone-live-badge').classList.remove('live');
     return;
@@ -1597,10 +1635,8 @@ function selectedPhoneDevice(devices) {
   return existing || authorized[0];
 }
 
-function updatePhoneLivePanel() {
+function updatePhoneFloatingState() {
   const device = phoneState.selectedDevice;
-  const image = byId('phone-screen');
-  const placeholder = byId('phone-screen-placeholder');
   const nativeButton = byId('phone-open-native');
   const keyButtons = document.querySelectorAll('[data-phone-key]');
 
@@ -1609,11 +1645,11 @@ function updatePhoneLivePanel() {
     phoneState.selectedSerial = null;
     phoneState.selectedDevice = null;
     byId('phone-selected-device').textContent = '—';
-    byId('phone-live-title').textContent = 'Телефон внутри Sayuri';
-    byId('phone-live-subtitle').textContent = 'Подключите Android — Sayuri обнаружит его автоматически.';
+    byId('phone-live-title').textContent = 'Телефон Sayuri';
+    byId('phone-live-subtitle').textContent = 'Ожидание устройства';
     byId('phone-live-badge').textContent = 'ОЖИДАНИЕ';
     byId('phone-live-badge').classList.remove('live');
-    byId('phone-frame-status').textContent = 'Ожидание авторизованного телефона…';
+    byId('phone-frame-status').textContent = 'Sayuri ждёт авторизованное устройство';
     nativeButton.disabled = true;
     keyButtons.forEach((button) => { button.disabled = true; });
     clearPhoneFrameImage();
@@ -1621,20 +1657,25 @@ function updatePhoneLivePanel() {
     return;
   }
 
+  stopPhoneReconnectLoop();
   phoneState.selectedSerial = device.serial;
   byId('phone-selected-device').textContent = phoneDeviceLabel(device);
   byId('phone-live-title').textContent = phoneDeviceLabel(device);
   byId('phone-live-subtitle').textContent =
-    `${device.connection === 'wifi' ? 'Wi-Fi' : 'USB'} · ${device.serial} · управление внутри проекта`;
+    `${device.connection === 'wifi' ? 'Wi-Fi' : 'USB'} · ${device.serial}`;
   nativeButton.disabled = false;
+
   const nativeOpen = phoneState.nativeSessions.has(device.serial);
-  nativeButton.textContent = nativeOpen ? 'Остановить окно 60 FPS' : '60 FPS · отдельное окно';
+  nativeButton.textContent = nativeOpen ? 'СТОП 60 FPS' : '60 FPS';
   keyButtons.forEach((button) => { button.disabled = false; });
+
   if (nativeOpen) {
     stopPhoneFrameLoop();
-    byId('phone-frame-status').textContent = 'Встроенный поток на паузе: управление идёт через окно 60 FPS.';
+    byId('phone-frame-status').textContent = 'Пауза встроенного экрана: открыт scrcpy 60 FPS';
     byId('phone-live-badge').textContent = '60 FPS';
     byId('phone-live-badge').classList.remove('live');
+  } else if (phoneStreamActive() && !phoneState.frameTimer) {
+    startPhoneFrameLoop();
   }
 }
 
@@ -1644,11 +1685,11 @@ function selectPhone(device) {
   stopPhoneReconnectLoop();
   phoneState.selectedSerial = device.serial;
   phoneState.selectedDevice = device;
-  updatePhoneLivePanel();
+  updatePhoneFloatingState();
   document.querySelectorAll('.phone-device-card').forEach((card) => {
     card.classList.toggle('selected', card.dataset.serial === device.serial);
   });
-  if (changed || !phoneState.frameTimer) startPhoneFrameLoop();
+  if (changed && phoneStreamActive()) startPhoneFrameLoop();
 }
 
 function renderPhone(data) {
@@ -1663,12 +1704,17 @@ function renderPhone(data) {
     : 'Нужен локальный scrcpy / ADB runtime';
   byId('phone-device-count').textContent = String(devices.length);
   byId('phone-device-detail').textContent = `авторизовано: ${data.authorized_devices || 0}`;
-  byId('phone-control-state').textContent = sessions.size ? '60 FPS ОТКРЫТО' : (data.authorized_devices ? 'ВСТРОЕНО' : 'ГОТОВО');
+  byId('phone-control-state').textContent = sessions.size
+    ? '60 FPS'
+    : (phoneState.floatingOpen && data.authorized_devices ? 'ПЛАВАЕТ' : (data.authorized_devices ? 'ГОТОВО' : 'ОЖИДАНИЕ'));
 
   const selected = selectedPhoneDevice(devices);
   const selectedChanged = selected?.serial !== phoneState.selectedSerial;
   phoneState.selectedDevice = selected;
   phoneState.selectedSerial = selected?.serial || null;
+
+  const launcher = byId('phone-float-launcher');
+  launcher.classList.toggle('connected', Boolean(selected));
 
   const list = byId('phone-device-list');
   list.replaceChildren();
@@ -1684,14 +1730,16 @@ function renderPhone(data) {
       : 'После перезапуска Sayuri переносимый scrcpy/ADB runtime будет подготовлен автоматически на Windows x64.';
     empty.append(title, copy);
     list.append(empty);
-    updatePhoneLivePanel();
+    updatePhoneFloatingState();
     return;
   }
 
   for (const device of devices) {
     const card = document.createElement('article');
     card.dataset.serial = device.serial;
-    card.className = `phone-device-card ${device.authorized ? 'authorized' : 'blocked'} ${device.serial === phoneState.selectedSerial ? 'selected' : ''}`;
+    card.className =
+      `phone-device-card ${device.authorized ? 'authorized' : 'blocked'} ${device.serial === phoneState.selectedSerial ? 'selected' : ''}`;
+
     if (device.authorized) {
       card.tabIndex = 0;
       card.addEventListener('click', (event) => {
@@ -1724,23 +1772,17 @@ function renderPhone(data) {
     const actions = document.createElement('div');
     actions.className = 'phone-device-actions';
 
-    const controlling = sessions.has(device.serial);
-    const controlButton = document.createElement('button');
-    controlButton.type = 'button';
-    controlButton.className = controlling ? 'secondary-button' : 'primary-button';
-    controlButton.disabled = !device.authorized;
-    controlButton.textContent = controlling ? 'Остановить 60 FPS' : 'Окно 60 FPS';
-    controlButton.addEventListener('click', async () => {
-      try {
-        const endpoint = controlling ? '/api/phone/control/stop' : '/api/phone/control/start';
-        const result = await postJson(endpoint, {serial: device.serial});
-        showPhoneMessage(result.status || 'Готово');
-        await loadPhone();
-      } catch (error) {
-        showPhoneError(error);
-      }
-    });
-    actions.append(controlButton);
+    if (device.authorized) {
+      const openButton = document.createElement('button');
+      openButton.type = 'button';
+      openButton.className = 'primary-button';
+      openButton.textContent = 'Показать';
+      openButton.addEventListener('click', () => {
+        selectPhone(device);
+        openPhoneFloat();
+      });
+      actions.append(openButton);
+    }
 
     if (device.connection === 'wifi') {
       const disconnectButton = document.createElement('button');
@@ -1763,10 +1805,11 @@ function renderPhone(data) {
     list.append(card);
   }
 
-  updatePhoneLivePanel();
+  updatePhoneFloatingState();
+
   if (
     selected
-    && phoneState.viewActive
+    && phoneStreamActive()
     && !sessions.has(selected.serial)
     && (selectedChanged || !phoneState.frameTimer)
   ) {
@@ -1781,14 +1824,23 @@ async function loadPhone() {
   renderPhone(data);
 }
 
+function mapPhoneDisplayPoint(rx, ry) {
+  const x = Math.max(0, Math.min(1, rx));
+  const y = Math.max(0, Math.min(1, ry));
+  if (phoneState.rotation === 90) return {x: y, y: 1 - x};
+  if (phoneState.rotation === 180) return {x: 1 - x, y: 1 - y};
+  if (phoneState.rotation === 270) return {x: 1 - y, y: x};
+  return {x, y};
+}
+
 function phonePointFromEvent(event) {
   const image = byId('phone-screen');
   const rect = image.getBoundingClientRect();
   if (!rect.width || !rect.height) return null;
-  return {
-    x: Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)),
-    y: Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height))
-  };
+
+  const rx = (event.clientX - rect.left) / rect.width;
+  const ry = (event.clientY - rect.top) / rect.height;
+  return mapPhoneDisplayPoint(rx, ry);
 }
 
 async function sendPhoneTap(point) {
@@ -1798,7 +1850,7 @@ async function sendPhoneTap(point) {
     x: point.x,
     y: point.y
   });
-  schedulePhoneFrame(80);
+  schedulePhoneFrame(70);
 }
 
 async function sendPhoneSwipe(startPoint, endPoint, durationMs) {
@@ -1811,7 +1863,7 @@ async function sendPhoneSwipe(startPoint, endPoint, durationMs) {
     y2: endPoint.y,
     duration_ms: Math.max(80, Math.min(1200, durationMs))
   });
-  schedulePhoneFrame(80);
+  schedulePhoneFrame(70);
 }
 
 async function sendPhoneKey(key) {
@@ -1821,10 +1873,36 @@ async function sendPhoneKey(key) {
       serial: phoneState.selectedSerial,
       key
     });
-    schedulePhoneFrame(80);
+    schedulePhoneFrame(70);
   } catch (error) {
     showPhoneError(error);
   }
+}
+
+async function sendPhoneText(text) {
+  if (!phoneState.selectedSerial || !text) return;
+  const result = await postJson('/api/phone/input/text', {
+    serial: phoneState.selectedSerial,
+    text
+  });
+  schedulePhoneFrame(70);
+  return result;
+}
+
+function queuePhoneText(character) {
+  phoneState.textBuffer += character;
+  if (phoneState.textTimer) window.clearTimeout(phoneState.textTimer);
+  phoneState.textTimer = window.setTimeout(async () => {
+    const text = phoneState.textBuffer;
+    phoneState.textBuffer = '';
+    phoneState.textTimer = null;
+    if (!text) return;
+    try {
+      await sendPhoneText(text);
+    } catch (error) {
+      showPhoneError(error);
+    }
+  }, 80);
 }
 
 async function toggleNativePhoneWindow() {
@@ -1839,6 +1917,201 @@ async function toggleNativePhoneWindow() {
     await loadPhone();
   } catch (error) {
     showPhoneError(error);
+  }
+}
+
+function defaultPhoneFloatLayout() {
+  return {
+    left: Math.max(16, window.innerWidth - 420),
+    top: 84,
+    width: 370,
+    height: Math.min(760, Math.max(520, window.innerHeight - 120))
+  };
+}
+
+function loadPhoneFloatLayout() {
+  const fallback = defaultPhoneFloatLayout();
+  try {
+    const saved = JSON.parse(localStorage.getItem('sayuri-phone-float-layout') || '{}');
+    return {
+      left: Number.isFinite(saved.left) ? saved.left : fallback.left,
+      top: Number.isFinite(saved.top) ? saved.top : fallback.top,
+      width: Number.isFinite(saved.width) ? saved.width : fallback.width,
+      height: Number.isFinite(saved.height) ? saved.height : fallback.height
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+function clampPhoneFloat() {
+  const floating = byId('phone-float');
+  const rect = floating.getBoundingClientRect();
+  const maxLeft = Math.max(8, window.innerWidth - Math.min(rect.width, window.innerWidth - 16) - 8);
+  const maxTop = Math.max(8, window.innerHeight - Math.min(rect.height, window.innerHeight - 16) - 8);
+  const left = Math.max(8, Math.min(maxLeft, parseFloat(floating.style.left) || rect.left || 8));
+  const top = Math.max(8, Math.min(maxTop, parseFloat(floating.style.top) || rect.top || 8));
+  floating.style.left = `${left}px`;
+  floating.style.top = `${top}px`;
+}
+
+function savePhoneFloatLayout() {
+  const floating = byId('phone-float');
+  if (floating.classList.contains('hidden') || phoneState.floatingMinimized) return;
+  const rect = floating.getBoundingClientRect();
+  localStorage.setItem('sayuri-phone-float-layout', JSON.stringify({
+    left: Math.round(rect.left),
+    top: Math.round(rect.top),
+    width: Math.round(rect.width),
+    height: Math.round(rect.height)
+  }));
+}
+
+function applyPhoneRotation() {
+  if (![0, 90, 180, 270].includes(phoneState.rotation)) phoneState.rotation = 0;
+  localStorage.setItem('sayuri-phone-rotation', String(phoneState.rotation));
+  byId('phone-rotation-state').textContent = `${phoneState.rotation}°`;
+  fitPhoneImage();
+}
+
+function rotatePhoneFloat() {
+  phoneState.rotation = (phoneState.rotation + 90) % 360;
+  applyPhoneRotation();
+}
+
+function openPhoneFloat() {
+  const floating = byId('phone-float');
+  phoneState.floatingOpen = true;
+  phoneState.floatingMinimized = false;
+  localStorage.setItem('sayuri-phone-float-open', '1');
+  floating.classList.remove('hidden', 'minimized');
+  byId('phone-float-launcher').classList.add('hidden');
+
+  const layout = loadPhoneFloatLayout();
+  floating.style.left = `${layout.left}px`;
+  floating.style.top = `${layout.top}px`;
+  floating.style.width = `${layout.width}px`;
+  floating.style.height = `${layout.height}px`;
+  clampPhoneFloat();
+  applyPhoneRotation();
+
+  loadPhone()
+    .then(() => {
+      if (phoneState.selectedSerial) startPhoneFrameLoop();
+      else schedulePhoneReconnect(600);
+    })
+    .catch(showPhoneError);
+}
+
+function closePhoneFloat() {
+  savePhoneFloatLayout();
+  phoneState.floatingOpen = false;
+  phoneState.floatingMinimized = false;
+  localStorage.setItem('sayuri-phone-float-open', '0');
+  byId('phone-float').classList.add('hidden');
+  byId('phone-float-launcher').classList.remove('hidden');
+  stopPhoneFrameLoop();
+  if (!phoneState.viewActive) stopPhoneReconnectLoop();
+}
+
+function togglePhoneFloatMinimize() {
+  const floating = byId('phone-float');
+  phoneState.floatingMinimized = !phoneState.floatingMinimized;
+  floating.classList.toggle('minimized', phoneState.floatingMinimized);
+  byId('phone-float-minimize').textContent = phoneState.floatingMinimized ? '□' : '—';
+  byId('phone-float-minimize').title = phoneState.floatingMinimized ? 'Развернуть' : 'Свернуть';
+  if (phoneState.floatingMinimized) {
+    stopPhoneFrameLoop();
+  } else {
+    clampPhoneFloat();
+    fitPhoneImage();
+    startPhoneFrameLoop();
+  }
+}
+
+function initializePhoneFloatingWindow() {
+  const floating = byId('phone-float');
+  const layout = loadPhoneFloatLayout();
+  floating.style.left = `${layout.left}px`;
+  floating.style.top = `${layout.top}px`;
+  floating.style.width = `${layout.width}px`;
+  floating.style.height = `${layout.height}px`;
+  applyPhoneRotation();
+
+  if (phoneState.floatingOpen) {
+    floating.classList.remove('hidden');
+    byId('phone-float-launcher').classList.add('hidden');
+    loadPhone().then(startPhoneFrameLoop).catch(showPhoneError);
+  }
+
+  if (window.ResizeObserver) {
+    phoneState.resizeObserver = new ResizeObserver(() => {
+      fitPhoneImage();
+      savePhoneFloatLayout();
+    });
+    phoneState.resizeObserver.observe(floating);
+  }
+}
+
+function startPhoneFloatDrag(event) {
+  if (event.button !== 0 || event.target.closest('button, input')) return;
+  const floating = byId('phone-float');
+  const rect = floating.getBoundingClientRect();
+  phoneState.drag = {
+    pointerId: event.pointerId,
+    offsetX: event.clientX - rect.left,
+    offsetY: event.clientY - rect.top
+  };
+  byId('phone-float-drag').setPointerCapture?.(event.pointerId);
+  floating.classList.add('dragging');
+  event.preventDefault();
+}
+
+function movePhoneFloat(event) {
+  if (!phoneState.drag || phoneState.drag.pointerId !== event.pointerId) return;
+  const floating = byId('phone-float');
+  const rect = floating.getBoundingClientRect();
+  const maxLeft = Math.max(8, window.innerWidth - rect.width - 8);
+  const maxTop = Math.max(8, window.innerHeight - rect.height - 8);
+  const left = Math.max(8, Math.min(maxLeft, event.clientX - phoneState.drag.offsetX));
+  const top = Math.max(8, Math.min(maxTop, event.clientY - phoneState.drag.offsetY));
+  floating.style.left = `${left}px`;
+  floating.style.top = `${top}px`;
+}
+
+function endPhoneFloatDrag(event) {
+  if (!phoneState.drag || phoneState.drag.pointerId !== event.pointerId) return;
+  phoneState.drag = null;
+  byId('phone-float').classList.remove('dragging');
+  savePhoneFloatLayout();
+}
+
+function safePhoneKeyboardCharacter(value) {
+  return /^[\p{L}\p{N} .,_@+\-]$/u.test(value);
+}
+
+function handlePhoneKeyboard(event) {
+  if (!phoneState.selectedSerial || event.ctrlKey || event.altKey || event.metaKey) return;
+  const keyMap = {
+    Backspace: 'DELETE',
+    Enter: 'ENTER',
+    Escape: 'BACK',
+    ArrowUp: 'ARROW_UP',
+    ArrowDown: 'ARROW_DOWN',
+    ArrowLeft: 'ARROW_LEFT',
+    ArrowRight: 'ARROW_RIGHT',
+    Tab: 'TAB',
+    ' ': 'SPACE'
+  };
+  const mapped = keyMap[event.key];
+  if (mapped) {
+    event.preventDefault();
+    sendPhoneKey(mapped);
+    return;
+  }
+  if (event.key.length === 1 && safePhoneKeyboardCharacter(event.key)) {
+    event.preventDefault();
+    queuePhoneText(event.key);
   }
 }
 
@@ -1999,13 +2272,43 @@ byId('phone-refresh').addEventListener('click', () => {
 });
 byId('phone-pair-form').addEventListener('submit', pairPhone);
 byId('phone-connect-form').addEventListener('submit', connectPhone);
+byId('phone-open-floating').addEventListener('click', openPhoneFloat);
+byId('phone-float-launcher').addEventListener('click', openPhoneFloat);
+byId('phone-float-close').addEventListener('click', closePhoneFloat);
+byId('phone-float-minimize').addEventListener('click', togglePhoneFloatMinimize);
+byId('phone-float-rotate').addEventListener('click', rotatePhoneFloat);
 byId('phone-open-native').addEventListener('click', toggleNativePhoneWindow);
+
 document.querySelectorAll('[data-phone-key]').forEach((button) => {
   button.addEventListener('click', () => sendPhoneKey(button.dataset.phoneKey));
 });
 
+byId('phone-text-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const input = byId('phone-text-input');
+  const text = input.value;
+  if (!text.trim()) return;
+  try {
+    await sendPhoneText(text);
+    input.value = '';
+  } catch (error) {
+    showPhoneError(error);
+  }
+});
+
+const phoneFloatHeader = byId('phone-float-drag');
+phoneFloatHeader.addEventListener('pointerdown', startPhoneFloatDrag);
+phoneFloatHeader.addEventListener('pointermove', movePhoneFloat);
+phoneFloatHeader.addEventListener('pointerup', endPhoneFloatDrag);
+phoneFloatHeader.addEventListener('pointercancel', endPhoneFloatDrag);
+
 const phoneScreen = byId('phone-screen');
-phoneScreen.addEventListener('contextmenu', (event) => event.preventDefault());
+const phoneScreenStage = byId('phone-screen-shell');
+
+phoneScreen.addEventListener('contextmenu', (event) => {
+  event.preventDefault();
+  sendPhoneKey('BACK');
+});
 phoneScreen.addEventListener('pointerdown', (event) => {
   if (!phoneState.selectedSerial) return;
   const point = phonePointFromEvent(event);
@@ -2016,6 +2319,7 @@ phoneScreen.addEventListener('pointerdown', (event) => {
     startedAt: performance.now()
   };
   phoneScreen.setPointerCapture?.(event.pointerId);
+  phoneScreenStage.focus({preventScroll: true});
   event.preventDefault();
 });
 phoneScreen.addEventListener('pointerup', async (event) => {
@@ -2041,6 +2345,29 @@ phoneScreen.addEventListener('pointerup', async (event) => {
 phoneScreen.addEventListener('pointercancel', () => {
   phoneState.pointer = null;
 });
+phoneScreen.addEventListener('wheel', async (event) => {
+  if (!phoneState.selectedSerial) return;
+  event.preventDefault();
+  const down = event.deltaY > 0;
+  const start = mapPhoneDisplayPoint(0.5, down ? 0.72 : 0.30);
+  const end = mapPhoneDisplayPoint(0.5, down ? 0.30 : 0.72);
+  try {
+    await sendPhoneSwipe(start, end, 220);
+  } catch (error) {
+    showPhoneError(error);
+  }
+}, {passive: false});
+
+phoneScreenStage.addEventListener('keydown', handlePhoneKeyboard);
+window.addEventListener('resize', () => {
+  if (phoneState.floatingOpen) {
+    clampPhoneFloat();
+    fitPhoneImage();
+  }
+});
+
+initializePhoneFloatingWindow();
+
 byId('upload-button').addEventListener('click', () => byId('disk-file-input').click());
 byId('disk-file-input').addEventListener('change', (event) => uploadDiskFiles(event.target.files));
 byId('new-folder-button').addEventListener('click', () => {

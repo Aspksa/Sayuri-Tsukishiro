@@ -239,6 +239,39 @@ R58M123ABC device product:a56xeea model:SM_A556E device:a56x transport_id:1
             process.terminate.assert_called_once()
 
 
+    def test_keyboard_text_is_allowlisted_and_encoded_for_android_input(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            service = PhoneService(Path(tmp))
+            completed = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+            with patch.object(
+                service,
+                "_select_authorized_device",
+                return_value={"serial": "R58M123ABC", "authorized": True},
+            ), patch.object(
+                service, "_resolve_adb", return_value=Path("adb.exe")
+            ), patch.object(
+                service, "_run", return_value=completed
+            ) as run:
+                result = service.type_text("R58M123ABC", "Привет 123")
+
+            self.assertEqual(result["status"], "текст введён")
+            self.assertEqual(
+                run.call_args.args[0],
+                ["adb.exe", "-s", "R58M123ABC", "shell", "input", "text", "Привет%s123"],
+            )
+
+            with patch.object(
+                service,
+                "_select_authorized_device",
+                return_value={"serial": "R58M123ABC", "authorized": True},
+            ):
+                with self.assertRaises(ValueError):
+                    service.type_text("R58M123ABC", "hello;rm")
+                with self.assertRaises(ValueError):
+                    service.type_text("R58M123ABC", "   ")
+
+
+
 class PhoneApiTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -361,6 +394,15 @@ class PhoneApiTests(unittest.TestCase):
             {"serial": "R58M123ABC", "key": "BACK"},
         )
         self.assertEqual(keyed["key"], "BACK")
+
+        self.core.phone.type_text = MagicMock(
+            return_value={"status": "текст введён", "characters": 6}
+        )
+        typed = self.post_json(
+            "/api/phone/input/text",
+            {"serial": "R58M123ABC", "text": "Sayuri"},
+        )
+        self.assertEqual(typed["status"], "текст введён")
 
 
     def test_disconnected_frame_returns_phone_conflict(self):

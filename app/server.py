@@ -478,6 +478,16 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
                 )
                 return
 
+            if parsed.path == "/api/phone/input/text":
+                payload = self._read_json()
+                self._json(
+                    self.server.core.phone.type_text(
+                        payload.get("serial"),
+                        payload.get("text"),
+                    )
+                )
+                return
+
             if parsed.path == "/api/disk/folders":
                 payload = self._read_json()
                 name = payload.get("name")

@@ -295,48 +295,14 @@
 
         <div class="phone-message hidden" id="phone-message" role="status"></div>
 
-        <section class="phone-live-panel" id="phone-live-panel">
-          <div class="phone-live-head">
-            <div>
-              <p class="eyebrow">ВСТРОЕННЫЙ ЭКРАН</p>
-              <h3 id="phone-live-title">Телефон внутри Sayuri</h3>
-              <p id="phone-live-subtitle">Выберите подключённый телефон — экран появится здесь.</p>
-            </div>
-            <div class="phone-live-actions">
-              <span class="phone-live-badge" id="phone-live-badge">ОЖИДАНИЕ</span>
-              <button class="secondary-button" id="phone-open-native" type="button" disabled>60 FPS · отдельное окно</button>
-            </div>
+        <section class="phone-float-intro">
+          <div class="phone-float-intro-icon">▯</div>
+          <div>
+            <p class="eyebrow">ПЛАВАЮЩИЙ ДИСПЛЕЙ</p>
+            <h3>Телефон больше не привязан к этой странице</h3>
+            <p>Откройте его поверх любого раздела Sayuri, перетаскивайте, меняйте размер, поворачивайте и управляйте мышью или клавиатурой.</p>
           </div>
-
-          <div class="phone-live-body">
-            <div class="phone-screen-shell" id="phone-screen-shell">
-              <div class="phone-screen-placeholder" id="phone-screen-placeholder">
-                <span>▯</span>
-                <strong>Экран телефона появится здесь</strong>
-                <small>USB или Wi-Fi · локальный канал</small>
-              </div>
-              <img id="phone-screen" class="phone-screen hidden" alt="Экран подключённого Android" draggable="false">
-            </div>
-
-            <div class="phone-remote">
-              <div class="phone-remote-status">
-                <span>Устройство</span>
-                <strong id="phone-selected-device">—</strong>
-                <small id="phone-frame-status">Кадры ещё не запущены</small>
-              </div>
-              <div class="phone-nav-buttons" aria-label="Системные кнопки Android">
-                <button type="button" data-phone-key="BACK" disabled><span>‹</span><small>Назад</small></button>
-                <button type="button" data-phone-key="HOME" disabled><span>○</span><small>Домой</small></button>
-                <button type="button" data-phone-key="RECENTS" disabled><span>▢</span><small>Недавние</small></button>
-                <button type="button" data-phone-key="POWER" disabled><span>⌁</span><small>Питание</small></button>
-              </div>
-              <div class="phone-live-notes">
-                <span>Клик по экрану = касание</span>
-                <span>Зажмите и проведите = свайп</span>
-                <span>Для плавного видео и звука используйте режим 60 FPS</span>
-              </div>
-            </div>
-          </div>
+          <button class="primary-button phone-float-open-button" id="phone-open-floating" type="button">Открыть телефон</button>
         </section>
 
         <section class="phone-grid">
@@ -389,7 +355,7 @@
               <span>✓ Управление запускается только по вашему нажатию</span>
               <span>✓ scrcpy не требует root и не оставляет приложение на телефоне</span>
             </div>
-            <p class="phone-help">Встроенный режим передаёт локальные кадры через ADB и поддерживает касания/свайпы. Для максимально плавного изображения и звука сохранён официальный режим scrcpy 60 FPS.</p>
+            <p class="phone-help">Плавающий дисплей работает поверх всех разделов Sayuri. Для максимально плавного изображения и звука сохранён официальный режим scrcpy 60 FPS.</p>
           </article>
         </section>
       </section>
@@ -438,6 +404,65 @@
       <footer><span>Саюри Цукисиро · локальная система</span><span id="updated-at">—</span></footer>
     </main>
   </div>
+
+  <button class="phone-float-launcher" id="phone-float-launcher" type="button" aria-label="Открыть Телефон Sayuri">
+    <span>▯</span><strong>Телефон</strong>
+  </button>
+
+  <section class="phone-float hidden" id="phone-float" tabindex="-1" aria-label="Плавающий Телефон Sayuri">
+    <header class="phone-float-header" id="phone-float-drag">
+      <div class="phone-float-brand">
+        <span class="phone-float-device-icon">▯</span>
+        <div>
+          <strong id="phone-live-title">Телефон Sayuri</strong>
+          <small id="phone-live-subtitle">Ожидание устройства</small>
+        </div>
+      </div>
+      <div class="phone-float-window-actions">
+        <span class="phone-live-badge" id="phone-live-badge">ОЖИДАНИЕ</span>
+        <button id="phone-float-rotate" type="button" title="Повернуть экран" aria-label="Повернуть экран">↻</button>
+        <button id="phone-float-minimize" type="button" title="Свернуть" aria-label="Свернуть">—</button>
+        <button id="phone-float-close" type="button" title="Закрыть" aria-label="Закрыть">×</button>
+      </div>
+    </header>
+
+    <div class="phone-float-body">
+      <div class="phone-float-screen-stage" id="phone-screen-shell" tabindex="0" aria-label="Экран Android. После клика можно использовать клавиатуру.">
+        <div class="phone-screen-placeholder" id="phone-screen-placeholder">
+          <span>▯</span>
+          <strong>Подключите Android</strong>
+          <small id="phone-frame-status">Sayuri ждёт авторизованное устройство</small>
+        </div>
+        <img id="phone-screen" class="phone-screen hidden" alt="Экран подключённого Android" draggable="false">
+      </div>
+
+      <div class="phone-float-toolbar">
+        <div class="phone-float-device-state">
+          <span class="phone-connection-dot"></span>
+          <strong id="phone-selected-device">—</strong>
+        </div>
+
+        <div class="phone-float-nav" aria-label="Системные кнопки Android">
+          <button type="button" data-phone-key="BACK" title="Назад" disabled>‹</button>
+          <button type="button" data-phone-key="HOME" title="Домой" disabled>○</button>
+          <button type="button" data-phone-key="RECENTS" title="Недавние" disabled>▢</button>
+          <button type="button" data-phone-key="POWER" title="Питание" disabled>⌁</button>
+        </div>
+
+        <button class="phone-float-native" id="phone-open-native" type="button" disabled title="Открыть официальный scrcpy 60 FPS">60 FPS</button>
+      </div>
+
+      <form class="phone-keyboard-bar" id="phone-text-form">
+        <input id="phone-text-input" type="text" maxlength="250" autocomplete="off" placeholder="Текст в телефон…">
+        <button type="submit">Ввести</button>
+      </form>
+
+      <div class="phone-float-help">
+        <span id="phone-keyboard-hint">Клик · свайп · колесо · правый клик = Назад · после клика по экрану работает клавиатура ПК</span>
+        <span id="phone-rotation-state">0°</span>
+      </div>
+    </div>
+  </section>
 
   <script src="/app.js" defer></script>
 </body>

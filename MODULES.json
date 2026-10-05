@@ -22,13 +22,13 @@
     {
       "id": "sayuri-phone",
       "display_name": "Телефон Sayuri",
-      "description": "Локальное Android-управление: USB/Wi-Fi ADB, официальный scrcpy 60 FPS и встроенный в страницу экран с касаниями, свайпами и системными кнопками.",
+      "description": "Глобальный плавающий Android-дисплей поверх всего проекта: drag/resize/rotate, мышь, колесо, клавиатура, USB/Wi-Fi ADB и официальный scrcpy 60 FPS.",
       "path": "phone"
     },
     {
       "id": "web-ui",
       "display_name": "Веб-интерфейс",
-      "description": "Локальная оболочка с Диск Sayuri, встроенным экраном Телефон Sayuri, вкладкой ДНК и системными настройками.",
+      "description": "Локальная оболочка Sayuri с независимым плавающим Телефон Sayuri, Диском, ДНК и системными настройками.",
       "path": "web"
     },
     {

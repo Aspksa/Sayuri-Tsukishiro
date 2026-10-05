@@ -137,3 +137,27 @@
   - автоматическое ожидание переподключения;
   - автоматическое возобновление после возврата устройства;
   - пауза embedded screencap при активном нативном scrcpy 60 FPS.
+
+
+## PHONE-003 — Floating Workspace
+- Статус: `implemented; CI pending`.
+- Приоритет изменён прямым запросом пользователя: свободное плавающее окно важнее H.264/WebCodecs.
+- Реализовано:
+  - глобальное окно поверх всех view;
+  - drag мышью;
+  - resize браузерным resize-handle;
+  - сохранение позиции/размера;
+  - поворот 0/90/180/270;
+  - пересчёт input coordinates при повороте;
+  - minimize/close + глобальный launcher;
+  - click/tap, drag/swipe, wheel-scroll, right-click Back;
+  - системные кнопки Android;
+  - клавиатура ПК после фокуса экрана;
+  - строка безопасного text input;
+  - сохранён нативный scrcpy 60 FPS;
+  - CI JavaScript syntax check.
+- Не входит:
+  - полноценный embedded H.264 30/60 FPS;
+  - embedded audio;
+  - гарантированный Unicode IME для всех Android-клавиатур.
+- Следующий этап после проверки UX: PHONE-004 — high-FPS local video bridge и расширенный keyboard/clipboard protocol.

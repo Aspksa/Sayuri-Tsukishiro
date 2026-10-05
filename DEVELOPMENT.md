@@ -443,3 +443,71 @@ authorized
 если для выбранного serial открыт нативный scrcpy 60 FPS, embedded `screencap -p` polling ставится на паузу. После закрытия нативного окна встроенный preview возобновляется.
 
 Это снижает одновременную нагрузку на ADB/USB и устраняет бесконечные запросы к исчезнувшему serial.
+
+
+## Телефон Sayuri 0.3 — Floating Workspace
+
+### DOM boundary
+
+Floating phone находится за пределами отдельных `.view` и поэтому не уничтожается/не скрывается при переходах:
+
+```text
+app shell
+  ├─ home
+  ├─ disk
+  ├─ phone connection center
+  └─ settings
+
+global layer
+  ├─ phone-float-launcher
+  └─ phone-float
+```
+
+### Window state
+
+LocalStorage:
+- `sayuri-phone-float-open`
+- `sayuri-phone-float-layout`
+- `sayuri-phone-rotation`
+
+Layout:
+- fixed position;
+- drag by header;
+- CSS `resize: both`;
+- min/max viewport constraints;
+- ResizeObserver refits the phone image.
+
+### Rotation/input mapping
+
+Display supports 0/90/180/270 degrees.
+Pointer coordinates are normalized in the rotated visual rectangle and mapped back to native Android coordinates before POST.
+
+### Mouse
+
+- left click → tap;
+- drag → swipe;
+- wheel → swipe;
+- right click → BACK.
+
+### Keyboard
+
+When `phone-float-screen-stage` has focus:
+- Backspace → DELETE;
+- Enter → ENTER;
+- Escape → BACK;
+- arrows → DPAD;
+- Tab → TAB;
+- Space → SPACE;
+- safe printable character → buffered `/api/phone/input/text`.
+
+Text endpoint:
+`POST /api/phone/input/text`
+
+It accepts at most 250 characters and rejects shell metacharacters. Arbitrary command execution is not exposed.
+
+### CI
+
+Ubuntu CI now performs:
+`node --check web/app.js`
+
+This complements Python unit/web-contract tests.

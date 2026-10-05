@@ -10,12 +10,13 @@ import time
 from typing import Any
 
 
-PHONE_BACKEND_VERSION = "0.2.1"
+PHONE_BACKEND_VERSION = "0.3.0"
 SCRCPY_VERSION = "4.1"
 COMMAND_TIMEOUT_SECONDS = 20
 FRAME_TIMEOUT_SECONDS = 8
 FRAME_CACHE_SECONDS = 0.35
 MAX_SWIPE_DURATION_MS = 1500
+MAX_TEXT_INPUT_CHARS = 250
 ANDROID_KEYS = {
     "BACK": "KEYCODE_BACK",
     "HOME": "KEYCODE_HOME",
@@ -26,6 +27,12 @@ ANDROID_KEYS = {
     "VOLUME_UP": "KEYCODE_VOLUME_UP",
     "VOLUME_DOWN": "KEYCODE_VOLUME_DOWN",
     "PLAY_PAUSE": "KEYCODE_MEDIA_PLAY_PAUSE",
+    "ARROW_UP": "KEYCODE_DPAD_UP",
+    "ARROW_DOWN": "KEYCODE_DPAD_DOWN",
+    "ARROW_LEFT": "KEYCODE_DPAD_LEFT",
+    "ARROW_RIGHT": "KEYCODE_DPAD_RIGHT",
+    "TAB": "KEYCODE_TAB",
+    "SPACE": "KEYCODE_SPACE",
 }
 PAIR_CODE_RE = re.compile(r"^\d{6}$")
 ADDRESS_RE = re.compile(r"^[A-Za-z0-9._-]+:(\d{1,5})$")
@@ -222,6 +229,9 @@ class PhoneService:
                 "embedded_control": adb is not None,
                 "embedded_frame_interval_ms": int(FRAME_CACHE_SECONDS * 1000),
                 "embedded_audio": False,
+                "keyboard_input": True,
+                "mouse_wheel": True,
+                "floating_window": True,
             },
             "security": {
                 "loopback_project_only": True,
@@ -493,6 +503,43 @@ class PhoneService:
         if result.returncode != 0:
             raise OSError((result.stderr or result.stdout or "Не удалось нажать системную кнопку.").strip())
         return {"status": "кнопка нажата", "serial": device_serial, "key": normalized}
+
+    @staticmethod
+    def _safe_text_input(value: Any) -> str:
+        if not isinstance(value, str):
+            raise ValueError("Текст для телефона должен быть строкой.")
+        text = value.strip("\r\n")
+        if not text.strip():
+            raise ValueError("Текст для телефона пуст.")
+        if len(text) > MAX_TEXT_INPUT_CHARS:
+            raise ValueError(f"Текст ограничен {MAX_TEXT_INPUT_CHARS} символами за одну отправку.")
+        for char in text:
+            if char.isalnum() or char in " .,_@+-":
+                continue
+            raise ValueError(
+                "Для безопасного встроенного ввода разрешены буквы, цифры, пробел и символы . , _ @ + -."
+            )
+        return text
+
+    def type_text(self, serial: Any, text: Any) -> dict[str, Any]:
+        device = self._select_authorized_device(serial)
+        device_serial = device["serial"]
+        safe_text = self._safe_text_input(text)
+        adb = self._resolve_adb()
+        if adb is None:
+            raise OSError("ADB runtime не установлен.")
+
+        encoded = safe_text.replace(" ", "%s")
+        result = self._run(
+            [str(adb), "-s", device_serial, "shell", "input", "text", encoded]
+        )
+        if result.returncode != 0:
+            raise OSError((result.stderr or result.stdout or "Не удалось ввести текст.").strip())
+        return {
+            "status": "текст введён",
+            "serial": device_serial,
+            "characters": len(safe_text),
+        }
 
     def start_control(self, serial: Any = None) -> dict[str, Any]:
         scrcpy = self._resolve_scrcpy()

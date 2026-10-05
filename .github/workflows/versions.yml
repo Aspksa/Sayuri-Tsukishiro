@@ -19,6 +19,8 @@ jobs:
         run: python3 -m unittest discover -s scripts/tests -v
       - name: Test Sayuri core
         run: python3 -m unittest discover -s app/tests -v
+      - name: Check web JavaScript syntax
+        run: node --check web/app.js
       - name: Run preflight
         run: python3 -m app.preflight
       - name: Check every changed commit
