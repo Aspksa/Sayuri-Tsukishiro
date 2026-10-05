@@ -2252,7 +2252,19 @@ function renderMemoryV4Failures(payload) {
     if (item.prevention) parts.push(`не повторять: ${item.prevention}`);
     if (!parts.length) parts.push('причина ещё не подтверждена');
     detail.textContent = parts.join(' · ');
+
     row.append(head, symptom, detail);
+    if (item.status === 'open') {
+      const controls = document.createElement('div');
+      controls.className = 'memory-v4-row-actions';
+      const resolve = document.createElement('button');
+      resolve.type = 'button';
+      resolve.className = 'secondary-button';
+      resolve.textContent = 'Подтвердить исправление';
+      resolve.addEventListener('click', () => resolveMemoryV4Failure(item));
+      controls.append(resolve);
+      row.append(controls);
+    }
     container.append(row);
   }
 
@@ -2279,6 +2291,48 @@ function renderMemoryV4Failures(payload) {
       row.append(head, detail);
       container.append(row);
     }
+  }
+}
+
+async function resolveMemoryV4Failure(item) {
+  const cause = window.prompt(
+    'Подтверждённая причина ошибки (можно оставить пустым, если причина ещё неизвестна):',
+    item.cause || ''
+  );
+  if (cause === null) return;
+
+  const resolution = window.prompt(
+    'Что именно исправило проблему? Это поле обязательно:',
+    item.resolution || ''
+  );
+  if (resolution === null) return;
+  if (!resolution.trim()) {
+    setMemoryV4Message('Нужно указать подтверждённое исправление.', 'error');
+    return;
+  }
+
+  const prevention = window.prompt(
+    'Как не повторять эту ошибку в будущем?',
+    item.prevention || ''
+  );
+  if (prevention === null) return;
+
+  try {
+    const result = await postJson(
+      `/api/sayuri/memory/v4/failures/${encodeURIComponent(item.id)}/resolve`,
+      {
+        cause: cause.trim(),
+        resolution: resolution.trim(),
+        prevention: prevention.trim()
+      }
+    );
+    renderSayuriMemoryV4(result.dashboard || {});
+    setMemoryV4Message('Failure Memory обновлена подтверждённым решением.', 'ready');
+  } catch (error) {
+    setMemoryV4Message(
+      `Ошибка: ${error instanceof Error ? error.message : String(error)}`,
+      'error'
+    );
   }
 }
 
@@ -2840,6 +2894,7 @@ async function rateSayuriMessage(messageIndex, rating) {
     renderSayuriMessages();
     renderSayuriExperience(result.stats || {});
     loadSayuriMemoryV3().catch(() => {});
+    loadSayuriMemoryV4().catch(() => {});
     loadSayuriMemoryV4().catch(() => {});
   } catch (error) {
     byId('sayuri-chat-status').textContent = `Не удалось сохранить оценку: ${error instanceof Error ? error.message : String(error)}`;

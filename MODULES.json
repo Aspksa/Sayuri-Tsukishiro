@@ -4,13 +4,13 @@
     {
       "id": "sayuri-core",
       "display_name": "Ядро Саюри",
-      "description": "Системное ядро, SQLite, API, диагностика, Memory 4.0, Memory 3.0, Semantic/Experience Learning и безопасное выполнение подтверждённых действий Sayuri.",
+      "description": "Системное ядро, SQLite, API, диагностика, Memory 4.0 Hardening, Memory 3.0, Semantic/Experience Learning и безопасное выполнение подтверждённых действий Sayuri.",
       "path": "app"
     },
     {
       "id": "agent-core",
       "display_name": "Агентное ядро",
-      "description": "Sayuri Agent Core: DeepSeek-V4-Flash через Cloud.ru, Memory 4.0 (goals/tasks/source trust/utility/failure/causal/explainable recall/audit/snapshots) поверх Memory 3.0, Semantic Memory и Experience Learning.",
+      "description": "Sayuri Agent Core: DeepSeek-V4-Flash через Cloud.ru, Memory 4.0 с privacy firewall, read-only local recall, explicit Failure/Causal resolution, goals/tasks/source trust/utility/audit/snapshots поверх Memory 3.0.",
       "path": "agent"
     },
     {
@@ -22,7 +22,7 @@
     {
       "id": "web-ui",
       "display_name": "Веб-интерфейс",
-      "description": "Единая оболочка Sayuri с Личным кабинетом, Memory 4.0 control center, Memory 3.0, explainable recall, source trust, goals/tasks, snapshots, чатом, действиями, аватарами, Диском и ДНК.",
+      "description": "Единая оболочка Sayuri с Личным кабинетом, Memory 4.0 control center, explainable read-only recall, source trust, goals/tasks, explicit Failure resolution, snapshots, чатом, действиями, аватарами, Диском и ДНК.",
       "path": "web"
     },
     {

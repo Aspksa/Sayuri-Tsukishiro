@@ -407,3 +407,42 @@
 - После восстановления выполняются миграции/инициализация схемы и integrity check.
 - Goals, tasks, failure memory и audit не расширяют tool permissions; изменяющие действия проекта остаются confirmation-gated.
 
+## D-044 — локальный просмотр памяти не является обучающим сигналом
+
+- Дата: 2026-10-06.
+- Статус: принято.
+- Поиск/просмотр памяти в Личном кабинете не увеличивает `use_count`, `recall_count` и не создаёт recall-audit.
+- Utility Learning получает сигнал только из памяти, реально использованной при формировании ответа Sayuri.
+- Explainable Recall остаётся доступным локально без изменения веса памяти.
+- Это исключает feedback loop, при котором часто просматриваемая вручную запись становилась бы «полезнее» без доказанного влияния на качество ответа.
+
+## D-045 — local-only policy применяется ко всем memory-derived Cloud-context
+
+- Дата: 2026-10-06.
+- Статус: принято.
+- `cloud_allowed=false` является сквозным privacy-инвариантом, а не только фильтром прямого Memory 4.0 recall.
+- Перед передачей в Cloud.ru дополнительно фильтруются Memory 3.0 knowledge/episodes/conflicts/working data, Experience Learning details, Goal Memory, Task Memory, Failure Memory и Question Memory.
+- Связанная сущность с local-only source memory также не должна попадать в Cloud-context.
+- Локальный интерфейс и локальный аудит могут отображать защищённые данные; изменение Source Trust не снимает local-only policy.
+- Пользовательский текст, который пользователь непосредственно отправляет в AI-чат, остаётся отдельным явным каналом и не считается автоматическим recall памяти.
+
+## D-046 — последующий успех не доказывает причину исправления ошибки
+
+- Дата: 2026-10-06.
+- Статус: принято.
+- Успешный запуск того же инструмента после failure фиксируется как наблюдение `followed_by_success`, а не как `resolved_by`.
+- Такая связь имеет низкую causal confidence и явно маркируется как correlation-only.
+- Failure Memory переводится в `resolved` только после явного подтверждения причины/исправления пользователем.
+- Повтор той же ошибки после resolved состояния автоматически переоткрывает failure pattern.
+- Повтор одинакового подтверждения resolution должен быть идемпотентным и не увеличивать `resolved_count`.
+
+## D-047 — recall считается использованным только после успешного AI-ответа
+
+- Дата: 2026-10-06.
+- Статус: принято.
+- Memory retrieval выполняется в две фазы: `prepare recall` -> успешный ответ Cloud.ru -> `commit recall`.
+- На prepare-фазе Semantic Memory и Memory 4.0 не увеличивают `use_count`, `recall_count` и не создают `memory_recall_audit`.
+- Только после успешного ответа DeepSeek-V4-Flash выбранные memory IDs фиксируются как реально использованные и получают recall audit.
+- Timeout, network error, provider error, неверный ключ или другой сбой до AI-ответа не должны обучать utility/frequency памяти.
+- `response_id` связывается только с уже committed recall ID.
+
