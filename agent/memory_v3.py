@@ -1421,6 +1421,7 @@ class MemorySystemV3:
         episode_ranked.sort(key=lambda pair: pair[0], reverse=True)
 
         open_conflicts = self.conflicts(status="open", limit=6)
+        open_conflict_count = self.stats()["open_conflicts"]
         return {
             "working": self.working()["items"],
             "knowledge": [item for _, item in knowledge_ranked[:6]],
@@ -1436,7 +1437,7 @@ class MemorySystemV3:
                 }
                 for item in open_conflicts
             ],
-            "open_conflicts": len(open_conflicts),
+            "open_conflicts": open_conflict_count,
             "engine": "memory-v3",
         }
 
