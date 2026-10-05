@@ -592,7 +592,7 @@ class DocumentDNAAnalyzer:
             return {"kind": "person_name", "canonical": canonical, "confidence": 0.86}
 
         if fact_type == "document_number":
-            canonical = re.sub(r"\s+", "", compact).upper()
+            canonical = re.sub(r"\s+", "", compact).upper().rstrip(".,;:")
             return {"kind": "identifier", "canonical": canonical, "confidence": 0.94}
 
         return {"kind": "text", "canonical": compact, "confidence": 0.8}

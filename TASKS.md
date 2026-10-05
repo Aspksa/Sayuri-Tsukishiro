@@ -41,7 +41,7 @@
   - selective AI context;
   - knowledge promotion pipeline;
   - package DNA для папки.
-- Версии: проект `0.1.14`, ядро `0.1.11`, Диск Sayuri `0.5.0`, веб `0.3.0`.
+- Версии после CI-исправления: проект `0.1.15`, ядро `0.1.11`, Диск Sayuri `0.5.1`, веб `0.3.0`.
 
 ## DISK-006 — OCR и Spatial Evidence 2.0
 - Статус: `proposed`.
