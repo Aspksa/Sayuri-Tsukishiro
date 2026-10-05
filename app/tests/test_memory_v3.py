@@ -192,6 +192,58 @@ class MemoryV3Tests(unittest.TestCase):
             self.assertIn("event", node_types)
             self.assertIn("experienced", {edge["relation"] for edge in graph["edges"]})
 
+    def test_archiving_only_source_closes_derived_knowledge(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            memory, semantic, v3 = self._build(Path(tmp))
+            entry = memory.add(
+                scope="project",
+                kind="decision",
+                content="Memory 3.0 должна сохранять provenance",
+                importance=5,
+                confidence=0.98,
+            )
+            promoted = v3.ingest_memory(entry)["knowledge"]
+            self.assertEqual(promoted["status"], "confirmed")
+
+            self.assertTrue(memory.delete(entry["id"]))
+            v3.archive_memory(entry)
+
+            knowledge = v3.get_knowledge(promoted["id"])
+            self.assertEqual(knowledge["status"], "archived")
+            self.assertIsNotNone(knowledge["valid_to"])
+
+    def test_open_conflict_is_explicit_in_ai_context(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            memory, semantic, v3 = self._build(Path(tmp))
+            old = memory.add(
+                scope="personal",
+                kind="preference",
+                content="Я предпочитаю тёмный интерфейс",
+                importance=4,
+                confidence=0.9,
+            )
+            new = memory.add(
+                scope="personal",
+                kind="preference",
+                content="Я предпочитаю светлый интерфейс",
+                importance=4,
+                confidence=0.95,
+                supersedes_id=old["id"],
+            )
+            v3.register_conflict(
+                candidate_id="candidate-context",
+                old_memory_id=old["id"],
+                new_memory_id=new["id"],
+                scope="personal",
+            )
+
+            context = v3.context("какой интерфейс я предпочитаю")
+
+            self.assertEqual(context["open_conflicts"], 1)
+            self.assertEqual(len(context["conflicts"]), 1)
+            self.assertIn("тёмный", context["conflicts"][0]["old_content"])
+            self.assertIn("светлый", context["conflicts"][0]["new_content"])
+
     def test_maintenance_bootstraps_knowledge_graph_and_temporal_memory(self):
         with tempfile.TemporaryDirectory() as tmp:
             memory, semantic, v3 = self._build(Path(tmp))
