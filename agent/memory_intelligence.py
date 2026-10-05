@@ -384,6 +384,10 @@ class MemoryIntelligence:
                     and proposal["kind"] == "fact"
                     and proposal["confidence"] >= float(settings.get("auto_save_threshold", 0.96))
                 ):
+                    # Candidate and durable memory share one SQLite file. Commit the
+                    # candidate transaction before SayuriMemory opens its own writer,
+                    # otherwise SQLite correctly rejects the nested writer as locked.
+                    db.commit()
                     memory = self.memory.add(
                         scope=proposal["scope"],
                         kind=proposal["kind"],
