@@ -71,6 +71,70 @@ class ServerTests(unittest.TestCase):
                     self.assertTrue(payload["provider"]["configured"])
                     self.assertNotIn(secret, json.dumps(payload, ensure_ascii=False))
 
+                memory_body = json.dumps({
+                    "scope": "project",
+                    "kind": "decision",
+                    "importance": 5,
+                    "content": "Sayuri использует разделённую проектную память",
+                }).encode("utf-8")
+                request = urllib.request.Request(
+                    base + "/api/sayuri/memory",
+                    data=memory_body,
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(request, timeout=2) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+                    memory_id = payload["entry"]["id"]
+                    self.assertEqual(payload["entry"]["scope"], "project")
+
+                with urllib.request.urlopen(base + "/api/sayuri/memory?scope=project", timeout=2) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+                    self.assertEqual(len(payload["entries"]), 1)
+                    self.assertEqual(payload["entries"][0]["id"], memory_id)
+
+                png = (
+                    b"\x89PNG\r\n\x1a\n"
+                    + b"\x00\x00\x00\x0dIHDR"
+                    + (192).to_bytes(4, "big")
+                    + (192).to_bytes(4, "big")
+                    + b"\x08\x06\x00\x00\x00"
+                    + b"\x00\x00\x00\x00"
+                )
+                request = urllib.request.Request(
+                    base + "/api/sayuri/avatar/upload?slot=orb",
+                    data=png,
+                    headers={
+                        "Content-Type": "image/png",
+                        "X-Sayuri-Filename": "orb.png",
+                    },
+                    method="POST",
+                )
+                with urllib.request.urlopen(request, timeout=2) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+                    self.assertTrue(payload["avatar"]["custom"])
+                    self.assertEqual(payload["avatar"]["width"], 192)
+
+                with urllib.request.urlopen(base + "/api/sayuri/avatar/orb", timeout=2) as response:
+                    self.assertEqual(response.headers.get_content_type(), "image/png")
+                    self.assertEqual(response.read(), png)
+
+                request = urllib.request.Request(
+                    base + f"/api/sayuri/memory/{memory_id}",
+                    method="DELETE",
+                )
+                with urllib.request.urlopen(request, timeout=2) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+                    self.assertTrue(payload["deleted"])
+
+                request = urllib.request.Request(
+                    base + "/api/sayuri/avatar/orb",
+                    method="DELETE",
+                )
+                with urllib.request.urlopen(request, timeout=2) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+                    self.assertFalse(payload["avatar"]["custom"])
+
                 body = json.dumps(
                     {"settings": {"ui.refresh_seconds": 15, "events.display_limit": 20}}
                 ).encode("utf-8")
