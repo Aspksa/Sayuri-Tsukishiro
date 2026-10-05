@@ -89,7 +89,7 @@ class ServerTests(unittest.TestCase):
             (),
             {"logger": logging.getLogger("sayuri-test")},
         )()
-        handler._headers = lambda status, content_type, length: None
+        handler._headers = lambda status, content_type, length, extra_headers=None: None
         self.assertFalse(handler._send(b"{}", "application/json", 200))
 
 
