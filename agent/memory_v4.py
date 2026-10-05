@@ -1689,10 +1689,25 @@ class MemorySystemV4:
             self.memory.initialize()
             self.memory_v3.initialize()
             self.initialize()
-            # The restored DB can predate the safety snapshot record; restore its manifest.
+            # The restored DB can predate both snapshot manifest rows.
             safety_path = self.snapshot_dir / safety["filename"]
             if safety_path.is_file():
                 with self._connect() as db:
+                    db.execute(
+                        """
+                        INSERT OR IGNORE INTO memory_snapshots(
+                            id, filename, sha256, size_bytes, reason, created_at
+                        ) VALUES(?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            snapshot_id,
+                            row["filename"],
+                            row["sha256"],
+                            row["size_bytes"],
+                            row["reason"],
+                            row["created_at"],
+                        ),
+                    )
                     db.execute(
                         """
                         INSERT OR IGNORE INTO memory_snapshots(
@@ -1721,7 +1736,7 @@ class MemorySystemV4:
                 "integrity": self.integrity_check(),
             }
 
-    def integrity_check(self) -> dict[str, Any]:
+    def integrity_check(self, *, audit: bool = False) -> dict[str, Any]:
         issues: list[dict[str, Any]] = []
         with self._connect() as db:
             integrity_rows = [row[0] for row in db.execute("PRAGMA integrity_check").fetchall()]
@@ -1775,24 +1790,55 @@ class MemorySystemV4:
             "issues": issues,
             "checked_at": self._now(),
         }
-        self._audit("integrity_checked", "system", None, {"status": result["status"], "issues": len(issues)})
+        if audit:
+            self._audit("integrity_checked", "system", None, {"status": result["status"], "issues": len(issues)})
         return result
 
     def bootstrap(self) -> dict[str, Any]:
         entries = self.memory.scan_active(limit=self.MAX_SCAN)
+        with self._connect() as db:
+            meta = db.execute(
+                "SELECT value FROM memory_v4_meta WHERE key='bootstrap_version'"
+            ).fetchone()
+        if meta and meta["value"] == "4.0":
+            return {
+                "entries": len(entries),
+                "ingested": 0,
+                "states": self.refresh_memory_states(),
+                "already_bootstrapped": True,
+            }
+
         ingested = 0
         for entry in entries:
             self.ingest_memory(entry)
             ingested += 1
+        now = self._now()
+        with self._connect() as db:
+            db.execute(
+                """
+                INSERT INTO memory_v4_meta(key, value, updated_at)
+                VALUES('bootstrap_version', '4.0', ?)
+                ON CONFLICT(key) DO UPDATE SET value='4.0', updated_at=excluded.updated_at
+                """,
+                (now,),
+            )
+        self._audit(
+            "memory_v4_bootstrap",
+            "system",
+            None,
+            {"entries": len(entries), "ingested": ingested},
+        )
         return {
-            "entries": ingested,
+            "entries": len(entries),
+            "ingested": ingested,
             "states": self.refresh_memory_states(),
+            "already_bootstrapped": False,
         }
 
     def maintenance(self, *, create_snapshot: bool = False) -> dict[str, Any]:
         snapshot = self.create_snapshot("memory_v4_maintenance") if create_snapshot else None
         states = self.refresh_memory_states()
-        integrity = self.integrity_check()
+        integrity = self.integrity_check(audit=True)
         return {
             "status": "готово",
             "states": states,
@@ -1802,7 +1848,6 @@ class MemorySystemV4:
         }
 
     def stats(self) -> dict[str, Any]:
-        self.refresh_memory_states()
         with self._connect() as db:
             tiers = {
                 row["tier"]: row["count"]
