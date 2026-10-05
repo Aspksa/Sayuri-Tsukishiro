@@ -471,6 +471,7 @@ class SayuriAgent:
                 details={"response_id": response_id, "rating": rating},
                 source="user_feedback",
                 importance=3,
+                fingerprint="chat_feedback:" + response_id,
             )
             return {"status": "сохранено", "event": event, "stats": self.experience.stats()}
         except (ExperienceError, MemorySystemError) as exc:
@@ -499,6 +500,7 @@ class SayuriAgent:
                 },
                 source="safe_actions",
                 importance=4 if status in {"completed", "failed"} else 2,
+                fingerprint="action:" + str(action.get("id") or ""),
             )
             return event
         except (ExperienceError, MemorySystemError) as exc:
@@ -531,6 +533,15 @@ class SayuriAgent:
                         entry,
                         event_type="memory_candidate_accepted",
                     )
+                    self.memory_v3.record_episode(
+                        event_type="memory_candidate_accepted",
+                        summary=str(entry.get("content") or "")[:1000],
+                        scope=str(entry.get("scope") or "project"),
+                        details={"candidate_id": candidate_id, "memory_id": entry["id"]},
+                        source="memory_intelligence",
+                        importance=max(3, int(entry.get("importance") or 3)),
+                        fingerprint="memory_candidate:" + candidate_id,
+                    )
                     if (
                         before
                         and before.get("relation") == "conflict"
@@ -551,6 +562,7 @@ class SayuriAgent:
                     details={"candidate_id": candidate_id},
                     source="memory_intelligence",
                     importance=2,
+                    fingerprint="memory_candidate:" + candidate_id,
                 )
             return {
                 "status": candidate["status"],
