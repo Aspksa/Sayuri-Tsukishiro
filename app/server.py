@@ -259,6 +259,14 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
             if parsed.path == "/api/sayuri/avatars":
                 self._json(self.server.core.sayuri_avatars())
                 return
+            if parsed.path == "/api/sayuri/experience":
+                raw_limit = query.get("limit", ["50"])[0]
+                try:
+                    limit = int(raw_limit)
+                except ValueError:
+                    limit = 50
+                self._json(self.server.core.sayuri_experience(limit))
+                return
             if parsed.path == "/api/sayuri/actions":
                 raw_limit = query.get("limit", ["30"])[0]
                 try:
@@ -447,6 +455,31 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
 
             if parsed.path == "/api/sayuri/provider/test":
                 self._json(self.server.core.test_sayuri_provider())
+                return
+
+            if parsed.path == "/api/sayuri/experience/feedback":
+                payload = self._read_json()
+                response_id = payload.get("response_id")
+                rating = payload.get("rating")
+                if not isinstance(response_id, str) or not response_id.strip():
+                    raise BadRequestError("Не указан response_id.")
+                if not isinstance(rating, str):
+                    raise BadRequestError("Поле rating должно быть строкой.")
+                prompt = payload.get("prompt")
+                answer = payload.get("answer")
+                if prompt is not None and not isinstance(prompt, str):
+                    raise BadRequestError("Поле prompt должно быть строкой.")
+                if answer is not None and not isinstance(answer, str):
+                    raise BadRequestError("Поле answer должно быть строкой.")
+                self._json(
+                    self.server.core.rate_sayuri_response(
+                        response_id.strip(),
+                        rating,
+                        prompt=prompt or "",
+                        answer=answer or "",
+                        context=payload.get("context"),
+                    )
+                )
                 return
 
             if parsed.path == "/api/sayuri/chat":

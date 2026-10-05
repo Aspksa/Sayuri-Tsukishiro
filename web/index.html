@@ -407,10 +407,15 @@
                 <option value="personal">Только личная</option>
                 <option value="project">Только проектная</option>
               </select>
-              <input id="sayuri-memory-search" type="search" placeholder="Поиск по памяти">
+              <input id="sayuri-memory-search" type="search" placeholder="Поиск по смыслу: например «светлая тема»">
               <button class="secondary-button" id="sayuri-memory-refresh" type="button">Обновить</button>
             </div>
             <div class="sayuri-memory-message" id="sayuri-memory-message" aria-live="polite"></div>
+            <div class="sayuri-semantic-memory-status">
+              <span>Semantic Memory</span>
+              <strong id="sayuri-semantic-engine">hybrid-semantic-v1</strong>
+              <small>Локальный смысловой поиск без второй облачной модели: ключевые слова, формы слов, смысловые понятия и похожие формулировки.</small>
+            </div>
             <div class="sayuri-memory-list" id="sayuri-memory-list"><p class="muted">Загрузка памяти…</p></div>
 
             <section class="sayuri-memory-intelligence">
@@ -461,6 +466,24 @@
             </section>
 
             <p class="sayuri-security-note">Быстрое сохранение из чата: «запомни лично: …» или «запомни в проект: …». Обычная переписка не записывается целиком: автоматизация создаёт только отдельные кандидаты памяти, которые можно принять или отклонить.</p>
+          </article>
+
+          <article class="sayuri-account-card sayuri-wide-card sayuri-experience-card">
+            <div class="section-head">
+              <div><p class="eyebrow">EXPERIENCE LEARNING</p><h3>Опыт Sayuri</h3></div>
+              <button class="secondary-button" id="sayuri-experience-refresh" type="button">Обновить</button>
+            </div>
+            <p class="sayuri-card-copy">Sayuri ведёт отдельную локальную память опыта: успешные и неудачные действия, принятые/отклонённые кандидаты памяти и вашу оценку ответов. Полный текст диалогов сюда не копируется.</p>
+            <div class="sayuri-experience-metrics">
+              <article><span>Событий опыта</span><strong id="sayuri-experience-total">0</strong></article>
+              <article><span>Положительных</span><strong id="sayuri-experience-positive">0</strong></article>
+              <article><span>Отрицательных</span><strong id="sayuri-experience-negative">0</strong></article>
+              <article><span>Изученных стратегий</span><strong id="sayuri-experience-learned">0</strong></article>
+            </div>
+            <div class="sayuri-experience-strategies" id="sayuri-experience-strategies">
+              <p class="muted">Опыт ещё не накоплен.</p>
+            </div>
+            <p class="sayuri-security-note">Experience Learning не изменяет правила безопасности и не даёт модели новых разрешений. Опыт влияет только на оценку качества стратегий и калибровку Memory Intelligence.</p>
           </article>
 
           <article class="sayuri-account-card sayuri-wide-card sayuri-avatar-card">
