@@ -206,9 +206,16 @@ class SemanticMemoryIndex:
                     importance=entry.get("importance", 3),
                     confidence=entry.get("confidence"),
                 )
-                if details["score"] < minimum_score:
+                retention = max(0.0, min(float(entry.get("retention_score", 1.0)), 1.0))
+                adjusted_score = round(details["score"] * (0.70 + retention * 0.30), 6)
+                details["retention_score"] = round(retention, 4)
+                details["pre_retention_score"] = details["score"]
+                details["score"] = adjusted_score
+                if retention < 0.50:
+                    details["reasons"].append("пониженный вес устаревшей памяти")
+                if adjusted_score < minimum_score:
                     continue
-                scored.append((details["score"], entry, details))
+                scored.append((adjusted_score, entry, details))
 
         scored.sort(
             key=lambda item: (
