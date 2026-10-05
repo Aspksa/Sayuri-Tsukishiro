@@ -221,7 +221,7 @@
 
 
 ## PHONE-005A — Sayuri Companion
-- Статус: `implemented; Android CI pending`.
+- Статус: `implemented; Android CI повторный прогон pending`.
 - Реализовано:
   - Android companion source;
   - явное pairing confirmation;

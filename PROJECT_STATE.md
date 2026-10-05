@@ -768,3 +768,16 @@ Preflight теперь отдельно выводит `диск_sayuri`, что
   - проверяет Gradle distribution SHA-256;
   - публикует versioned APK + sha256 в GitHub Release `companion-v0.1.0`.
 - Следующий patch PHONE-005B после успешной Android-сборки: взять digest опубликованного APK и добавить проверяемую автоматическую установку из Телефон Sayuri.
+
+
+## Исправление Android CI — 0.1.31 / Companion 0.1.1
+
+- Первый основной CI проекта 0.1.30 прошёл полностью.
+- Отдельный Android workflow остановился до компиляции: runner Ubuntu 24.04 не имел `sdkmanager` в PATH.
+- Исправление:
+  - Companion повышен до `0.1.1`;
+  - Android SDK теперь подготавливается `android-actions/setup-android v4.0.4`;
+  - action закреплён точным commit SHA `be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd`;
+  - SDK packages: platform-tools, Android 36, build-tools 36.0.0;
+  - Gradle 9.6.1 и его SHA-256 остаются закреплены.
+- Следующий Android CI должен впервые дойти до AGP/Java compile.

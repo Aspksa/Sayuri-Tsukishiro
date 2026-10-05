@@ -2,6 +2,15 @@
 
 ## Невыпущенные изменения
 
+### 0.1.31 — 2026-10-05 — Companion Android CI bootstrap
+
+- Sayuri Companion повышен до `0.1.1`.
+- Исправлен Android workflow: runner не имел `sdkmanager`.
+- Добавлен pinned `android-actions/setup-android v4.0.4` по commit SHA `be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd`.
+- Android SDK 36 и build-tools 36.0.0 теперь устанавливаются через setup action.
+- Основной Sayuri CI для PHONE-005A уже подтверждён как success.
+
+
 ### 0.1.30 — 2026-10-05 — Sayuri Companion 0.1
 
 - Телефон Sayuri повышен до `0.7.0`, Web UI до `0.10.0`.
