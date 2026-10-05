@@ -309,6 +309,7 @@ class SayuriAgent:
             self.experience,
         )
         self.memory.initialize()
+        self.memory_v3.bootstrap()
 
     def initialize(self) -> None:
         self.memory.initialize()
@@ -471,7 +472,7 @@ class SayuriAgent:
                 importance=3,
             )
             return {"status": "сохранено", "event": event, "stats": self.experience.stats()}
-        except ExperienceError as exc:
+        except (ExperienceError, MemorySystemError) as exc:
             raise AgentRuntimeError(str(exc)) from exc
 
     def record_action_experience(self, action: dict[str, Any]) -> dict[str, Any] | None:
@@ -499,7 +500,7 @@ class SayuriAgent:
                 importance=4 if status in {"completed", "failed"} else 2,
             )
             return event
-        except ExperienceError as exc:
+        except (ExperienceError, MemorySystemError) as exc:
             raise AgentRuntimeError(str(exc)) from exc
 
     def memory_candidates(self, *, status: str | None = None, limit: int = 100) -> dict[str, Any]:
@@ -647,6 +648,7 @@ class SayuriAgent:
 
     def plan_action(self, *, text: str, context: Any = None) -> dict[str, Any]:
         try:
+            self.memory_v3.update_working(message=text, context=context)
             action = self.actions.plan(text, context)
         except ActionError as exc:
             raise AgentRuntimeError(str(exc)) from exc
