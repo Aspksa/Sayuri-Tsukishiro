@@ -2056,6 +2056,8 @@ function renderSayuriMemoryV4Stats(stats) {
     'memory-v4-warm': stats.warm,
     'memory-v4-cold': stats.cold,
     'memory-v4-protected': stats.protected,
+    'memory-v4-quarantined': stats.quarantined,
+    'memory-v4-verification': stats.verification_due,
     'memory-v4-goals': stats.active_goals,
     'memory-v4-tasks': stats.open_tasks,
     'memory-v4-blocked': stats.blocked_tasks,
@@ -2353,7 +2355,12 @@ function renderMemoryV4Questions(payload) {
     const title = document.createElement('strong');
     title.textContent = item.question;
     const badge = document.createElement('span');
-    badge.textContent = item.reason.replaceAll('_', ' ');
+    badge.textContent = {
+      memory_conflict: 'противоречие',
+      freshness_review: 'проверить свежесть',
+      source_trust_review: 'проверить источник',
+      uncertainty: 'неопределённость'
+    }[item.reason] || item.reason.replaceAll('_', ' ');
     head.append(title, badge);
     const meta = document.createElement('small');
     meta.textContent = `${item.scope} · ${formatDate(item.created_at)}`;
@@ -3175,6 +3182,14 @@ function renderSayuriMemoryList(payload) {
       protectedBadge.className = 'memory-v4-tier memory-v4-protected';
       protectedBadge.textContent = 'LOCAL ONLY';
       meta.append(protectedBadge);
+    }
+    if (entry.v4?.instruction_risk && entry.v4.instruction_risk !== 'none') {
+      const riskBadge = document.createElement('span');
+      riskBadge.className = `memory-v4-tier memory-v4-instruction-risk ${entry.v4.instruction_risk}`;
+      riskBadge.textContent = entry.v4.instruction_risk === 'high'
+        ? 'INSTRUCTION RISK'
+        : 'PROMPT RISK';
+      meta.append(riskBadge);
     }
 
     const body = document.createElement('p');
