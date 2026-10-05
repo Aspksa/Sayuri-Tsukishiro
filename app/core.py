@@ -157,6 +157,21 @@ class SayuriCore:
             )
         return result
 
+    def sayuri_experience(self, limit: int = 50) -> dict[str, Any]:
+        return self.agent.experience_payload(limit)
+
+    def rate_sayuri_response(self, response_id: str, rating: str, context: Any = None) -> dict[str, Any]:
+        try:
+            result = self.agent.record_chat_feedback(response_id, rating, context)
+        except AgentRuntimeError as exc:
+            raise BadRequestError(str(exc)) from exc
+        self.database.record_event(
+            "Sayuri",
+            "Оценка ответа сохранена",
+            details={"response_id": response_id, "rating": rating},
+        )
+        return result
+
     def sayuri_avatars(self) -> dict[str, Any]:
         return self.agent.avatar_payload()
 
@@ -300,6 +315,7 @@ class SayuriCore:
             result = self._execute_sayuri_action(action)
         except Exception as exc:
             failed = self.agent.fail_action(action_id, str(exc))
+            self.agent.record_action_experience(failed)
             self.database.record_event(
                 "Sayuri",
                 "Действие завершилось ошибкой",
@@ -308,6 +324,7 @@ class SayuriCore:
             return failed
 
         completed = self.agent.complete_action(action_id, result)
+        self.agent.record_action_experience(completed)
         self.database.record_event(
             "Sayuri",
             "Подтверждённое действие выполнено",
@@ -321,6 +338,7 @@ class SayuriCore:
         except AgentRuntimeError as exc:
             raise BadRequestError(str(exc)) from exc
         if result.get("status") == "cancelled":
+            self.agent.record_action_experience(result)
             self.database.record_event(
                 "Sayuri",
                 "Действие отменено пользователем",
@@ -365,6 +383,7 @@ class SayuriCore:
                 "usage": result.get("usage", {}),
                 "memory_used": result.get("memory_used", 0),
                 "memory_saved": bool(result.get("memory_saved")),
+                "response_id": result.get("response_id"),
             },
         )
         return result
