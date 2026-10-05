@@ -116,6 +116,7 @@ function showView(name) {
       loadSayuriMemory(),
       loadSayuriMemoryCandidates(),
       loadSayuriMemoryV3(),
+      loadSayuriMemoryV4(),
       loadSayuriExperience()
     ]).catch(showSayuriProviderError);
   } else if (name === 'settings') {
@@ -1725,6 +1726,7 @@ function renderSayuriMemoryStats(stats) {
   if (byId('sayuri-memory-total')) byId('sayuri-memory-total').textContent = String(stats.total ?? 0);
   if (byId('sayuri-semantic-engine')) byId('sayuri-semantic-engine').textContent = stats.semantic?.engine || 'hybrid-semantic-v1';
   renderSayuriMemoryV3Stats(stats.v3 || {});
+  renderSayuriMemoryV4Stats(stats.v4 || {});
   renderMemoryIntelligenceSettings(stats.intelligence?.settings || {});
 }
 
@@ -2040,6 +2042,593 @@ async function resolveMemoryV3Conflict(conflictId, resolution) {
   }
 }
 
+function setMemoryV4Message(text, kind = '') {
+  const target = byId('sayuri-memory-v4-message');
+  if (!target) return;
+  target.className = `sayuri-memory-v4-message ${kind}`.trim();
+  target.textContent = text;
+}
+
+function renderSayuriMemoryV4Stats(stats) {
+  const mapping = {
+    'memory-v4-hot': stats.hot,
+    'memory-v4-warm': stats.warm,
+    'memory-v4-cold': stats.cold,
+    'memory-v4-protected': stats.protected,
+    'memory-v4-goals': stats.active_goals,
+    'memory-v4-tasks': stats.open_tasks,
+    'memory-v4-blocked': stats.blocked_tasks,
+    'memory-v4-failures': stats.open_failures,
+    'memory-v4-questions': stats.open_questions,
+    'memory-v4-snapshots': stats.snapshots
+  };
+  for (const [id, value] of Object.entries(mapping)) {
+    if (byId(id)) byId(id).textContent = String(value ?? 0);
+  }
+}
+
+function memoryV4Empty(container, text) {
+  const empty = document.createElement('p');
+  empty.className = 'muted';
+  empty.textContent = text;
+  container.append(empty);
+}
+
+function memoryV4GoalStatusLabel(status) {
+  return {
+    active: 'активна',
+    paused: 'пауза',
+    achieved: 'достигнута',
+    cancelled: 'отменена'
+  }[status] || status;
+}
+
+function memoryV4TaskStatusLabel(status) {
+  return {
+    planned: 'запланирована',
+    in_progress: 'в работе',
+    blocked: 'заблокирована',
+    done: 'готово',
+    cancelled: 'отменена'
+  }[status] || status;
+}
+
+function syncMemoryV4GoalSelect(goals) {
+  const select = byId('memory-v4-task-goal');
+  if (!select) return;
+  const previous = select.value;
+  select.replaceChildren();
+  const none = document.createElement('option');
+  none.value = '';
+  none.textContent = 'Без цели';
+  select.append(none);
+  for (const goal of goals || []) {
+    const option = document.createElement('option');
+    option.value = goal.id;
+    option.textContent = goal.title;
+    select.append(option);
+  }
+  if (Array.from(select.options).some((option) => option.value === previous)) {
+    select.value = previous;
+  }
+}
+
+function renderMemoryV4Goals(payload) {
+  const container = byId('memory-v4-goal-list');
+  if (!container) return;
+  container.replaceChildren();
+  const goals = payload.goals || [];
+  syncMemoryV4GoalSelect(goals);
+  if (!goals.length) {
+    memoryV4Empty(container, 'Активных целей пока нет.');
+    return;
+  }
+  for (const goal of goals) {
+    const row = document.createElement('article');
+    row.className = 'memory-v4-row goal';
+    const head = document.createElement('div');
+    head.className = 'memory-v4-row-head';
+    const title = document.createElement('strong');
+    title.textContent = goal.title;
+    const badge = document.createElement('span');
+    badge.textContent = `${memoryV4GoalStatusLabel(goal.status)} · P${goal.priority}`;
+    head.append(title, badge);
+
+    const description = document.createElement('p');
+    description.textContent = goal.description || 'Без дополнительного описания.';
+
+    const controls = document.createElement('div');
+    controls.className = 'memory-v4-row-actions';
+    const pause = document.createElement('button');
+    pause.type = 'button';
+    pause.className = 'secondary-button';
+    pause.textContent = 'Пауза';
+    pause.addEventListener('click', () => updateMemoryV4Goal(goal.id, 'paused'));
+    const achieved = document.createElement('button');
+    achieved.type = 'button';
+    achieved.className = 'primary-button';
+    achieved.textContent = 'Цель достигнута';
+    achieved.addEventListener('click', () => updateMemoryV4Goal(goal.id, 'achieved'));
+    controls.append(pause, achieved);
+
+    const meta = document.createElement('small');
+    meta.textContent = `${goal.scope === 'personal' ? 'личная' : 'проектная'} · ${formatDate(goal.updated_at)}`;
+    row.append(head, description, meta, controls);
+    container.append(row);
+  }
+}
+
+function renderMemoryV4Tasks(payload) {
+  const container = byId('memory-v4-task-list');
+  if (!container) return;
+  container.replaceChildren();
+  const tasks = payload.tasks || [];
+  const goals = new Map((payload.goals || []).map((goal) => [goal.id, goal]));
+  if (!tasks.length) {
+    memoryV4Empty(container, 'Открытых задач пока нет.');
+    return;
+  }
+  for (const task of tasks) {
+    const row = document.createElement('article');
+    row.className = `memory-v4-row task ${task.status}`;
+    const head = document.createElement('div');
+    head.className = 'memory-v4-row-head';
+    const title = document.createElement('strong');
+    title.textContent = task.title;
+    const badge = document.createElement('span');
+    badge.textContent = `${memoryV4TaskStatusLabel(task.status)} · P${task.priority}`;
+    head.append(title, badge);
+
+    const next = document.createElement('p');
+    next.textContent = task.next_action
+      ? `Следующий шаг: ${task.next_action}`
+      : 'Следующий шаг ещё не зафиксирован.';
+
+    const meta = document.createElement('small');
+    const goal = goals.get(task.goal_id);
+    const parts = [task.scope === 'personal' ? 'личная' : 'проектная'];
+    if (goal) parts.push(`цель: ${goal.title}`);
+    if (task.blocked_reason) parts.push(`блокер: ${task.blocked_reason}`);
+    parts.push(formatDate(task.updated_at));
+    meta.textContent = parts.join(' · ');
+
+    const controls = document.createElement('div');
+    controls.className = 'memory-v4-row-actions';
+    if (task.status !== 'in_progress') {
+      const start = document.createElement('button');
+      start.type = 'button';
+      start.className = 'secondary-button';
+      start.textContent = 'В работу';
+      start.addEventListener('click', () => updateMemoryV4Task(task.id, {status: 'in_progress', blocked_reason: ''}));
+      controls.append(start);
+    }
+    const block = document.createElement('button');
+    block.type = 'button';
+    block.className = 'secondary-button';
+    block.textContent = 'Заблокировать';
+    block.addEventListener('click', () => {
+      const reason = window.prompt('Причина блокировки задачи:', task.blocked_reason || '');
+      if (reason === null) return;
+      updateMemoryV4Task(task.id, {status: 'blocked', blocked_reason: reason});
+    });
+    const done = document.createElement('button');
+    done.type = 'button';
+    done.className = 'primary-button';
+    done.textContent = 'Готово';
+    done.addEventListener('click', () => updateMemoryV4Task(task.id, {status: 'done', blocked_reason: ''}));
+    controls.append(block, done);
+
+    row.append(head, next, meta, controls);
+    container.append(row);
+  }
+}
+
+function renderMemoryV4Failures(payload) {
+  const container = byId('memory-v4-failure-list');
+  if (!container) return;
+  container.replaceChildren();
+  const failures = payload.failures || [];
+  if (!failures.length) {
+    memoryV4Empty(container, 'Повторяемых ошибок пока нет.');
+    return;
+  }
+  for (const item of failures) {
+    const row = document.createElement('article');
+    row.className = `memory-v4-row failure ${item.status}`;
+    const head = document.createElement('div');
+    head.className = 'memory-v4-row-head';
+    const strategy = document.createElement('strong');
+    strategy.textContent = item.strategy;
+    const count = document.createElement('span');
+    count.textContent = `${item.status === 'open' ? 'открыта' : 'разрешена'} · ×${item.occurrences}`;
+    head.append(strategy, count);
+    const symptom = document.createElement('p');
+    symptom.textContent = item.symptom;
+    const detail = document.createElement('small');
+    const parts = [];
+    if (item.cause) parts.push(`причина: ${item.cause}`);
+    if (item.resolution) parts.push(`исправление: ${item.resolution}`);
+    if (item.prevention) parts.push(`не повторять: ${item.prevention}`);
+    if (!parts.length) parts.push('причина ещё не подтверждена');
+    detail.textContent = parts.join(' · ');
+    row.append(head, symptom, detail);
+    container.append(row);
+  }
+}
+
+function renderMemoryV4Questions(payload) {
+  const container = byId('memory-v4-question-list');
+  if (!container) return;
+  container.replaceChildren();
+  const questions = payload.questions || [];
+  if (!questions.length) {
+    memoryV4Empty(container, 'Открытых вопросов нет.');
+    return;
+  }
+  for (const item of questions) {
+    const row = document.createElement('article');
+    row.className = 'memory-v4-row question';
+    const head = document.createElement('div');
+    head.className = 'memory-v4-row-head';
+    const title = document.createElement('strong');
+    title.textContent = item.question;
+    const badge = document.createElement('span');
+    badge.textContent = item.reason.replaceAll('_', ' ');
+    head.append(title, badge);
+    const meta = document.createElement('small');
+    meta.textContent = `${item.scope} · ${formatDate(item.created_at)}`;
+    const resolve = document.createElement('button');
+    resolve.type = 'button';
+    resolve.className = 'secondary-button';
+    resolve.textContent = 'Ответить';
+    resolve.addEventListener('click', () => {
+      const answer = window.prompt('Ответ / решение:', '');
+      if (answer === null || !answer.trim()) return;
+      resolveMemoryV4Question(item.id, answer.trim());
+    });
+    row.append(head, meta, resolve);
+    container.append(row);
+  }
+}
+
+function renderMemoryV4Sources(payload) {
+  const container = byId('memory-v4-source-list');
+  if (!container) return;
+  container.replaceChildren();
+  const sources = payload.sources || [];
+  if (!sources.length) {
+    memoryV4Empty(container, 'Источники ещё не оценены.');
+    return;
+  }
+  for (const source of sources.slice(0, 20)) {
+    const row = document.createElement('article');
+    row.className = 'memory-v4-source-row';
+    const body = document.createElement('div');
+    const title = document.createElement('strong');
+    title.textContent = source.source_key;
+    const meta = document.createElement('small');
+    meta.textContent = `доверие ${Math.round((Number(source.trust_score) || 0) * 100)}% · доказательств ${source.evidence_count || 0} · исправлений ${source.correction_count || 0}`;
+    body.append(title, meta);
+
+    const controls = document.createElement('div');
+    const select = document.createElement('select');
+    select.setAttribute('aria-label', `Доверие к ${source.source_key}`);
+    const auto = document.createElement('option');
+    auto.value = '';
+    auto.textContent = 'Авто';
+    select.append(auto);
+    for (const percent of [50, 60, 70, 80, 90, 95, 100]) {
+      const option = document.createElement('option');
+      option.value = String(percent / 100);
+      option.textContent = `${percent}%`;
+      select.append(option);
+    }
+    if (source.manual_override != null) {
+      const value = String(Number(source.manual_override).toFixed(2)).replace(/0$/, '');
+      const exact = Array.from(select.options).find((option) => Number(option.value) === Number(source.manual_override));
+      if (exact) select.value = exact.value;
+      else {
+        const custom = document.createElement('option');
+        custom.value = value;
+        custom.textContent = `${Math.round(Number(source.manual_override) * 100)}%`;
+        select.append(custom);
+        select.value = value;
+      }
+    }
+    select.addEventListener('change', () => {
+      setMemoryV4SourceTrust(source.source_key, select.value === '' ? null : Number(select.value));
+    });
+    controls.append(select);
+    row.append(body, controls);
+    container.append(row);
+  }
+}
+
+function renderMemoryV4Recalls(payload) {
+  const container = byId('memory-v4-recall-list');
+  if (!container) return;
+  container.replaceChildren();
+  const recalls = payload.recalls || [];
+  if (!recalls.length) {
+    memoryV4Empty(container, 'Вызовов памяти пока нет.');
+    return;
+  }
+  for (const recall of recalls.slice(0, 16)) {
+    const row = document.createElement('article');
+    row.className = 'memory-v4-row recall';
+    const head = document.createElement('div');
+    head.className = 'memory-v4-row-head';
+    const query = document.createElement('strong');
+    query.textContent = recall.query_excerpt || 'Поиск памяти';
+    const count = document.createElement('span');
+    count.textContent = `выбрано ${recall.selected_ids?.length || 0}`;
+    head.append(query, count);
+    const explanations = recall.explanations || [];
+    const why = document.createElement('p');
+    if (explanations.length) {
+      const first = explanations[0];
+      why.textContent = `Почему вспомнила: ${(first.why || []).join(' · ')}`;
+    } else {
+      why.textContent = 'Для этого вызова подробное объяснение не сохранено.';
+    }
+    const meta = document.createElement('small');
+    meta.textContent = `${(recall.scopes || []).join(' / ')} · ${formatDate(recall.created_at)}`;
+    row.append(head, why, meta);
+    container.append(row);
+  }
+}
+
+function renderMemoryV4Integrity(payload) {
+  const container = byId('memory-v4-integrity-state');
+  if (!container) return;
+  container.replaceChildren();
+  const integrity = payload.integrity || {};
+  const status = document.createElement('strong');
+  status.className = integrity.status === 'ok' ? 'ready' : 'error';
+  status.textContent = integrity.status === 'ok' ? 'Структура памяти согласована' : 'Найдены проблемы целостности';
+  container.append(status);
+  const issues = integrity.issues || [];
+  if (!issues.length) {
+    const meta = document.createElement('small');
+    meta.textContent = `проверено ${formatDate(integrity.checked_at)}`;
+    container.append(meta);
+    return;
+  }
+  for (const issue of issues) {
+    const row = document.createElement('p');
+    row.textContent = `${issue.type}${issue.count != null ? `: ${issue.count}` : ''}`;
+    container.append(row);
+  }
+}
+
+function renderMemoryV4Snapshots(payload) {
+  const container = byId('memory-v4-snapshot-list');
+  if (!container) return;
+  container.replaceChildren();
+  const snapshots = payload.snapshots || [];
+  if (!snapshots.length) {
+    memoryV4Empty(container, 'Снимков пока нет.');
+    return;
+  }
+  for (const item of snapshots) {
+    const row = document.createElement('article');
+    row.className = 'memory-v4-snapshot-row';
+    const body = document.createElement('div');
+    const title = document.createElement('strong');
+    title.textContent = item.reason || 'Снимок памяти';
+    const meta = document.createElement('small');
+    const state = item.present && item.hash_valid ? 'целостный' : 'требует проверки';
+    meta.textContent = `${formatDate(item.created_at)} · ${formatBytes(item.size_bytes || 0)} · ${state}`;
+    body.append(title, meta);
+    const restore = document.createElement('button');
+    restore.type = 'button';
+    restore.className = 'secondary-button danger-soft';
+    restore.textContent = 'Восстановить';
+    restore.disabled = !(item.present && item.hash_valid);
+    restore.addEventListener('click', () => restoreMemoryV4Snapshot(item.id));
+    row.append(body, restore);
+    container.append(row);
+  }
+}
+
+function renderSayuriMemoryV4(payload) {
+  renderSayuriMemoryV4Stats(payload.stats || {});
+  renderMemoryV4Goals(payload);
+  renderMemoryV4Tasks(payload);
+  renderMemoryV4Failures(payload);
+  renderMemoryV4Questions(payload);
+  renderMemoryV4Sources(payload);
+  renderMemoryV4Recalls(payload);
+  renderMemoryV4Integrity(payload);
+  renderMemoryV4Snapshots(payload);
+}
+
+async function loadSayuriMemoryV4() {
+  const response = await fetch('/api/sayuri/memory/v4', {cache: 'no-store'});
+  const data = await response.json();
+  if (!response.ok) throw new Error(data?.error?.message || `HTTP ${response.status}`);
+  renderSayuriMemoryV4(data);
+  return data;
+}
+
+async function maintainSayuriMemoryV4() {
+  const button = byId('sayuri-memory-v4-maintain');
+  button.disabled = true;
+  setMemoryV4Message('Обновляю слои, доверие, свежесть и целостность…');
+  try {
+    const result = await postJson('/api/sayuri/memory/v4/maintenance', {create_snapshot: false});
+    setMemoryV4Message(
+      `Готово: hot ${result.stats?.hot ?? 0}, warm ${result.stats?.warm ?? 0}, cold ${result.stats?.cold ?? 0}; integrity ${result.integrity?.status || '—'}.`,
+      result.integrity?.status === 'ok' ? 'ready' : 'error'
+    );
+    await Promise.all([loadSayuriMemoryV4(), loadSayuriMemory(), loadSayuriProfile()]);
+  } catch (error) {
+    setMemoryV4Message(`Ошибка обслуживания: ${error instanceof Error ? error.message : String(error)}`, 'error');
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function createMemoryV4Goal(event) {
+  event.preventDefault();
+  const title = byId('memory-v4-goal-title').value.trim();
+  if (!title) {
+    setMemoryV4Message('Введите название цели.', 'error');
+    return;
+  }
+  try {
+    const result = await postJson('/api/sayuri/memory/v4/goals', {
+      title,
+      description: byId('memory-v4-goal-description').value.trim(),
+      scope: byId('memory-v4-goal-scope').value,
+      priority: Number(byId('memory-v4-goal-priority').value)
+    });
+    byId('memory-v4-goal-title').value = '';
+    byId('memory-v4-goal-description').value = '';
+    renderSayuriMemoryV4(result.dashboard || {});
+    setMemoryV4Message('Цель добавлена в Goal Memory.', 'ready');
+  } catch (error) {
+    setMemoryV4Message(`Ошибка: ${error instanceof Error ? error.message : String(error)}`, 'error');
+  }
+}
+
+async function createMemoryV4Task(event) {
+  event.preventDefault();
+  const title = byId('memory-v4-task-title').value.trim();
+  if (!title) {
+    setMemoryV4Message('Введите название задачи.', 'error');
+    return;
+  }
+  try {
+    const result = await postJson('/api/sayuri/memory/v4/tasks', {
+      title,
+      scope: 'project',
+      goal_id: byId('memory-v4-task-goal').value || null,
+      priority: Number(byId('memory-v4-task-priority').value),
+      next_action: byId('memory-v4-task-next').value.trim(),
+      context: currentSayuriContext()
+    });
+    byId('memory-v4-task-title').value = '';
+    byId('memory-v4-task-next').value = '';
+    renderSayuriMemoryV4(result.dashboard || {});
+    setMemoryV4Message('Задача добавлена в Task Memory.', 'ready');
+  } catch (error) {
+    setMemoryV4Message(`Ошибка: ${error instanceof Error ? error.message : String(error)}`, 'error');
+  }
+}
+
+async function updateMemoryV4Goal(goalId, status) {
+  try {
+    const result = await postJson(
+      `/api/sayuri/memory/v4/goals/${encodeURIComponent(goalId)}/update`,
+      {status}
+    );
+    renderSayuriMemoryV4(result.dashboard || {});
+    setMemoryV4Message('Состояние цели обновлено.', 'ready');
+  } catch (error) {
+    setMemoryV4Message(`Ошибка цели: ${error instanceof Error ? error.message : String(error)}`, 'error');
+  }
+}
+
+async function updateMemoryV4Task(taskId, changes) {
+  try {
+    const result = await postJson(
+      `/api/sayuri/memory/v4/tasks/${encodeURIComponent(taskId)}/update`,
+      changes
+    );
+    renderSayuriMemoryV4(result.dashboard || {});
+    setMemoryV4Message('Состояние задачи обновлено.', 'ready');
+  } catch (error) {
+    setMemoryV4Message(`Ошибка задачи: ${error instanceof Error ? error.message : String(error)}`, 'error');
+  }
+}
+
+async function setMemoryV4SourceTrust(sourceKey, score) {
+  try {
+    const result = await postJson('/api/sayuri/memory/v4/sources/trust', {
+      source_key: sourceKey,
+      score
+    });
+    renderSayuriMemoryV4(result.dashboard || {});
+    setMemoryV4Message(
+      score == null ? 'Ручная оценка источника сброшена.' : 'Доверие к источнику обновлено.',
+      'ready'
+    );
+  } catch (error) {
+    setMemoryV4Message(`Ошибка Source Trust: ${error instanceof Error ? error.message : String(error)}`, 'error');
+  }
+}
+
+async function resolveMemoryV4Question(questionId, resolution) {
+  try {
+    const result = await postJson(
+      `/api/sayuri/memory/v4/questions/${encodeURIComponent(questionId)}/resolve`,
+      {resolution}
+    );
+    renderSayuriMemoryV4(result.dashboard || {});
+    setMemoryV4Message('Вопрос памяти закрыт и сохранён в аудите.', 'ready');
+  } catch (error) {
+    setMemoryV4Message(`Ошибка: ${error instanceof Error ? error.message : String(error)}`, 'error');
+  }
+}
+
+async function checkMemoryV4Integrity() {
+  setMemoryV4Message('Проверяю SQLite, граф, источники знаний и связи задач…');
+  try {
+    const result = await postJson('/api/sayuri/memory/v4/integrity', {});
+    renderMemoryV4Integrity({integrity: result});
+    setMemoryV4Message(
+      result.status === 'ok' ? 'Целостность Memory 4.0 подтверждена.' : 'Найдены проблемы целостности — они показаны выше.',
+      result.status === 'ok' ? 'ready' : 'error'
+    );
+  } catch (error) {
+    setMemoryV4Message(`Ошибка integrity check: ${error instanceof Error ? error.message : String(error)}`, 'error');
+  }
+}
+
+async function createMemoryV4Snapshot() {
+  setMemoryV4Message('Создаю локальный снимок SQLite…');
+  try {
+    const result = await postJson('/api/sayuri/memory/v4/snapshots', {reason: 'manual_from_cabinet'});
+    renderSayuriMemoryV4(result.dashboard || {});
+    setMemoryV4Message('Снимок памяти создан и проверен SHA-256.', 'ready');
+  } catch (error) {
+    setMemoryV4Message(`Ошибка снимка: ${error instanceof Error ? error.message : String(error)}`, 'error');
+  }
+}
+
+async function restoreMemoryV4Snapshot(snapshotId) {
+  const confirmation = window.prompt(
+    'Восстановление заменит текущую базу памяти состоянием снимка.\nПеред восстановлением Sayuri автоматически создаст страховочный снимок.\n\nВведите точно: RESTORE MEMORY'
+  );
+  if (confirmation === null) return;
+  if (confirmation !== 'RESTORE MEMORY') {
+    setMemoryV4Message('Восстановление отменено: подтверждение не совпало.', 'error');
+    return;
+  }
+  setMemoryV4Message('Создаю страховочный снимок и восстанавливаю память…');
+  try {
+    const result = await postJson(
+      `/api/sayuri/memory/v4/snapshots/${encodeURIComponent(snapshotId)}/restore`,
+      {confirmation}
+    );
+    setMemoryV4Message(
+      `Память восстановлена. Integrity: ${result.integrity?.status || '—'}. Страховочный снимок сохранён.`,
+      result.integrity?.status === 'ok' ? 'ready' : 'error'
+    );
+    await Promise.all([
+      loadSayuriMemory(),
+      loadSayuriMemoryCandidates(),
+      loadSayuriMemoryV3(),
+      loadSayuriMemoryV4(),
+      loadSayuriExperience(),
+      loadSayuriProfile()
+    ]);
+  } catch (error) {
+    setMemoryV4Message(`Ошибка восстановления: ${error instanceof Error ? error.message : String(error)}`, 'error');
+  }
+}
+
 function renderSayuriExperience(stats) {
   if (byId('sayuri-experience-total')) byId('sayuri-experience-total').textContent = String(stats.total ?? 0);
   if (byId('sayuri-experience-positive')) byId('sayuri-experience-positive').textContent = String(stats.positive ?? 0);
@@ -2102,6 +2691,7 @@ async function rateSayuriMessage(messageIndex, rating) {
     renderSayuriMessages();
     renderSayuriExperience(result.stats || {});
     loadSayuriMemoryV3().catch(() => {});
+    loadSayuriMemoryV4().catch(() => {});
   } catch (error) {
     byId('sayuri-chat-status').textContent = `Не удалось сохранить оценку: ${error instanceof Error ? error.message : String(error)}`;
   }
@@ -2274,6 +2864,7 @@ async function reviewSayuriMemoryCandidate(candidateId, decision) {
       loadSayuriMemory(),
       loadSayuriMemoryCandidates(),
       loadSayuriMemoryV3(),
+      loadSayuriMemoryV4(),
       loadSayuriProfile(),
       loadSayuriExperience(),
       loadSystem()
@@ -2422,7 +3013,7 @@ async function saveSayuriMemory(event) {
     byId('sayuri-memory-content').value = '';
     renderSayuriMemoryStats(result.stats || {});
     setSayuriMemoryMessage('Запись сохранена в долговременную память.', 'ready');
-    await Promise.all([loadSayuriMemory(), loadSayuriMemoryV3(), loadSayuriProfile(), loadSystem()]);
+    await Promise.all([loadSayuriMemory(), loadSayuriMemoryV3(), loadSayuriMemoryV4(), loadSayuriProfile(), loadSystem()]);
   } catch (error) {
     setSayuriMemoryMessage(`Ошибка: ${error instanceof Error ? error.message : String(error)}`, 'error');
   }
@@ -2786,6 +3377,7 @@ async function refreshAfterSayuriAction() {
     loadSayuriActions(),
     loadSayuriMemory(),
     loadSayuriMemoryV3(),
+    loadSayuriMemoryV4(),
     loadSayuriExperience()
   ];
   if (document.querySelector('#view-disk.active')) tasks.push(loadDisk());
@@ -2937,12 +3529,15 @@ async function sendSayuriMessage(text) {
       semantic_memory: result.semantic_memory || null,
       memory_v3: result.memory_v3 || null,
       memory_v3_used: result.memory_v3_used || 0,
+      memory_v4: result.memory_v4 || null,
+      memory_v4_used: result.memory_v4_used || 0,
       experience_used: result.experience_used || 0,
       prompt: message
     });
     if (result.memory_saved) {
       loadSayuriMemory().catch(() => {});
       loadSayuriMemoryV3().catch(() => {});
+      loadSayuriMemoryV4().catch(() => {});
       loadSayuriProfile().catch(() => {});
     }
     if (result.memory_candidates?.length) {
@@ -2951,7 +3546,7 @@ async function sendSayuriMessage(text) {
     }
     byId('sayuri-chat-status').textContent = result.model === 'local-memory'
       ? 'Память Sayuri · сохранено локально'
-      : `DeepSeek-V4-Flash · память ${result.memory_used || 0} · знания ${result.memory_v3_used || 0} · опыт ${result.experience_used || 0}`;
+      : `DeepSeek-V4-Flash · память ${result.memory_used || 0} · знания ${result.memory_v3_used || 0} · цели/задачи ${result.memory_v4_used || 0} · опыт ${result.experience_used || 0}`;
   } catch (error) {
     const text = error instanceof Error ? error.message : String(error);
     addSayuriMessage('assistant', `Не удалось получить ответ: ${text}`);
@@ -3203,6 +3798,12 @@ function initializeSayuri() {
   byId('sayuri-experience-refresh').addEventListener('click', () => loadSayuriExperience().catch(showSayuriProviderError));
   byId('sayuri-memory-v3-refresh').addEventListener('click', () => loadSayuriMemoryV3().catch(showSayuriProviderError));
   byId('sayuri-memory-v3-maintain').addEventListener('click', maintainSayuriMemoryV3);
+  byId('sayuri-memory-v4-refresh').addEventListener('click', () => loadSayuriMemoryV4().catch(showSayuriProviderError));
+  byId('sayuri-memory-v4-maintain').addEventListener('click', maintainSayuriMemoryV4);
+  byId('sayuri-memory-v4-integrity').addEventListener('click', checkMemoryV4Integrity);
+  byId('sayuri-memory-v4-snapshot').addEventListener('click', createMemoryV4Snapshot);
+  byId('memory-v4-goal-form').addEventListener('submit', createMemoryV4Goal);
+  byId('memory-v4-task-form').addEventListener('submit', createMemoryV4Task);
 
   document.querySelectorAll('[data-sayuri-action]').forEach((button) => {
     button.addEventListener('click', () => runSayuriAction(button.dataset.sayuriAction));
