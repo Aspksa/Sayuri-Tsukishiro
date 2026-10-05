@@ -192,6 +192,29 @@ class MemoryV3Tests(unittest.TestCase):
             self.assertEqual(len(episodes), 1)
             self.assertEqual(episodes[0]["summary"], "Ответ не помог")
 
+    def test_knowledge_graph_preserves_source_memory_label(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            memory, semantic, v3 = self._build(Path(tmp))
+            entry = memory.add(
+                scope="project",
+                kind="decision",
+                content="Проект использует только DeepSeek-V4-Flash",
+                importance=5,
+                confidence=0.98,
+            )
+
+            v3.ingest_memory(entry)
+            graph = v3.graph()
+            memory_node = next(
+                node
+                for node in graph["nodes"]
+                if node["type"] == "memory" and node["key"] == entry["id"]
+            )
+
+            self.assertIn("DeepSeek-V4-Flash", memory_node["label"])
+            self.assertNotEqual(memory_node["label"], "Источник знания")
+            self.assertNotEqual(memory_node["label"], "Предыдущая версия памяти")
+
     def test_graph_extracts_company_and_episode_event_nodes(self):
         with tempfile.TemporaryDirectory() as tmp:
             memory, semantic, v3 = self._build(Path(tmp))
