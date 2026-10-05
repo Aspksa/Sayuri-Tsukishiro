@@ -79,11 +79,21 @@ class WebContractTests(unittest.TestCase):
         self.assertIn('id="phone-device-list"', html)
         self.assertIn('id="phone-pair-form"', html)
         self.assertIn('id="phone-connect-form"', html)
+        self.assertIn('id="phone-screen"', html)
+        self.assertIn('id="phone-open-native"', html)
+        self.assertIn('data-phone-key="BACK"', html)
         self.assertIn("/api/phone", script)
+        self.assertIn("/api/phone/frame", script)
+        self.assertIn("/api/phone/input/tap", script)
+        self.assertIn("/api/phone/input/swipe", script)
+        self.assertIn("/api/phone/input/key", script)
         self.assertIn("/api/phone/control/start", script)
-        self.assertIn("loadPhone", script)
+        self.assertIn("startPhoneFrameLoop", script)
+        self.assertIn("phonePointFromEvent", script)
         self.assertIn(".phone-device-card", css)
         self.assertIn(".phone-grid", css)
+        self.assertIn(".phone-live-panel", css)
+        self.assertIn(".phone-screen-shell", css)
 
 
 if __name__ == "__main__":

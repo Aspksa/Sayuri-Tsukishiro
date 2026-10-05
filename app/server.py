@@ -232,6 +232,19 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
             if parsed.path == "/api/phone":
                 self._json(self.server.core.phone.health())
                 return
+            if parsed.path == "/api/phone/frame":
+                serial = query.get("serial", [None])[0]
+                frame = self.server.core.phone.screen_frame(serial)
+                self._send(
+                    frame["data"],
+                    "image/png",
+                    extra_headers={
+                        "X-Sayuri-Phone-Width": str(frame["width"]),
+                        "X-Sayuri-Phone-Height": str(frame["height"]),
+                        "X-Sayuri-Phone-Cached": "1" if frame.get("cached") else "0",
+                    },
+                )
+                return
             if parsed.path == "/api/disk":
                 self._json(
                     self.server.core.disk.list_entries(
@@ -417,6 +430,41 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
                 result = self.server.core.phone.stop_control(payload.get("serial"))
                 self.server.core.database.record_event("Телефон Sayuri", "Управление телефоном остановлено")
                 self._json(result)
+                return
+
+            if parsed.path == "/api/phone/input/tap":
+                payload = self._read_json()
+                self._json(
+                    self.server.core.phone.tap(
+                        payload.get("serial"),
+                        payload.get("x"),
+                        payload.get("y"),
+                    )
+                )
+                return
+
+            if parsed.path == "/api/phone/input/swipe":
+                payload = self._read_json()
+                self._json(
+                    self.server.core.phone.swipe(
+                        payload.get("serial"),
+                        payload.get("x1"),
+                        payload.get("y1"),
+                        payload.get("x2"),
+                        payload.get("y2"),
+                        payload.get("duration_ms", 260),
+                    )
+                )
+                return
+
+            if parsed.path == "/api/phone/input/key":
+                payload = self._read_json()
+                self._json(
+                    self.server.core.phone.key(
+                        payload.get("serial"),
+                        payload.get("key"),
+                    )
+                )
                 return
 
             if parsed.path == "/api/disk/folders":

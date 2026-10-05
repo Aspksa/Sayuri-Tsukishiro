@@ -337,3 +337,86 @@ Control:
 - open/stop control.
 
 0.1 не содержит embedded browser stream.
+
+
+## Телефон Sayuri 0.2 — Embedded Control
+
+### Frame bridge
+
+```text
+Browser #phone
+  ↓ GET /api/phone/frame?serial=...
+PhoneService.screen_frame()
+  ↓ validate authorized serial
+adb -s SERIAL exec-out screencap -p
+  ↓ PNG
+350 ms cache
+  ↓
+<img id="phone-screen">
+```
+
+### Input bridge
+
+```text
+POST /api/phone/input/tap
+POST /api/phone/input/swipe
+POST /api/phone/input/key
+```
+
+Tap payload:
+
+```json
+{"serial":"R58M123ABC","x":0.42,"y":0.73}
+```
+
+Swipe payload:
+
+```json
+{
+  "serial":"R58M123ABC",
+  "x1":0.5,
+  "y1":0.8,
+  "x2":0.5,
+  "y2":0.2,
+  "duration_ms":280
+}
+```
+
+Allowed key names:
+- BACK
+- HOME
+- RECENTS
+- ENTER
+- DELETE
+- POWER
+- VOLUME_UP
+- VOLUME_DOWN
+- PLAY_PAUSE
+
+UI 0.2 exposes Back/Home/Recents/Power.
+
+### Security
+
+- serial must be an authorized current ADB device;
+- x/y are numeric and constrained to 0..1;
+- key is mapped through a fixed dictionary;
+- swipe duration is clamped to 50..1500 ms;
+- shell command body is not accepted from HTTP;
+- project remains loopback-only.
+
+### Performance
+
+- frame cache: 350 ms;
+- browser target interval: ~420 ms;
+- failed frame retry: ~1500 ms;
+- only one frame capture is allowed at a time;
+- leaving `#phone` stops browser polling.
+
+### High-performance mode
+
+The existing official scrcpy 4.1 window remains available from the same module for:
+- up to 60 FPS;
+- audio;
+- lower perceived latency.
+
+Embedded mode 0.2 intentionally does not claim equivalent FPS/audio.

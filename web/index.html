@@ -295,6 +295,50 @@
 
         <div class="phone-message hidden" id="phone-message" role="status"></div>
 
+        <section class="phone-live-panel" id="phone-live-panel">
+          <div class="phone-live-head">
+            <div>
+              <p class="eyebrow">ВСТРОЕННЫЙ ЭКРАН</p>
+              <h3 id="phone-live-title">Телефон внутри Sayuri</h3>
+              <p id="phone-live-subtitle">Выберите подключённый телефон — экран появится здесь.</p>
+            </div>
+            <div class="phone-live-actions">
+              <span class="phone-live-badge" id="phone-live-badge">ОЖИДАНИЕ</span>
+              <button class="secondary-button" id="phone-open-native" type="button" disabled>60 FPS · отдельное окно</button>
+            </div>
+          </div>
+
+          <div class="phone-live-body">
+            <div class="phone-screen-shell" id="phone-screen-shell">
+              <div class="phone-screen-placeholder" id="phone-screen-placeholder">
+                <span>▯</span>
+                <strong>Экран телефона появится здесь</strong>
+                <small>USB или Wi-Fi · локальный канал</small>
+              </div>
+              <img id="phone-screen" class="phone-screen hidden" alt="Экран подключённого Android" draggable="false">
+            </div>
+
+            <div class="phone-remote">
+              <div class="phone-remote-status">
+                <span>Устройство</span>
+                <strong id="phone-selected-device">—</strong>
+                <small id="phone-frame-status">Кадры ещё не запущены</small>
+              </div>
+              <div class="phone-nav-buttons" aria-label="Системные кнопки Android">
+                <button type="button" data-phone-key="BACK" disabled><span>‹</span><small>Назад</small></button>
+                <button type="button" data-phone-key="HOME" disabled><span>○</span><small>Домой</small></button>
+                <button type="button" data-phone-key="RECENTS" disabled><span>▢</span><small>Недавние</small></button>
+                <button type="button" data-phone-key="POWER" disabled><span>⌁</span><small>Питание</small></button>
+              </div>
+              <div class="phone-live-notes">
+                <span>Клик по экрану = касание</span>
+                <span>Зажмите и проведите = свайп</span>
+                <span>Для плавного видео и звука используйте режим 60 FPS</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <section class="phone-grid">
           <article class="phone-panel phone-devices-panel">
             <div class="section-head">
@@ -345,7 +389,7 @@
               <span>✓ Управление запускается только по вашему нажатию</span>
               <span>✓ scrcpy не требует root и не оставляет приложение на телефоне</span>
             </div>
-            <p class="phone-help">В версии 0.1 экран управления открывается отдельным локальным окном «Телефон Sayuri». Встраивание видеопотока внутрь страницы будет отдельным этапом.</p>
+            <p class="phone-help">Встроенный режим передаёт локальные кадры через ADB и поддерживает касания/свайпы. Для максимально плавного изображения и звука сохранён официальный режим scrcpy 60 FPS.</p>
           </article>
         </section>
       </section>

@@ -6,12 +6,27 @@ import re
 import shutil
 import subprocess
 import threading
+import time
 from typing import Any
 
 
-PHONE_BACKEND_VERSION = "0.1.1"
+PHONE_BACKEND_VERSION = "0.2.0"
 SCRCPY_VERSION = "4.1"
 COMMAND_TIMEOUT_SECONDS = 20
+FRAME_TIMEOUT_SECONDS = 8
+FRAME_CACHE_SECONDS = 0.35
+MAX_SWIPE_DURATION_MS = 1500
+ANDROID_KEYS = {
+    "BACK": "KEYCODE_BACK",
+    "HOME": "KEYCODE_HOME",
+    "RECENTS": "KEYCODE_APP_SWITCH",
+    "ENTER": "KEYCODE_ENTER",
+    "DELETE": "KEYCODE_DEL",
+    "POWER": "KEYCODE_POWER",
+    "VOLUME_UP": "KEYCODE_VOLUME_UP",
+    "VOLUME_DOWN": "KEYCODE_VOLUME_DOWN",
+    "PLAY_PAUSE": "KEYCODE_MEDIA_PLAY_PAUSE",
+}
 PAIR_CODE_RE = re.compile(r"^\d{6}$")
 ADDRESS_RE = re.compile(r"^[A-Za-z0-9._-]+:(\d{1,5})$")
 
@@ -24,7 +39,9 @@ class PhoneService:
         self.runtime_root = project_root / ".runtime" / "phone"
         self.scrcpy_root = self.runtime_root / "scrcpy"
         self._sessions: dict[str, subprocess.Popen] = {}
+        self._frame_cache: dict[str, dict[str, Any]] = {}
         self._lock = threading.RLock()
+        self._frame_lock = threading.Lock()
 
     def initialize(self) -> None:
         self.runtime_root.mkdir(parents=True, exist_ok=True)
@@ -178,7 +195,10 @@ class PhoneService:
                 "audio": runtime_ready,
                 "clipboard": runtime_ready,
                 "file_transfer": False,
-                "embedded_web_stream": False,
+                "embedded_web_stream": adb is not None,
+                "embedded_control": adb is not None,
+                "embedded_frame_interval_ms": int(FRAME_CACHE_SECONDS * 1000),
+                "embedded_audio": False,
             },
             "security": {
                 "loopback_project_only": True,
@@ -254,6 +274,177 @@ class PhoneService:
         if len(devices) > 1:
             raise ValueError("Подключено несколько телефонов — выберите конкретное устройство.")
         return devices[0]
+
+    def _run_binary(
+        self,
+        argv: list[str],
+        *,
+        timeout: int = FRAME_TIMEOUT_SECONDS,
+    ) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            argv,
+            capture_output=True,
+            text=False,
+            timeout=timeout,
+            check=False,
+            creationflags=self._creationflags(),
+        )
+
+    @staticmethod
+    def _png_dimensions(data: bytes) -> tuple[int, int]:
+        if len(data) < 24 or data[:8] != b"\x89PNG\r\n\x1a\n":
+            raise ValueError("ADB вернул некорректный кадр экрана.")
+        width = int.from_bytes(data[16:20], "big")
+        height = int.from_bytes(data[20:24], "big")
+        if width <= 0 or height <= 0 or width > 10000 or height > 10000:
+            raise ValueError("Некорректный размер кадра телефона.")
+        return width, height
+
+    def screen_frame(self, serial: Any = None, *, force: bool = False) -> dict[str, Any]:
+        device = self._select_authorized_device(serial)
+        device_serial = device["serial"]
+        now = time.monotonic()
+
+        with self._lock:
+            cached = self._frame_cache.get(device_serial)
+            if (
+                not force
+                and cached is not None
+                and now - float(cached["captured_monotonic"]) < FRAME_CACHE_SECONDS
+            ):
+                return {**cached, "cached": True}
+
+        adb = self._resolve_adb()
+        if adb is None:
+            raise OSError("ADB runtime не установлен.")
+
+        with self._frame_lock:
+            now = time.monotonic()
+            with self._lock:
+                cached = self._frame_cache.get(device_serial)
+                if (
+                    not force
+                    and cached is not None
+                    and now - float(cached["captured_monotonic"]) < FRAME_CACHE_SECONDS
+                ):
+                    return {**cached, "cached": True}
+
+            result = self._run_binary(
+                [str(adb), "-s", device_serial, "exec-out", "screencap", "-p"],
+                timeout=FRAME_TIMEOUT_SECONDS,
+            )
+            if result.returncode != 0:
+                error = (result.stderr or b"").decode("utf-8", errors="replace").strip()
+                raise OSError(error or "Не удалось получить экран телефона.")
+            data = bytes(result.stdout or b"")
+            width, height = self._png_dimensions(data)
+            frame = {
+                "serial": device_serial,
+                "data": data,
+                "width": width,
+                "height": height,
+                "captured_monotonic": time.monotonic(),
+                "cached": False,
+            }
+            with self._lock:
+                self._frame_cache[device_serial] = frame
+            return dict(frame)
+
+    @staticmethod
+    def _normalized_coordinate(value: Any, *, field: str) -> float:
+        if isinstance(value, bool):
+            raise ValueError(f"{field}: ожидается число от 0 до 1.")
+        try:
+            number = float(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"{field}: ожидается число от 0 до 1.") from exc
+        if not 0.0 <= number <= 1.0:
+            raise ValueError(f"{field}: значение должно быть от 0 до 1.")
+        return number
+
+    def _pixel_point(
+        self,
+        serial: str,
+        x: Any,
+        y: Any,
+    ) -> tuple[int, int]:
+        nx = self._normalized_coordinate(x, field="x")
+        ny = self._normalized_coordinate(y, field="y")
+        frame = self.screen_frame(serial)
+        px = min(frame["width"] - 1, max(0, int(round(nx * (frame["width"] - 1)))))
+        py = min(frame["height"] - 1, max(0, int(round(ny * (frame["height"] - 1)))))
+        return px, py
+
+    def tap(self, serial: Any, x: Any, y: Any) -> dict[str, Any]:
+        device = self._select_authorized_device(serial)
+        device_serial = device["serial"]
+        px, py = self._pixel_point(device_serial, x, y)
+        adb = self._resolve_adb()
+        if adb is None:
+            raise OSError("ADB runtime не установлен.")
+        result = self._run(
+            [str(adb), "-s", device_serial, "shell", "input", "tap", str(px), str(py)]
+        )
+        if result.returncode != 0:
+            raise OSError((result.stderr or result.stdout or "Не удалось выполнить касание.").strip())
+        return {"status": "касание выполнено", "serial": device_serial, "x": px, "y": py}
+
+    def swipe(
+        self,
+        serial: Any,
+        x1: Any,
+        y1: Any,
+        x2: Any,
+        y2: Any,
+        duration_ms: Any = 260,
+    ) -> dict[str, Any]:
+        device = self._select_authorized_device(serial)
+        device_serial = device["serial"]
+        start_x, start_y = self._pixel_point(device_serial, x1, y1)
+        end_x, end_y = self._pixel_point(device_serial, x2, y2)
+        try:
+            duration = int(duration_ms)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Длительность свайпа должна быть числом.") from exc
+        duration = min(MAX_SWIPE_DURATION_MS, max(50, duration))
+        adb = self._resolve_adb()
+        if adb is None:
+            raise OSError("ADB runtime не установлен.")
+        result = self._run(
+            [
+                str(adb), "-s", device_serial,
+                "shell", "input", "swipe",
+                str(start_x), str(start_y), str(end_x), str(end_y), str(duration),
+            ]
+        )
+        if result.returncode != 0:
+            raise OSError((result.stderr or result.stdout or "Не удалось выполнить свайп.").strip())
+        return {
+            "status": "свайп выполнен",
+            "serial": device_serial,
+            "from": [start_x, start_y],
+            "to": [end_x, end_y],
+            "duration_ms": duration,
+        }
+
+    def key(self, serial: Any, key: Any) -> dict[str, Any]:
+        device = self._select_authorized_device(serial)
+        device_serial = device["serial"]
+        if not isinstance(key, str):
+            raise ValueError("Не указана системная кнопка.")
+        normalized = key.strip().upper()
+        keycode = ANDROID_KEYS.get(normalized)
+        if keycode is None:
+            raise ValueError("Эта системная кнопка не разрешена.")
+        adb = self._resolve_adb()
+        if adb is None:
+            raise OSError("ADB runtime не установлен.")
+        result = self._run(
+            [str(adb), "-s", device_serial, "shell", "input", "keyevent", keycode]
+        )
+        if result.returncode != 0:
+            raise OSError((result.stderr or result.stdout or "Не удалось нажать системную кнопку.").strip())
+        return {"status": "кнопка нажата", "serial": device_serial, "key": normalized}
 
     def start_control(self, serial: Any = None) -> dict[str, Any]:
         scrcpy = self._resolve_scrcpy()

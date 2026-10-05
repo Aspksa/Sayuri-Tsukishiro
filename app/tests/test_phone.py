@@ -90,6 +90,97 @@ R58M123ABC device product:a56xeea model:SM_A556E device:a56x transport_id:1
             self.assertNotIn("shell", popen.call_args.kwargs)
 
 
+
+    @staticmethod
+    def fake_png(width: int = 1080, height: int = 2340) -> bytes:
+        return (
+            b"\x89PNG\r\n\x1a\n"
+            + b"\x00\x00\x00\rIHDR"
+            + width.to_bytes(4, "big")
+            + height.to_bytes(4, "big")
+            + b"\x08\x06\x00\x00\x00"
+        )
+
+    def test_screen_frame_is_cached_and_exposes_real_dimensions(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            service = PhoneService(Path(tmp))
+            binary = subprocess.CompletedProcess(
+                args=[],
+                returncode=0,
+                stdout=self.fake_png(1080, 2340),
+                stderr=b"",
+            )
+            with patch.object(
+                service,
+                "_select_authorized_device",
+                return_value={"serial": "R58M123ABC", "authorized": True},
+            ), patch.object(
+                service, "_resolve_adb", return_value=Path("adb.exe")
+            ), patch.object(
+                service, "_run_binary", return_value=binary
+            ) as capture:
+                first = service.screen_frame("R58M123ABC")
+                second = service.screen_frame("R58M123ABC")
+
+            self.assertEqual(first["width"], 1080)
+            self.assertEqual(first["height"], 2340)
+            self.assertFalse(first["cached"])
+            self.assertTrue(second["cached"])
+            capture.assert_called_once()
+
+    def test_embedded_tap_maps_normalized_coordinates_to_pixels(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            service = PhoneService(Path(tmp))
+            completed = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+            with patch.object(
+                service,
+                "_select_authorized_device",
+                return_value={"serial": "R58M123ABC", "authorized": True},
+            ), patch.object(
+                service,
+                "screen_frame",
+                return_value={"width": 1000, "height": 2000},
+            ), patch.object(
+                service, "_resolve_adb", return_value=Path("adb.exe")
+            ), patch.object(
+                service, "_run", return_value=completed
+            ) as run:
+                result = service.tap("R58M123ABC", 0.25, 0.75)
+
+            self.assertEqual(result["x"], 250)
+            self.assertEqual(result["y"], 1499)
+            self.assertEqual(
+                run.call_args.args[0],
+                ["adb.exe", "-s", "R58M123ABC", "shell", "input", "tap", "250", "1499"],
+            )
+
+    def test_embedded_swipe_and_keys_are_allowlisted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            service = PhoneService(Path(tmp))
+            completed = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+            with patch.object(
+                service,
+                "_select_authorized_device",
+                return_value={"serial": "R58M123ABC", "authorized": True},
+            ), patch.object(
+                service,
+                "screen_frame",
+                return_value={"width": 1000, "height": 2000},
+            ), patch.object(
+                service, "_resolve_adb", return_value=Path("adb.exe")
+            ), patch.object(
+                service, "_run", return_value=completed
+            ) as run:
+                swipe = service.swipe("R58M123ABC", 0.5, 0.8, 0.5, 0.2, 300)
+                key = service.key("R58M123ABC", "HOME")
+                with self.assertRaises(ValueError):
+                    service.key("R58M123ABC", "SHELL;RM")
+
+            self.assertEqual(swipe["duration_ms"], 300)
+            self.assertEqual(key["key"], "HOME")
+            self.assertIn("KEYCODE_HOME", run.call_args.args[0])
+
+
 class PhoneApiTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -156,6 +247,62 @@ class PhoneApiTests(unittest.TestCase):
             {"serial": "R58M123ABC"},
         )
         self.assertEqual(started["status"], "управление запущено")
+
+
+    def test_embedded_frame_and_input_routes(self):
+        frame_bytes = PhoneServiceTests.fake_png(1080, 2340)
+        self.core.phone.screen_frame = MagicMock(
+            return_value={
+                "serial": "R58M123ABC",
+                "data": frame_bytes,
+                "width": 1080,
+                "height": 2340,
+                "cached": False,
+            }
+        )
+        with urllib.request.urlopen(
+            self.base + "/api/phone/frame?serial=R58M123ABC",
+            timeout=3,
+        ) as response:
+            body = response.read()
+            self.assertEqual(response.headers.get_content_type(), "image/png")
+            self.assertEqual(response.headers["X-Sayuri-Phone-Width"], "1080")
+            self.assertEqual(response.headers["X-Sayuri-Phone-Height"], "2340")
+        self.assertEqual(body, frame_bytes)
+
+        self.core.phone.tap = MagicMock(
+            return_value={"status": "касание выполнено", "x": 540, "y": 1170}
+        )
+        tapped = self.post_json(
+            "/api/phone/input/tap",
+            {"serial": "R58M123ABC", "x": 0.5, "y": 0.5},
+        )
+        self.assertEqual(tapped["status"], "касание выполнено")
+
+        self.core.phone.swipe = MagicMock(
+            return_value={"status": "свайп выполнен"}
+        )
+        swiped = self.post_json(
+            "/api/phone/input/swipe",
+            {
+                "serial": "R58M123ABC",
+                "x1": 0.5,
+                "y1": 0.8,
+                "x2": 0.5,
+                "y2": 0.2,
+                "duration_ms": 280,
+            },
+        )
+        self.assertEqual(swiped["status"], "свайп выполнен")
+
+        self.core.phone.key = MagicMock(
+            return_value={"status": "кнопка нажата", "key": "BACK"}
+        )
+        keyed = self.post_json(
+            "/api/phone/input/key",
+            {"serial": "R58M123ABC", "key": "BACK"},
+        )
+        self.assertEqual(keyed["key"], "BACK")
 
 
 if __name__ == "__main__":

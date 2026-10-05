@@ -2,6 +2,20 @@
 
 ## Невыпущенные изменения
 
+### 0.1.23 — 2026-10-05 — Телефон Sayuri 0.2 Embedded Control
+
+- Телефон Sayuri повышен до `0.2.0`.
+- Web UI повышен до `0.5.0`.
+- В существующий модуль добавлен встроенный экран Android.
+- Добавлен локальный PNG frame bridge через `adb exec-out screencap -p`.
+- Добавлен кэш кадров ~350 мс и остановка polling вне вкладки телефона.
+- Добавлены tap/swipe по нормализованным координатам.
+- Добавлены allow-listed Android Back/Home/Recents/Power.
+- Нативный официальный scrcpy 60 FPS сохранён отдельным high-performance режимом.
+- Arbitrary ADB shell не публикуется.
+- Добавлены unit/API/web contract tests.
+
+
 ### 0.1.22 — 2026-10-05 — Phone input validation order
 
 - Телефон Sayuri повышен до `0.1.1`.
