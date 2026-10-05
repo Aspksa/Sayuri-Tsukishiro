@@ -4,16 +4,16 @@
 
 - Дата: 2026-10-06.
 - Репозиторий: https://github.com/Aspksa/Sayuri-Tsukishiro
-- Проверенная исходная ревизия: `30ad1bf71b2abf52fb5b0be805f426d2a4afdfa4` (проект `0.1.43`).
-- Целевая версия текущего релиза: `0.1.44`.
-- Текущий этап: **Memory 4.0 — цели, задачи, доверие к источникам, utility/freshness, Failure/Causal Memory, explainable recall, audit и snapshots**.
+- Проверенная исходная ревизия: `6ab578f9f61212bea92dc92d2c642d816dae5f79` (проект `0.1.44`, финальный CI зелёный).
+- Целевая версия текущего релиза: `0.1.45`.
+- Текущий этап: **Memory 4.0 Hardening — сквозная privacy-защита, read-only local recall и доказательная Failure/Causal Memory**.
 
 ## Версии активных модулей
 
-- Ядро Саюри: `0.1.36`.
-- Agent Core: `0.8.0`.
+- Ядро Саюри: `0.1.37`.
+- Agent Core: `0.8.1`.
 - Диск Sayuri: `0.7.1`.
-- Web UI: `0.21.0`.
+- Web UI: `0.21.1`.
 - Инструменты разработки: `0.1.6`.
 
 ## Архитектура памяти
@@ -107,6 +107,8 @@ Tier рассчитывается из:
 
 и исключаются из `for_cloud=True` recall.
 
+В `0.1.45` local-only policy стала сквозной: перед Cloud.ru дополнительно фильтруются производные данные Memory 3.0, Experience Learning, Goal/Task/Failure/Question Memory. Связанная сущность с protected source memory также не проходит в AI-context.
+
 Локальный пользовательский поиск при этом может находить такую запись и показывает badge `LOCAL ONLY`.
 
 Это дополнительная защита поверх существующей границы API-ключей.
@@ -130,7 +132,9 @@ Chat runtime и поиск Личного кабинета используют 
 
 `Почему вспомнила: ...`
 
-Каждый recall получает локальный `recall_id` и аудитируется без копирования полного разговора.
+Каждый recall, реально использованный для AI-ответа, получает локальный `recall_id` и аудитируется без копирования полного разговора.
+
+Поиск/просмотр в Личном кабинете работает в режиме `record_usage=false`: он показывает Explainable Recall, но не увеличивает `use_count`/`recall_count` и не создаёт обучающий audit event.
 
 ## Utility Learning
 
@@ -219,11 +223,13 @@ Decision Memory не придумывает причину, если польз�
 - cause/resolution/prevention, когда они известны;
 - source reference.
 
-Поздний успешный outcome того же strategy может закрыть открытый failure и создать causal edge:
+Поздний успешный outcome того же strategy **не закрывает** failure автоматически. Он сохраняется только как наблюдение:
 
-`failure → resolved_by → action`
+`failure → followed_by_success → action`
 
-Failure Memory не трактует correlation как доказанную причину: causal link получает confidence и evidence.
+с низкой causal confidence и `correlation_only` evidence.
+
+Failure переводится в `resolved` только после явного пользовательского подтверждения причины/исправления. Повтор ранее исправленной ошибки переоткрывает pattern. Повтор одинакового resolution идемпотентен.
 
 ## Question / Uncertainty Memory
 
@@ -328,7 +334,7 @@ DeepSeek-V4-Flash получает только контролируемые н�
 4. Memory 4.0 goals/tasks/failures/questions;
 5. UI-context.
 
-Protected memories с `cloud_allowed=false` в первый блок не попадают.
+Перед отправкой все memory-derived blocks проходят Memory 4.0 privacy firewall. Protected/local-only данные не должны попадать ни через прямой recall, ни через Memory 3.0, Experience, Goals, Tasks, Failures или Questions.
 
 Цели и задачи не выдаются модели как выполненные только потому, что они присутствуют в памяти.
 
@@ -365,6 +371,7 @@ Memory 4.0 control center показывает:
 - `POST /api/sayuri/memory/v4/tasks`;
 - `POST /api/sayuri/memory/v4/tasks/{id}/update`;
 - `POST /api/sayuri/memory/v4/sources/trust`;
+- `POST /api/sayuri/memory/v4/failures/{id}/resolve`;
 - `POST /api/sayuri/memory/v4/questions/{id}/resolve`;
 - `POST /api/sayuri/memory/v4/integrity`;
 - `POST /api/sayuri/memory/v4/snapshots`;
@@ -384,7 +391,7 @@ Memory 4.0 control center показывает:
 - goal/task graph linking;
 - automatic task/goal promotion;
 - Decision Memory;
-- Failure Memory + causal resolution;
+- Failure Memory: correlation-only success observation + explicit resolution + reopen lifecycle;
 - conflict → Question Memory → close;
 - freshness decay;
 - Source Trust override;
@@ -394,7 +401,9 @@ Memory 4.0 control center показывает:
 - integrity;
 - HTTP API;
 - Web contract;
-- runtime injection в DeepSeek-context без реального сетевого запроса.
+- runtime injection в DeepSeek-context без реального сетевого запроса;
+- protected memory не проходит через соседние context layers;
+- local cabinet recall не изменяет utility/use counters.
 
 ## Инварианты
 
@@ -414,15 +423,15 @@ Memory 4.0 control center показывает:
 
 Рабочая ветка может иметь красный `check --each-commit` из-за промежуточных GitHub API-коммитов.
 
-Канонический `0.1.44` считается готовым только после:
+Канонический `0.1.45` считается готовым только после:
 
-1. сборки одного атомарного commit поверх `main 0.1.43`;
+1. сборки одного атомарного commit поверх `main 0.1.44`;
 2. полного зелёного workflow Versions на свежей validation-ветке;
 3. merge через PR;
 4. полного зелёного workflow на финальном `main`.
 
 ## Следующий этап после Memory 4.0
 
-После стабилизации `0.1.44` следующий рациональный слой — **Reasoning Planner + Result Verifier**.
+После hardening `0.1.45` следующий рациональный слой — **Reasoning Planner + Result Verifier**.
 
 Planner должен использовать Goal/Task/Failure/Decision Memory, а Verifier — отдельно проверять результат против исходной задачи, ограничений и доказательств.
