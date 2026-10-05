@@ -1290,6 +1290,7 @@ async function openViewer(kind, id, tab = 'preview') {
     modal.classList.remove('hidden');
     document.body.classList.add('modal-open');
     switchViewerTab(tab);
+    updateSayuriContextUI();
 
     if (kind === 'file') {
       const stage = byId('file-preview-stage');
@@ -1311,6 +1312,7 @@ function closeViewer() {
   document.body.classList.remove('modal-open');
   viewerItem = null;
   viewerDnaLoadedFor = null;
+  updateSayuriContextUI();
 }
 
 async function saveViewerName() {
