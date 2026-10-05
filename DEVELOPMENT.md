@@ -853,7 +853,18 @@ query
 
 Cloud recall использует `for_cloud=True`. Secret/sensitive memories отбрасываются до формирования JSON для DeepSeek.
 
-Локальный поиск Личного кабинета использует `for_cloud=False` и поэтому может показывать защищённую запись с badge `LOCAL ONLY`.
+Начиная с `0.1.45`, privacy firewall применяется ко всем memory-derived blocks перед Cloud.ru:
+- Memory 4.0 personal/project recall;
+- Memory 3.0 working/knowledge/episodes/conflicts;
+- Experience Learning helpful/avoid details;
+- Goal Memory;
+- Task Memory;
+- Failure Memory;
+- Question Memory.
+
+Если производная сущность связана с source memory, имеющей `cloud_allowed=false`, она также исключается.
+
+Локальный поиск Личного кабинета использует `for_cloud=False, record_usage=False`. Он может показывать защищённую запись с badge `LOCAL ONLY`, но не увеличивает `memory_entries.use_count`, `memory_v4_state.recall_count` и не создаёт `memory_recall_audit`.
 
 ### Utility feedback
 
@@ -887,9 +898,20 @@ Safe Action failure создаёт fingerprint по strategy/tool + symptom.
 
 Повтор усиливает occurrences.
 
-Поздний успешный action той же strategy закрывает последний open failure и создаёт causal relation `resolved_by` с evidence/confidence.
+Поздний успешный action той же strategy **не закрывает** failure автоматически. Он создаёт только correlation-only observation:
 
-Это не является общим causal inference engine: связь создаётся только по наблюдаемому outcome pipeline.
+`failure -> followed_by_success -> action`
+
+с confidence `0.45`.
+
+Доказанное закрытие выполняется только через explicit user-confirmed resolution:
+- cause — если известна;
+- resolution — обязательна;
+- prevention — если известна.
+
+API: `POST /api/sayuri/memory/v4/failures/{id}/resolve`.
+
+Повтор одинакового resolution идемпотентен. Если тот же failure fingerprint возникает снова после resolved state, pattern автоматически переоткрывается, сохраняя прошлое resolution/prevention как историческое знание.
 
 ### Question Memory
 
@@ -931,6 +953,7 @@ Restore:
 - `POST /api/sayuri/memory/v4/tasks`;
 - `POST /api/sayuri/memory/v4/tasks/{id}/update`;
 - `POST /api/sayuri/memory/v4/sources/trust`;
+- `POST /api/sayuri/memory/v4/failures/{id}/resolve`;
 - `POST /api/sayuri/memory/v4/questions/{id}/resolve`;
 - `POST /api/sayuri/memory/v4/integrity`;
 - `POST /api/sayuri/memory/v4/snapshots`;
@@ -942,7 +965,9 @@ Restore:
 - secrets cannot be re-enabled for Cloud through Source Trust;
 - personal/project scopes remain separated;
 - question is not knowledge;
-- failure evidence is not generalized into unsupported causality;
+- later success is correlation-only evidence until user-confirmed resolution;
+- local UI recall never trains utility/use counters;
+- `cloud_allowed=false` applies transitively to every memory-derived Cloud-context;
 - snapshots remain local under `data/`;
 - restore never happens implicitly;
 - Memory 4.0 cannot extend Action Broker permissions.
