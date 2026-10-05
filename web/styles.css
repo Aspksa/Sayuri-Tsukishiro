@@ -3207,9 +3207,6 @@ footer {
     font-size: 31px;
   }
 
-  .phone-float-intro {
-    grid-template-columns: 44px 1fr;
-  }
 }
 
 @media (max-width: 430px) {
