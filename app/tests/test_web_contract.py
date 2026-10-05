@@ -108,6 +108,23 @@ class WebContractTests(unittest.TestCase):
         self.assertIn('.sayuri-account-grid', css)
         self.assertIn('SAYURI UI 0.14 — Global Assistant & Personal Cabinet', css)
 
+    def test_personal_cabinet_has_memory_and_avatar_studio(self):
+        html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+        css = (ROOT / "web" / "styles.css").read_text(encoding="utf-8")
+
+        self.assertIn('id="sayuri-memory-form"', html)
+        self.assertIn('id="sayuri-memory-list"', html)
+        self.assertIn('id="sayuri-avatar-grid"', html)
+        self.assertIn('Аватары разных размеров', html)
+        self.assertIn('/api/sayuri/memory', script)
+        self.assertIn('/api/sayuri/avatar/upload', script)
+        self.assertIn('loadSayuriMemory', script)
+        self.assertIn('uploadSayuriAvatar', script)
+        self.assertIn('.sayuri-memory-entry', css)
+        self.assertIn('.sayuri-avatar-slot', css)
+        self.assertIn('SAYURI UI 0.15 — Long-term Memory & Avatar Studio', css)
+
     def test_unified_visual_system_is_readable_and_consistent(self):
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         css = (ROOT / "web" / "styles.css").read_text(encoding="utf-8")
