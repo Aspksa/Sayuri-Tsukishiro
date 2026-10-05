@@ -1299,15 +1299,26 @@ class MemorySystemV4:
                     (fingerprint,),
                 ).fetchone()
                 if row:
+                    reopened = row["status"] == "resolved"
                     db.execute(
                         """
                         UPDATE memory_failures
-                        SET occurrences = occurrences + 1, updated_at = ?, source_ref = ?
+                        SET occurrences = occurrences + 1,
+                            status = 'open',
+                            updated_at = ?,
+                            source_ref = ?
                         WHERE id = ?
                         """,
                         (now, action_id, row["id"]),
                     )
                     failure_id = row["id"]
+                    if reopened:
+                        self._audit(
+                            "failure_reopened",
+                            "failure",
+                            failure_id,
+                            {"tool": tool, "action_id": action_id},
+                        )
                 else:
                     failure_id = uuid.uuid4().hex
                     db.execute(
@@ -1502,17 +1513,32 @@ class MemorySystemV4:
             ).fetchone()
             if row is None:
                 raise MemorySystemV4Error("Ошибка в Failure Memory не найдена.")
+
+            next_cause = clean_cause[:3000] or row["cause"]
+            next_resolution = clean_resolution[:3000]
+            next_prevention = clean_prevention[:3000] or row["prevention"]
+            same_resolution = (
+                row["status"] == "resolved"
+                and (row["cause"] or None) == (next_cause or None)
+                and (row["resolution"] or "") == next_resolution
+                and (row["prevention"] or None) == (next_prevention or None)
+            )
+            if same_resolution:
+                return self._failure_row(row)
+
+            increment = 1 if row["status"] != "resolved" else 0
             db.execute(
                 """
                 UPDATE memory_failures
                 SET cause = ?, resolution = ?, prevention = ?, status = 'resolved',
-                    resolved_count = resolved_count + 1, updated_at = ?
+                    resolved_count = resolved_count + ?, updated_at = ?
                 WHERE id = ?
                 """,
                 (
-                    clean_cause[:3000] or row["cause"],
-                    clean_resolution[:3000],
-                    clean_prevention[:3000] or row["prevention"],
+                    next_cause,
+                    next_resolution,
+                    next_prevention,
+                    increment,
                     now,
                     failure_id,
                 ),
@@ -1528,6 +1554,7 @@ class MemorySystemV4:
             {
                 "has_cause": bool(clean_cause),
                 "has_prevention": bool(clean_prevention),
+                "new_resolution_event": bool(increment),
             },
         )
         return self._failure_row(updated)
