@@ -397,6 +397,30 @@ class MemorySystemV3:
             summary=text,
             details=details,
         )
+        with self._connect() as db:
+            event_node = self._ensure_node(
+                db,
+                node_type="event",
+                node_key=event_id,
+                label=text[:220],
+                metadata={"event_type": event_type, "scope": scope, "source": source},
+            )
+            owner_type = "person" if scope == "personal" else "project"
+            owner_key = "master" if scope == "personal" else "sayuri-tsukishiro"
+            owner_label = "Господин" if scope == "personal" else "Sayuri Tsukishiro"
+            owner = self._ensure_node(
+                db,
+                node_type=owner_type,
+                node_key=owner_key,
+                label=owner_label,
+            )
+            self._ensure_edge(
+                db,
+                source_id=owner,
+                target_id=event_node,
+                relation="experienced",
+                source_ref=event_id,
+            )
         return {
             "id": event_id,
             "scope": scope,
@@ -530,7 +554,16 @@ class MemorySystemV3:
         for match in re.finditer(plate_re, text or "", flags=re.IGNORECASE):
             value = match.group(0).upper()
             found.append(("vehicle", "plate:" + value, "Госномер " + value))
-        return found
+
+        company_re = r"\b(ООО|АО|ПАО|ИП)\s+[«\"']?([А-ЯЁA-Z][А-Яа-яЁёA-Za-z0-9 ._-]{2,70})"
+        for match in re.finditer(company_re, text or ""):
+            legal_form = match.group(1)
+            name = " ".join(match.group(2).strip(" ._-«»\"'").split())
+            if not name:
+                continue
+            label = f"{legal_form} {name}"
+            found.append(("company", "company:" + label.casefold(), label))
+        return list(dict.fromkeys(found))
 
     def ingest_memory(
         self,
