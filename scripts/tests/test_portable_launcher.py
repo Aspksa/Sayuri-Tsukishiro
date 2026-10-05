@@ -9,13 +9,22 @@ ROOT = Path(__file__).resolve().parents[2]
 
 class PortableLauncherTests(unittest.TestCase):
     def test_launcher_uses_relative_project_root(self):
-        launcher = (ROOT / "Sayuri Tsukishiro.bat").read_text(encoding="utf-8")
+        launcher_path = ROOT / "Sayuri Tsukishiro.bat"
+        raw = launcher_path.read_bytes()
+        raw.decode("ascii")
+        launcher = raw.decode("ascii")
         self.assertIn('cd /d "%~dp0"', launcher)
         self.assertNotIn("C:\\", launcher)
         self.assertNotIn("D:\\", launcher)
 
+    def test_bootstrap_is_utf8_bom_for_windows_powershell_51(self):
+        raw = (ROOT / "scripts" / "bootstrap_windows.ps1").read_bytes()
+        self.assertTrue(raw.startswith(b"\xef\xbb\xbf"))
+        text = raw.decode("utf-8-sig")
+        self.assertIn("Проверка системы перед запуском.", text)
+
     def test_bootstrap_pins_runtime_and_hashes(self):
-        bootstrap = (ROOT / "scripts" / "bootstrap_windows.ps1").read_text(encoding="utf-8")
+        bootstrap = (ROOT / "scripts" / "bootstrap_windows.ps1").read_text(encoding="utf-8-sig")
         self.assertIn("3.14.8", bootstrap)
         self.assertIn("python.org/ftp/python/3.14.8", bootstrap)
         self.assertIn("80292f0e640e373a54bf09f3b94a1472f976f24a10c5bed0d9622e4e44d67447", bootstrap)
@@ -23,7 +32,7 @@ class PortableLauncherTests(unittest.TestCase):
         self.assertIn("Get-FileHash", bootstrap)
 
     def test_runtime_and_data_are_project_local(self):
-        bootstrap = (ROOT / "scripts" / "bootstrap_windows.ps1").read_text(encoding="utf-8")
+        bootstrap = (ROOT / "scripts" / "bootstrap_windows.ps1").read_text(encoding="utf-8-sig")
         self.assertIn("'.runtime'", bootstrap)
         self.assertIn("'logs'", bootstrap)
         config = (ROOT / "app" / "config.py").read_text(encoding="utf-8")

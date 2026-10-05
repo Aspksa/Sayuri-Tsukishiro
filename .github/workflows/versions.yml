@@ -10,7 +10,7 @@ jobs:
   version-check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # verified v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -44,3 +44,34 @@ jobs:
           subprocess.run([sys.executable, "scripts/versioning.py", "check", "--base", base,
                           "--target", target, "--each-commit"], check=True)
           PY
+
+  windows-launcher-check:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Parse Windows PowerShell bootstrap
+        shell: powershell
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path '.\scripts\bootstrap_windows.ps1'),
+            [ref]$tokens,
+            [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | Format-List | Out-String | Write-Error
+            exit 1
+          }
+          Write-Host 'Windows PowerShell parser: OK'
+      - name: Verify BAT is ASCII-safe
+        shell: powershell
+        run: |
+          $bytes = [System.IO.File]::ReadAllBytes((Resolve-Path '.\Sayuri Tsukishiro.bat'))
+          if ($bytes | Where-Object { $_ -gt 127 }) {
+            Write-Error 'BAT contains non-ASCII bytes and may break before CHCP is applied.'
+            exit 1
+          }
+          Write-Host 'BAT encoding: ASCII-safe'

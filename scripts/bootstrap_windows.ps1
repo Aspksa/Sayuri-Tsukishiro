@@ -1,8 +1,11 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param()
 
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
+[Console]::InputEncoding = New-Object System.Text.UTF8Encoding($false)
+[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+$OutputEncoding = [Console]::OutputEncoding
 
 $Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $RuntimeRoot = Join-Path $Root '.runtime'
@@ -52,7 +55,9 @@ function Test-PortablePython {
         $reported = & $python -c "import platform; print(platform.python_version())" 2>$null
         return ($LASTEXITCODE -eq 0 -and $reported.Trim() -eq $PythonVersion)
     }
-    catch { return $false }
+    catch {
+        return $false
+    }
 }
 
 function Install-PortablePython {
@@ -89,6 +94,7 @@ function Install-PortablePython {
     if (-not $pth) {
         throw 'SAYURI-BOOT-003: После распаковки Python не найден файл python*._pth.'
     }
+
     $lines = Get-Content -LiteralPath $pth.FullName
     if ($lines -notcontains '..\..') {
         $lines += '..\..'
@@ -98,11 +104,13 @@ function Install-PortablePython {
     if (-not (Test-PortablePython)) {
         throw "SAYURI-BOOT-004: Переносимый Python $PythonVersion не прошёл проверку."
     }
+
     Write-LauncherLog "Переносимый Python установлен и проверен."
 }
 
 try {
     Write-LauncherLog "Запуск. Корень проекта: $Root"
+
     if (-not (Test-PortablePython)) {
         Install-PortablePython
     }
@@ -131,6 +139,8 @@ try {
 }
 catch {
     Write-LauncherLog $_.Exception.Message 'ERROR'
-    Write-LauncherLog $_.ScriptStackTrace 'ERROR'
+    if ($_.ScriptStackTrace) {
+        Write-LauncherLog $_.ScriptStackTrace 'ERROR'
+    }
     exit 1
 }
