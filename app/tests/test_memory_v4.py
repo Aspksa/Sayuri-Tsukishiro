@@ -361,7 +361,7 @@ class MemoryV4Tests(unittest.TestCase):
             self.assertEqual(updated["goal_id"], goal["id"])
             self.assertIsNotNone(result["decision"])
             self.assertIn("архитектура должна оставаться управляемой", result["decision"]["rationale"])
-            self.assertEqual(result["decision"]["project_version"], "0.1.45")
+            self.assertEqual(result["decision"]["project_version"], "0.1.46")
             self.assertIn("goal", {node["type"] for node in graph["nodes"]})
             self.assertIn("task", {node["type"] for node in graph["nodes"]})
             self.assertIn("has_task", {edge["relation"] for edge in graph["edges"]})
