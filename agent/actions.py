@@ -333,7 +333,9 @@ class SayuriActionBroker:
             if row is None:
                 raise ActionError("Действие не найдено.")
             if row["status"] != "pending":
-                return self._public(row)
+                result = self._public(row)
+                result["claimed"] = False
+                return result
             expires = datetime.fromisoformat(row["expires_at"])
             if expires <= now:
                 db.execute(
@@ -341,7 +343,9 @@ class SayuriActionBroker:
                     (_iso(now), action_id),
                 )
                 row = db.execute("SELECT * FROM sayuri_actions WHERE id = ?", (action_id,)).fetchone()
-                return self._public(row)
+                result = self._public(row)
+                result["claimed"] = False
+                return result
             payload_json = row["payload_json"]
             digest = hashlib.sha256(payload_json.encode("utf-8")).hexdigest()
             if digest != row["payload_sha256"]:
@@ -354,13 +358,17 @@ class SayuriActionBroker:
                     (_iso(now), "Контрольная сумма действия не совпала.", action_id),
                 )
                 row = db.execute("SELECT * FROM sayuri_actions WHERE id = ?", (action_id,)).fetchone()
-                return self._public(row)
+                result = self._public(row)
+                result["claimed"] = False
+                return result
             db.execute(
                 "UPDATE sayuri_actions SET status = 'executing', started_at = ? WHERE id = ?",
                 (_iso(now), action_id),
             )
             row = db.execute("SELECT * FROM sayuri_actions WHERE id = ?", (action_id,)).fetchone()
-        return self._public(row)
+        result = self._public(row)
+        result["claimed"] = True
+        return result
 
     def complete(self, action_id: str, result: dict[str, Any]) -> dict[str, Any]:
         now = _iso(_utcnow())
@@ -387,7 +395,7 @@ class SayuriActionBroker:
                 SET status = 'failed', finished_at = ?, error_message = ?
                 WHERE id = ? AND status = 'executing'
                 """,
-                (message[:1000], now, action_id),
+                (now, message[:1000], action_id),
             )
             row = db.execute("SELECT * FROM sayuri_actions WHERE id = ?", (action_id,)).fetchone()
         if row is None:
