@@ -2,6 +2,27 @@
 
 ## Невыпущенные изменения
 
+### 0.1.43 — 2026-10-06 — Memory 3.0
+
+- Добавлены Working Memory, Episodic Memory, Knowledge Memory и Temporal Memory.
+- Добавлен локальный Knowledge Graph памяти.
+- Добавлена консолидация похожих воспоминаний в устойчивые knowledge items без удаления источников.
+- Добавлен Retention/Forgetting Engine: устаревшие записи получают меньший semantic retrieval-вес вместо автоматического удаления.
+- Добавлен Contradiction Resolver с вариантами новое/старое/оба.
+- Knowledge items получили temporal validity: `valid_from/valid_to`.
+- Working Memory обновляется из чата и Safe Action planning и имеет TTL 24 часа.
+- Значимые action/feedback/review события записываются как эпизоды.
+- При старте выполняется bootstrap существующей памяти; opportunistic maintenance запускается не чаще одного раза в 6 часов.
+- DeepSeek-V4-Flash получает отдельный Memory 3.0 context block.
+- В Личном кабинете появился Memory 3.0 dashboard с графом, timeline, conflicts, retention и knowledge.
+- Добавлены `GET /api/sayuri/memory/v3`, `POST /maintenance`, `POST /conflicts/{id}/resolve`.
+- Episodic Memory дедуплицирует повторную обработку одного feedback/action по fingerprint.
+- Ручное архивирование исходной memory закрывает производное Knowledge, если не осталось других активных источников.
+- Открытые противоречия передаются в AI-context явно как old/new, а не только счётчиком.
+- Добавлены unit/API/Web contract tests Memory 3.0.
+- Проект: `0.1.43`; Ядро: `0.1.35`; Agent Core: `0.7.0`; Web UI: `0.20.0`.
+
+
 ### 0.1.42 — 2026-10-06 — Semantic Memory + Experience Learning
 
 - Добавлен локальный hybrid semantic поиск памяти `hybrid-semantic-v1`.

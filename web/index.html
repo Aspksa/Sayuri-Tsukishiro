@@ -468,6 +468,68 @@
             <p class="sayuri-security-note">Быстрое сохранение из чата: «запомни лично: …» или «запомни в проект: …». Обычная переписка не записывается целиком: автоматизация создаёт только отдельные кандидаты памяти, которые можно принять или отклонить.</p>
           </article>
 
+          <article class="sayuri-account-card sayuri-wide-card sayuri-memory-v3-card">
+            <div class="section-head">
+              <div><p class="eyebrow">MEMORY 3.0</p><h3>Архитектура памяти Sayuri</h3></div>
+              <div class="sayuri-memory-v3-actions">
+                <button class="secondary-button" id="sayuri-memory-v3-refresh" type="button">Обновить</button>
+                <button class="primary-button" id="sayuri-memory-v3-maintain" type="button">Обслужить память</button>
+              </div>
+            </div>
+            <p class="sayuri-card-copy">Рабочая, эпизодическая и подтверждённая память разделены по назначению. Memory 3.0 строит временную историю, граф связей, устойчивые знания и снижает вес устаревших записей без физического удаления.</p>
+
+            <div class="sayuri-memory-v3-metrics">
+              <article><span>Working Memory</span><strong id="memory-v3-working">0</strong></article>
+              <article><span>Эпизоды</span><strong id="memory-v3-episodes">0</strong></article>
+              <article><span>Знания</span><strong id="memory-v3-knowledge">0</strong></article>
+              <article><span>Узлы графа</span><strong id="memory-v3-nodes">0</strong></article>
+              <article><span>Связи</span><strong id="memory-v3-edges">0</strong></article>
+              <article><span>Конфликты</span><strong id="memory-v3-conflicts">0</strong></article>
+              <article><span>Консолидации</span><strong id="memory-v3-consolidations">0</strong></article>
+              <article><span>Устаревающие</span><strong id="memory-v3-stale">0</strong></article>
+            </div>
+
+            <div class="sayuri-memory-v3-grid">
+              <section class="sayuri-memory-v3-panel">
+                <div class="sayuri-memory-v3-panel-head"><strong>Working Memory</strong><span>текущий фокус</span></div>
+                <div id="memory-v3-working-list" class="sayuri-memory-v3-list"><p class="muted">Рабочая память пуста.</p></div>
+              </section>
+
+              <section class="sayuri-memory-v3-panel">
+                <div class="sayuri-memory-v3-panel-head"><strong>Knowledge Memory</strong><span>подтверждённые знания</span></div>
+                <div id="memory-v3-knowledge-list" class="sayuri-memory-v3-list"><p class="muted">Устойчивые знания ещё не сформированы.</p></div>
+              </section>
+
+              <section class="sayuri-memory-v3-panel">
+                <div class="sayuri-memory-v3-panel-head"><strong>Episodic Memory</strong><span>значимые события и исходы</span></div>
+                <div id="memory-v3-episodes-list" class="sayuri-memory-v3-list"><p class="muted">Значимых эпизодов пока нет.</p></div>
+              </section>
+
+              <section class="sayuri-memory-v3-panel">
+                <div class="sayuri-memory-v3-panel-head"><strong>Temporal Memory</strong><span>хронология изменений</span></div>
+                <div id="memory-v3-timeline" class="sayuri-memory-v3-list"><p class="muted">Хронология пока пуста.</p></div>
+              </section>
+
+              <section class="sayuri-memory-v3-panel">
+                <div class="sayuri-memory-v3-panel-head"><strong>Knowledge Graph</strong><span>сущности и связи</span></div>
+                <div id="memory-v3-graph" class="sayuri-memory-v3-list"><p class="muted">Граф ещё не построен.</p></div>
+              </section>
+            </div>
+
+            <section class="sayuri-memory-conflicts">
+              <div class="sayuri-memory-v3-panel-head"><strong>Contradiction Resolver</strong><span>решение конфликтов памяти</span></div>
+              <div id="memory-v3-conflicts-list" class="sayuri-memory-v3-list"><p class="muted">Открытых противоречий нет.</p></div>
+            </section>
+
+            <section class="sayuri-memory-retention">
+              <div class="sayuri-memory-v3-panel-head"><strong>Forgetting Engine</strong><span>снижение веса без удаления</span></div>
+              <div id="memory-v3-retention-list" class="sayuri-memory-v3-list"><p class="muted">Устаревающих записей нет.</p></div>
+            </section>
+
+            <div class="sayuri-memory-v3-message" id="sayuri-memory-v3-message" aria-live="polite"></div>
+            <p class="sayuri-security-note">Обслуживание памяти не удаляет данные автоматически. Консолидация создаёт устойчивое знание с сохранением источников, а Forgetting Engine только снижает retrieval-вес устаревшей информации.</p>
+          </article>
+
           <article class="sayuri-account-card sayuri-wide-card sayuri-experience-card">
             <div class="section-head">
               <div><p class="eyebrow">EXPERIENCE LEARNING</p><h3>Опыт Sayuri</h3></div>

@@ -695,3 +695,114 @@ Experience context является недоверенными справочн�
 - релевантный положительный/отрицательный опыт разделяется;
 - chat runtime получает Semantic Memory и Experience context без реального сетевого вызова в тесте.
 
+## Memory 3.0
+
+Реализация: `agent/memory_v3.py`.
+
+Используется существующая `data/sayuri-memory.db`; отдельный новый внешний сервис не требуется.
+
+Таблицы:
+- `working_memory`;
+- `episodic_memory`;
+- `knowledge_items`;
+- `memory_graph_nodes`;
+- `memory_graph_edges`;
+- `memory_timeline`;
+- `memory_conflicts`;
+- `memory_consolidations`;
+- `memory_v3_meta`.
+
+### Working Memory
+
+`update_working()` записывает `current_focus` и безопасный `current_context`.
+TTL по умолчанию 24 часа. Истёкшие rows удаляются автоматически из working contour.
+
+### Knowledge promotion
+
+`ingest_memory()`:
+1. синхронизирует graph nodes/edges;
+2. обрабатывает provenance текущего документа;
+3. строит supersedes/mentions links;
+4. вызывает promotion только при достаточной importance/confidence/use evidence.
+
+Knowledge item хранит исходные memory IDs.
+
+### Consolidation
+
+`consolidate()` работает только внутри одинаковых `scope/kind`.
+
+Threshold: `0.72` по `SemanticMemoryIndex.score()`.
+
+Она не удаляет исходные memories и не вызывает LLM. Канонической формулировкой становится запись с лучшим importance/confidence/use-count.
+
+### Retention
+
+`evaluate_retention()` рассчитывает 0..1 из:
+- importance 38%;
+- confidence 22%;
+- use score 20%;
+- recency 20%.
+
+Важные decisions получают floor 0.82, важные preferences — 0.72.
+
+`SemanticMemoryIndex.search()` применяет retention multiplier `0.70 + retention*0.30`.
+
+### Conflict resolver
+
+После принятия candidate с `relation=conflict` runtime регистрирует old/new memory pair.
+
+Разрешения:
+- `prefer_new`;
+- `prefer_old`;
+- `keep_both`.
+
+Проигравшая memory переводится в `active=0`, то есть мягко архивируется. Связанные confirmed knowledge items получают `valid_to`.
+
+### Automation
+
+Startup:
+- `bootstrap()`;
+- `maybe_maintain(interval_hours=6)`.
+
+Manual:
+- `POST /api/sayuri/memory/v3/maintenance`.
+
+Dashboard endpoint не запускает тяжёлую maintenance и остаётся read-only.
+
+### AI context
+
+`MemorySystemV3.context(query)` возвращает:
+- working;
+- semantic-ranked confirmed knowledge;
+- semantic-ranked episodes;
+- количество открытых конфликтов.
+
+Этот JSON отправляется DeepSeek как недоверенный system-data block, отдельно от personal/project Semantic Memory и Experience Learning.
+
+### Обязательные тесты
+
+- Working Memory и context-linking;
+- knowledge promotion;
+- graph document provenance;
+- consolidation сохраняет source IDs;
+- retention снижает retrieval weight без удаления;
+- conflict resolver мягко архивирует выбранную неактуальную память;
+- timeline сохраняет conflict lifecycle;
+- API dashboard/maintenance/conflict resolution;
+- Web UI Memory 3.0 contract;
+- полный versioning check на атомарном release commit.
+
+Graph extraction дополнительно создаёт company nodes для консервативно распознанных ООО/АО/ПАО/ИП и event nodes для эпизодической памяти. Это локальные детерминированные сущности, без LLM entity extraction.
+
+### Idempotency episodic
+
+`episodic_memory.fingerprint` имеет частичный UNIQUE index. Для chat feedback используется `chat_feedback:{response_id}`, для Safe Action — `action:{action_id}`, для review candidate — `memory_candidate:{candidate_id}`. Retry обновляет существующий эпизод вместо создания дубля.
+
+### Archive propagation
+
+Ручное удаление memory выполняется как soft archive исходной записи. Memory 3.0 затем:
+- удаляет архивированный source ID из knowledge, если есть другие активные источники;
+- иначе переводит knowledge в `archived` и ставит `valid_to`;
+- сохраняет timeline события.
+
+AI-context открытого конфликта содержит ограниченные old/new значения и отдельный точный `open_conflicts` count.

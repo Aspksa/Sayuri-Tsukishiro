@@ -111,7 +111,13 @@ function showView(name) {
     loadDisk().catch(showDiskError);
   } else if (name === 'sayuri') {
     history.replaceState(null, '', '#sayuri');
-    Promise.all([loadSayuriProfile(), loadSayuriMemory(), loadSayuriMemoryCandidates(), loadSayuriExperience()]).catch(showSayuriProviderError);
+    Promise.all([
+      loadSayuriProfile(),
+      loadSayuriMemory(),
+      loadSayuriMemoryCandidates(),
+      loadSayuriMemoryV3(),
+      loadSayuriExperience()
+    ]).catch(showSayuriProviderError);
   } else if (name === 'settings') {
     history.replaceState(null, '', '#settings');
   } else {
@@ -1718,10 +1724,321 @@ function renderSayuriMemoryStats(stats) {
   if (byId('sayuri-memory-pending')) byId('sayuri-memory-pending').textContent = String(stats.intelligence?.pending_review ?? 0);
   if (byId('sayuri-memory-total')) byId('sayuri-memory-total').textContent = String(stats.total ?? 0);
   if (byId('sayuri-semantic-engine')) byId('sayuri-semantic-engine').textContent = stats.semantic?.engine || 'hybrid-semantic-v1';
+  renderSayuriMemoryV3Stats(stats.v3 || {});
   renderMemoryIntelligenceSettings(stats.intelligence?.settings || {});
 }
 
 
+
+function setMemoryV3Message(text, kind = '') {
+  const target = byId('sayuri-memory-v3-message');
+  if (!target) return;
+  target.className = `sayuri-memory-v3-message ${kind}`.trim();
+  target.textContent = text;
+}
+
+function renderSayuriMemoryV3Stats(stats) {
+  const mapping = {
+    'memory-v3-working': stats.working,
+    'memory-v3-episodes': stats.episodes,
+    'memory-v3-knowledge': stats.knowledge,
+    'memory-v3-nodes': stats.graph_nodes,
+    'memory-v3-edges': stats.graph_edges,
+    'memory-v3-conflicts': stats.open_conflicts,
+    'memory-v3-consolidations': stats.consolidations,
+    'memory-v3-stale': stats.stale_candidates
+  };
+  for (const [id, value] of Object.entries(mapping)) {
+    if (byId(id)) byId(id).textContent = String(value ?? 0);
+  }
+}
+
+function memoryV3Empty(container, text) {
+  const empty = document.createElement('p');
+  empty.className = 'muted';
+  empty.textContent = text;
+  container.append(empty);
+}
+
+function renderMemoryV3Working(payload) {
+  const container = byId('memory-v3-working-list');
+  if (!container) return;
+  container.replaceChildren();
+  const items = payload.working?.items || [];
+  if (!items.length) {
+    memoryV3Empty(container, 'Рабочая память пуста.');
+    return;
+  }
+  for (const item of items) {
+    const row = document.createElement('article');
+    row.className = 'memory-v3-row';
+    const title = document.createElement('strong');
+    title.textContent = item.key === 'current_focus' ? 'Текущий фокус' : 'Текущий контекст';
+    const text = document.createElement('p');
+    if (item.value?.message) {
+      text.textContent = item.value.message;
+    } else {
+      const documentName = item.value?.current_document?.name;
+      const view = item.value?.title || item.value?.view || 'интерфейс';
+      text.textContent = documentName ? `${view} · ${documentName}` : view;
+    }
+    const meta = document.createElement('small');
+    meta.textContent = `обновлено ${formatDate(item.updated_at)} · TTL ${payload.working?.ttl_hours || 24} ч`;
+    row.append(title, text, meta);
+    container.append(row);
+  }
+}
+
+function renderMemoryV3Knowledge(payload) {
+  const container = byId('memory-v3-knowledge-list');
+  if (!container) return;
+  container.replaceChildren();
+  const items = payload.knowledge || [];
+  if (!items.length) {
+    memoryV3Empty(container, 'Устойчивые знания ещё не сформированы.');
+    return;
+  }
+  for (const item of items.slice(0, 20)) {
+    const row = document.createElement('article');
+    row.className = 'memory-v3-row knowledge';
+    const head = document.createElement('div');
+    head.className = 'memory-v3-row-head';
+    const kind = document.createElement('span');
+    kind.textContent = `${item.scope === 'personal' ? 'личная' : 'проектная'} · ${memoryKindLabel(item.kind)}`;
+    const confidence = document.createElement('strong');
+    confidence.textContent = `${Math.round((Number(item.confidence) || 0) * 100)}%`;
+    head.append(kind, confidence);
+    const text = document.createElement('p');
+    text.textContent = item.statement;
+    const meta = document.createElement('small');
+    meta.textContent = `источников ${item.source_memory_ids?.length || 0} · действует с ${formatDate(item.valid_from)}`;
+    row.append(head, text, meta);
+    container.append(row);
+  }
+}
+
+function renderMemoryV3Episodes(payload) {
+  const container = byId('memory-v3-episodes-list');
+  if (!container) return;
+  container.replaceChildren();
+  const items = payload.episodes || [];
+  if (!items.length) {
+    memoryV3Empty(container, 'Значимых эпизодов пока нет.');
+    return;
+  }
+  for (const item of items.slice(0, 20)) {
+    const row = document.createElement('article');
+    row.className = 'memory-v3-row episode';
+    const head = document.createElement('div');
+    head.className = 'memory-v3-row-head';
+    const type = document.createElement('span');
+    type.textContent = item.event_type.replaceAll('_', ' ');
+    const importance = document.createElement('strong');
+    importance.textContent = `${item.importance}/5`;
+    head.append(type, importance);
+    const text = document.createElement('p');
+    text.textContent = item.summary;
+    const meta = document.createElement('small');
+    meta.textContent = `${item.scope} · ${item.source} · ${formatDate(item.occurred_at)}`;
+    row.append(head, text, meta);
+    container.append(row);
+  }
+}
+
+function renderMemoryV3Timeline(payload) {
+  const container = byId('memory-v3-timeline');
+  if (!container) return;
+  container.replaceChildren();
+  const items = payload.timeline || [];
+  if (!items.length) {
+    memoryV3Empty(container, 'Хронология пока пуста.');
+    return;
+  }
+  for (const item of items.slice(0, 24)) {
+    const row = document.createElement('article');
+    row.className = 'memory-v3-timeline-row';
+    const marker = document.createElement('span');
+    marker.className = 'memory-v3-timeline-marker';
+    const body = document.createElement('div');
+    const title = document.createElement('strong');
+    title.textContent = item.event_type.replaceAll('_', ' ');
+    const text = document.createElement('p');
+    text.textContent = item.summary;
+    const meta = document.createElement('small');
+    meta.textContent = `${item.scope || 'system'} · ${formatDate(item.occurred_at)}`;
+    body.append(title, text, meta);
+    row.append(marker, body);
+    container.append(row);
+  }
+}
+
+function renderMemoryV3Graph(payload) {
+  const container = byId('memory-v3-graph');
+  if (!container) return;
+  container.replaceChildren();
+  const nodes = payload.graph?.nodes || [];
+  const edges = payload.graph?.edges || [];
+  if (!nodes.length) {
+    memoryV3Empty(container, 'Граф ещё не построен.');
+    return;
+  }
+  const byNodeId = new Map(nodes.map((node) => [node.id, node]));
+  const summary = document.createElement('div');
+  summary.className = 'memory-v3-graph-summary';
+  const typeCounts = {};
+  for (const node of nodes) typeCounts[node.type] = (typeCounts[node.type] || 0) + 1;
+  for (const [type, count] of Object.entries(typeCounts).sort()) {
+    const chip = document.createElement('span');
+    chip.textContent = `${type}: ${count}`;
+    summary.append(chip);
+  }
+  container.append(summary);
+
+  for (const edge of edges.slice(0, 24)) {
+    const source = byNodeId.get(edge.source);
+    const target = byNodeId.get(edge.target);
+    if (!source || !target) continue;
+    const row = document.createElement('article');
+    row.className = 'memory-v3-graph-edge';
+    const from = document.createElement('strong');
+    from.textContent = source.label;
+    const relation = document.createElement('span');
+    relation.textContent = edge.relation.replaceAll('_', ' ');
+    const to = document.createElement('strong');
+    to.textContent = target.label;
+    row.append(from, relation, to);
+    container.append(row);
+  }
+}
+
+function renderMemoryV3Conflicts(payload) {
+  const container = byId('memory-v3-conflicts-list');
+  if (!container) return;
+  container.replaceChildren();
+  const items = payload.conflicts || [];
+  if (!items.length) {
+    memoryV3Empty(container, 'Открытых противоречий нет.');
+    return;
+  }
+  for (const item of items) {
+    const card = document.createElement('article');
+    card.className = 'memory-v3-conflict';
+    const title = document.createElement('strong');
+    title.textContent = item.scope === 'personal' ? 'Личная память: конфликт' : 'Проектная память: конфликт';
+
+    const compare = document.createElement('div');
+    compare.className = 'memory-v3-conflict-compare';
+    const oldBox = document.createElement('div');
+    const oldLabel = document.createElement('span');
+    oldLabel.textContent = 'Раньше';
+    const oldText = document.createElement('p');
+    oldText.textContent = item.old_content;
+    oldBox.append(oldLabel, oldText);
+
+    const newBox = document.createElement('div');
+    const newLabel = document.createElement('span');
+    newLabel.textContent = 'Новое';
+    const newText = document.createElement('p');
+    newText.textContent = item.new_content;
+    newBox.append(newLabel, newText);
+    compare.append(oldBox, newBox);
+
+    const controls = document.createElement('div');
+    controls.className = 'memory-v3-conflict-actions';
+    const options = [
+      ['prefer_new', 'Новое актуально'],
+      ['prefer_old', 'Старое актуально'],
+      ['keep_both', 'Оба верны']
+    ];
+    for (const [resolution, label] of options) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = resolution === 'prefer_new' ? 'primary-button' : 'secondary-button';
+      button.textContent = label;
+      button.addEventListener('click', () => resolveMemoryV3Conflict(item.id, resolution));
+      controls.append(button);
+    }
+
+    card.append(title, compare, controls);
+    container.append(card);
+  }
+}
+
+function renderMemoryV3Retention(payload) {
+  const container = byId('memory-v3-retention-list');
+  if (!container) return;
+  container.replaceChildren();
+  const items = payload.retention?.stale || [];
+  if (!items.length) {
+    memoryV3Empty(container, 'Устаревающих записей нет.');
+    return;
+  }
+  for (const item of items.slice(0, 20)) {
+    const row = document.createElement('article');
+    row.className = 'memory-v3-retention-row';
+    const score = document.createElement('strong');
+    score.textContent = `${Math.round((Number(item.retention_score) || 0) * 100)}%`;
+    const body = document.createElement('div');
+    const text = document.createElement('p');
+    text.textContent = item.content;
+    const meta = document.createElement('small');
+    meta.textContent = `${item.scope} · ${memoryKindLabel(item.kind)} · retrieval-вес снижен`;
+    body.append(text, meta);
+    row.append(score, body);
+    container.append(row);
+  }
+}
+
+function renderSayuriMemoryV3(payload) {
+  renderSayuriMemoryV3Stats(payload.stats || {});
+  renderMemoryV3Working(payload);
+  renderMemoryV3Knowledge(payload);
+  renderMemoryV3Episodes(payload);
+  renderMemoryV3Timeline(payload);
+  renderMemoryV3Graph(payload);
+  renderMemoryV3Conflicts(payload);
+  renderMemoryV3Retention(payload);
+}
+
+async function loadSayuriMemoryV3() {
+  const response = await fetch('/api/sayuri/memory/v3', {cache: 'no-store'});
+  const data = await response.json();
+  if (!response.ok) throw new Error(data?.error?.message || `HTTP ${response.status}`);
+  renderSayuriMemoryV3(data);
+  return data;
+}
+
+async function maintainSayuriMemoryV3() {
+  const button = byId('sayuri-memory-v3-maintain');
+  button.disabled = true;
+  setMemoryV3Message('Проверяю актуальность, знания, связи и консолидации…');
+  try {
+    const result = await postJson('/api/sayuri/memory/v3/maintenance', {});
+    setMemoryV3Message(
+      `Готово: знаний ${result.stats?.knowledge ?? 0}, консолидаций +${result.consolidation?.created ?? 0}, устаревающих ${result.retention?.stale_count ?? 0}.`,
+      'ready'
+    );
+    await Promise.all([loadSayuriMemoryV3(), loadSayuriMemory(), loadSayuriProfile()]);
+  } catch (error) {
+    setMemoryV3Message(`Ошибка обслуживания: ${error instanceof Error ? error.message : String(error)}`, 'error');
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function resolveMemoryV3Conflict(conflictId, resolution) {
+  try {
+    const result = await postJson(
+      `/api/sayuri/memory/v3/conflicts/${encodeURIComponent(conflictId)}/resolve`,
+      {resolution}
+    );
+    renderSayuriMemoryV3(result.dashboard || {});
+    setMemoryV3Message('Противоречие разрешено, временная история сохранена.', 'ready');
+    await Promise.all([loadSayuriMemory(), loadSayuriProfile()]);
+  } catch (error) {
+    setMemoryV3Message(`Ошибка разрешения конфликта: ${error instanceof Error ? error.message : String(error)}`, 'error');
+  }
+}
 
 function renderSayuriExperience(stats) {
   if (byId('sayuri-experience-total')) byId('sayuri-experience-total').textContent = String(stats.total ?? 0);
@@ -1784,6 +2101,7 @@ async function rateSayuriMessage(messageIndex, rating) {
     persistSayuriHistory();
     renderSayuriMessages();
     renderSayuriExperience(result.stats || {});
+    loadSayuriMemoryV3().catch(() => {});
   } catch (error) {
     byId('sayuri-chat-status').textContent = `Не удалось сохранить оценку: ${error instanceof Error ? error.message : String(error)}`;
   }
@@ -1952,7 +2270,14 @@ async function reviewSayuriMemoryCandidate(candidateId, decision) {
       decision === 'accept' ? 'Кандидат сохранён в долговременную память.' : 'Кандидат отклонён.',
       decision === 'accept' ? 'ready' : ''
     );
-    await Promise.all([loadSayuriMemory(), loadSayuriMemoryCandidates(), loadSayuriProfile(), loadSayuriExperience(), loadSystem()]);
+    await Promise.all([
+      loadSayuriMemory(),
+      loadSayuriMemoryCandidates(),
+      loadSayuriMemoryV3(),
+      loadSayuriProfile(),
+      loadSayuriExperience(),
+      loadSystem()
+    ]);
   } catch (error) {
     setMemoryCandidateMessage(`Ошибка: ${error instanceof Error ? error.message : String(error)}`, 'error');
   }
@@ -2097,7 +2422,7 @@ async function saveSayuriMemory(event) {
     byId('sayuri-memory-content').value = '';
     renderSayuriMemoryStats(result.stats || {});
     setSayuriMemoryMessage('Запись сохранена в долговременную память.', 'ready');
-    await Promise.all([loadSayuriMemory(), loadSayuriProfile(), loadSystem()]);
+    await Promise.all([loadSayuriMemory(), loadSayuriMemoryV3(), loadSayuriProfile(), loadSystem()]);
   } catch (error) {
     setSayuriMemoryMessage(`Ошибка: ${error instanceof Error ? error.message : String(error)}`, 'error');
   }
@@ -2455,7 +2780,14 @@ function updateSayuriMessageAction(messageIndex, action) {
 }
 
 async function refreshAfterSayuriAction() {
-  const tasks = [loadSystem(), loadSayuriProfile(), loadSayuriActions(), loadSayuriMemory(), loadSayuriExperience()];
+  const tasks = [
+    loadSystem(),
+    loadSayuriProfile(),
+    loadSayuriActions(),
+    loadSayuriMemory(),
+    loadSayuriMemoryV3(),
+    loadSayuriExperience()
+  ];
   if (document.querySelector('#view-disk.active')) tasks.push(loadDisk());
   await Promise.allSettled(tasks);
   updateSayuriContextUI();
@@ -2603,11 +2935,14 @@ async function sendSayuriMessage(text) {
       memory_candidates: result.memory_candidates || [],
       response_id: result.response_id || null,
       semantic_memory: result.semantic_memory || null,
+      memory_v3: result.memory_v3 || null,
+      memory_v3_used: result.memory_v3_used || 0,
       experience_used: result.experience_used || 0,
       prompt: message
     });
     if (result.memory_saved) {
       loadSayuriMemory().catch(() => {});
+      loadSayuriMemoryV3().catch(() => {});
       loadSayuriProfile().catch(() => {});
     }
     if (result.memory_candidates?.length) {
@@ -2616,7 +2951,7 @@ async function sendSayuriMessage(text) {
     }
     byId('sayuri-chat-status').textContent = result.model === 'local-memory'
       ? 'Память Sayuri · сохранено локально'
-      : `DeepSeek-V4-Flash · память ${result.memory_used || 0} · опыт ${result.experience_used || 0}`;
+      : `DeepSeek-V4-Flash · память ${result.memory_used || 0} · знания ${result.memory_v3_used || 0} · опыт ${result.experience_used || 0}`;
   } catch (error) {
     const text = error instanceof Error ? error.message : String(error);
     addSayuriMessage('assistant', `Не удалось получить ответ: ${text}`);
@@ -2866,6 +3201,8 @@ function initializeSayuri() {
   byId('sayuri-avatar-refresh').addEventListener('click', () => loadSayuriProfile().catch(showSayuriProviderError));
   byId('sayuri-actions-refresh').addEventListener('click', () => loadSayuriActions().catch(showSayuriProviderError));
   byId('sayuri-experience-refresh').addEventListener('click', () => loadSayuriExperience().catch(showSayuriProviderError));
+  byId('sayuri-memory-v3-refresh').addEventListener('click', () => loadSayuriMemoryV3().catch(showSayuriProviderError));
+  byId('sayuri-memory-v3-maintain').addEventListener('click', maintainSayuriMemoryV3);
 
   document.querySelectorAll('[data-sayuri-action]').forEach((button) => {
     button.addEventListener('click', () => runSayuriAction(button.dataset.sayuriAction));
