@@ -791,3 +791,5 @@ Dashboard endpoint не запускает тяжёлую maintenance и ост�
 - API dashboard/maintenance/conflict resolution;
 - Web UI Memory 3.0 contract;
 - полный versioning check на атомарном release commit.
+
+Graph extraction дополнительно создаёт company nodes для консервативно распознанных ООО/АО/ПАО/ИП и event nodes для эпизодической памяти. Это локальные детерминированные сущности, без LLM entity extraction.
