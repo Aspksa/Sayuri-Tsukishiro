@@ -798,6 +798,40 @@ class MemorySystemV3:
             ).fetchall()
         return [self._knowledge_row(row) for row in rows]
 
+    def bootstrap(self) -> dict[str, Any]:
+        entries = self.memory.list(limit=300)
+        promoted = 0
+        for entry in entries:
+            result = self.ingest_memory(entry, timeline=False)
+            if result.get("knowledge"):
+                promoted += 1
+        retention = self.evaluate_retention()
+        return {
+            "entries": len(entries),
+            "knowledge_promoted": promoted,
+            "retention": retention,
+        }
+
+    def retention_snapshot(self) -> dict[str, Any]:
+        entries = self.memory.list(limit=300)
+        stale = [
+            {
+                "id": entry["id"],
+                "scope": entry["scope"],
+                "kind": entry["kind"],
+                "content": entry["content"],
+                "retention_score": round(float(entry.get("retention_score", 1.0)), 4),
+            }
+            for entry in entries
+            if float(entry.get("retention_score", 1.0)) < self.STALE_THRESHOLD
+        ]
+        return {
+            "updated": 0,
+            "stale_count": len(stale),
+            "threshold": self.STALE_THRESHOLD,
+            "stale": sorted(stale, key=lambda item: item["retention_score"])[:50],
+        }
+
     def evaluate_retention(self) -> dict[str, Any]:
         entries = self.memory.list(limit=300)
         now = self._now_dt()
@@ -1211,7 +1245,7 @@ class MemorySystemV3:
         }
 
     def dashboard(self) -> dict[str, Any]:
-        retention = self.evaluate_retention()
+        retention = self.retention_snapshot()
         return {
             "stats": self.stats(),
             "working": self.working(),
