@@ -1817,6 +1817,34 @@ function renderMemoryV3Knowledge(payload) {
   }
 }
 
+function renderMemoryV3Episodes(payload) {
+  const container = byId('memory-v3-episodes-list');
+  if (!container) return;
+  container.replaceChildren();
+  const items = payload.episodes || [];
+  if (!items.length) {
+    memoryV3Empty(container, 'Значимых эпизодов пока нет.');
+    return;
+  }
+  for (const item of items.slice(0, 20)) {
+    const row = document.createElement('article');
+    row.className = 'memory-v3-row episode';
+    const head = document.createElement('div');
+    head.className = 'memory-v3-row-head';
+    const type = document.createElement('span');
+    type.textContent = item.event_type.replaceAll('_', ' ');
+    const importance = document.createElement('strong');
+    importance.textContent = `${item.importance}/5`;
+    head.append(type, importance);
+    const text = document.createElement('p');
+    text.textContent = item.summary;
+    const meta = document.createElement('small');
+    meta.textContent = `${item.scope} · ${item.source} · ${formatDate(item.occurred_at)}`;
+    row.append(head, text, meta);
+    container.append(row);
+  }
+}
+
 function renderMemoryV3Timeline(payload) {
   const container = byId('memory-v3-timeline');
   if (!container) return;
@@ -1965,6 +1993,7 @@ function renderSayuriMemoryV3(payload) {
   renderSayuriMemoryV3Stats(payload.stats || {});
   renderMemoryV3Working(payload);
   renderMemoryV3Knowledge(payload);
+  renderMemoryV3Episodes(payload);
   renderMemoryV3Timeline(payload);
   renderMemoryV3Graph(payload);
   renderMemoryV3Conflicts(payload);
