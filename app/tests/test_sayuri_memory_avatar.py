@@ -153,6 +153,28 @@ class SayuriMemoryIntelligenceTests(unittest.TestCase):
             self.assertEqual(candidate["status"], "duplicate")
             self.assertEqual(memory.stats()["personal"]["count"], 1)
 
+    def test_opt_in_autosave_only_accepts_explicit_high_confidence_project_fact(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            memory = SayuriMemory(root / "memory.db")
+            memory.initialize()
+            intelligence = MemoryIntelligence(root / "memory.db", memory)
+            intelligence.update_settings({
+                "auto_save_high_confidence": True,
+                "auto_save_threshold": 0.98,
+            })
+
+            candidates = intelligence.analyze_message(
+                "Версия проекта: 0.1.41",
+                {"view": "home"},
+            )
+
+            self.assertEqual(candidates[0]["status"], "auto_saved")
+            entries = memory.list(scope="project")
+            self.assertEqual(len(entries), 1)
+            self.assertEqual(entries[0]["kind"], "fact")
+            self.assertGreaterEqual(entries[0]["confidence"], 0.98)
+
     def test_automation_settings_are_local_and_validated(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
