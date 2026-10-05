@@ -4029,3 +4029,254 @@ footer {
   }
 }
 
+/* ==========================================================================
+   SAYURI UI 0.16 — Confirmation-gated Actions
+   ========================================================================== */
+
+.sayuri-action-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid #cfe5d7;
+  border-radius: 999px;
+  background: #f3fbf6;
+  color: #316f4c;
+  font-size: 11px;
+}
+
+.sayuri-action-mode span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #3aa86e;
+}
+
+.sayuri-tool-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 9px;
+  margin: 15px 0 18px;
+}
+
+.sayuri-tool-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 12px;
+  border: 1px solid #e3e7ed;
+  border-radius: 13px;
+  background: #fafbfc;
+}
+
+.sayuri-tool-chip > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.sayuri-tool-chip strong {
+  font-size: 12px;
+}
+
+.sayuri-tool-chip small {
+  color: var(--ui-muted, #6f7b8c);
+  font-size: 10.5px;
+}
+
+.sayuri-tool-chip > span {
+  flex: 0 0 auto;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: #edf8f1;
+  color: #31714d;
+  font-size: 9.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.sayuri-actions-history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 9px;
+}
+
+.sayuri-actions-history {
+  display: grid;
+  gap: 7px;
+  max-height: 360px;
+  overflow: auto;
+}
+
+.sayuri-action-history-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 12px;
+  border: 1px solid #e7eaee;
+  border-radius: 12px;
+  background: #fafbfc;
+}
+
+.sayuri-action-history-row > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.sayuri-action-history-row strong {
+  font-size: 11.5px;
+}
+
+.sayuri-action-history-row small {
+  color: var(--ui-muted, #6f7b8c);
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+
+.sayuri-action-history-row > span {
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #f0f2f5;
+  color: #687180;
+  font-size: 9.5px;
+  font-weight: 750;
+}
+
+.sayuri-action-history-row.completed > span {
+  background: #edf8f1;
+  color: #31714d;
+}
+
+.sayuri-action-history-row.pending > span,
+.sayuri-action-history-row.executing > span {
+  background: #fff6df;
+  color: #8a651e;
+}
+
+.sayuri-action-history-row.failed > span,
+.sayuri-action-history-row.expired > span {
+  background: #fff0f0;
+  color: #9a4242;
+}
+
+.sayuri-message-text {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.sayuri-action-proposal {
+  display: grid;
+  gap: 9px;
+  margin-top: 10px;
+  padding: 11px;
+  border: 1px solid #dcdfe6;
+  border-radius: 13px;
+  background: #f9fafc;
+}
+
+.sayuri-action-proposal.pending {
+  border-color: #dccb9c;
+  background: #fffaf0;
+}
+
+.sayuri-action-proposal.completed {
+  border-color: #cce4d5;
+  background: #f5fbf7;
+}
+
+.sayuri-action-proposal.failed,
+.sayuri-action-proposal.expired {
+  border-color: #ebcccc;
+  background: #fff7f7;
+}
+
+.sayuri-action-proposal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.sayuri-action-proposal-head > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.sayuri-action-proposal-head span {
+  color: #8a6c29;
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: .08em;
+}
+
+.sayuri-action-proposal-head strong {
+  font-size: 12px;
+}
+
+.sayuri-action-proposal-head em {
+  flex: 0 0 auto;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.78);
+  color: #6d7480;
+  font-size: 9.5px;
+  font-style: normal;
+  font-weight: 750;
+}
+
+.sayuri-action-proposal p {
+  margin: 0;
+  color: #555f6e;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.sayuri-action-proposal-status {
+  font-size: 10px;
+  font-weight: 800;
+  color: #765d22;
+}
+
+.sayuri-action-proposal > small {
+  color: var(--ui-muted, #6f7b8c);
+  font-size: 10px;
+}
+
+.sayuri-action-proposal-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.sayuri-action-proposal-controls .primary-button,
+.sayuri-action-proposal-controls .secondary-button {
+  min-height: 34px;
+  padding: 0 11px;
+  font-size: 11px;
+}
+
+.sayuri-action-result {
+  color: #4f5966 !important;
+}
+
+@media (max-width: 640px) {
+  .sayuri-action-history-row,
+  .sayuri-action-proposal-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .sayuri-action-mode {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
