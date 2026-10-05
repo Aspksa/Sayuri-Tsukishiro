@@ -160,9 +160,23 @@ class SayuriCore:
     def sayuri_experience(self, limit: int = 50) -> dict[str, Any]:
         return self.agent.experience_payload(limit)
 
-    def rate_sayuri_response(self, response_id: str, rating: str, context: Any = None) -> dict[str, Any]:
+    def rate_sayuri_response(
+        self,
+        response_id: str,
+        rating: str,
+        *,
+        prompt: str = "",
+        answer: str = "",
+        context: Any = None,
+    ) -> dict[str, Any]:
         try:
-            result = self.agent.record_chat_feedback(response_id, rating, context)
+            result = self.agent.record_chat_feedback(
+                response_id,
+                rating,
+                prompt=prompt,
+                answer=answer,
+                context=context,
+            )
         except AgentRuntimeError as exc:
             raise BadRequestError(str(exc)) from exc
         self.database.record_event(
