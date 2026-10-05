@@ -2,6 +2,21 @@
 
 ## Невыпущенные изменения
 
+### 0.1.30 — 2026-10-05 — Sayuri Companion 0.1
+
+- Телефон Sayuri повышен до `0.7.0`, Web UI до `0.10.0`.
+- Добавлен новый зарегистрированный Android-модуль `Sayuri Companion 0.1.0`.
+- Добавлен локальный authenticated Companion protocol через ADB reverse.
+- Добавлен Android NotificationListenerService.
+- Pairing требует явного подтверждения пользователя на телефоне.
+- Notification Access остаётся системным Android-разрешением и не обходится.
+- Добавлены Companion status/events/enable/disable API.
+- В floating phone добавлен drawer уведомлений.
+- Добавлен Android CI: AGP 9.4.0 / Gradle 9.6.1 / JDK 17 / API 36.
+- Workflow публикует APK и checksum как versioned GitHub Release.
+- Автоустановка APK намеренно отложена до следующего patch после получения digest реально собранного APK.
+
+
 ### 0.1.29 — 2026-10-05 — Телефон Sayuri 0.6 Audio & Clipboard
 
 - Телефон Sayuri повышен до `0.6.0`, Web UI до `0.9.0`.

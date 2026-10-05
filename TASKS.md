@@ -218,3 +218,20 @@
   - cleanup при disconnect/device switch/minimize/close/native scrcpy;
   - binary protocol tests.
 - Следующий этап после проверки: PHONE-005 — Sayuri Companion для уведомлений, устойчивого обмена файлами/событиями и глубокой Android-интеграции без зависимости от Developer Options для каждого сценария.
+
+
+## PHONE-005A — Sayuri Companion
+- Статус: `implemented; Android CI pending`.
+- Реализовано:
+  - Android companion source;
+  - явное pairing confirmation;
+  - NotificationListenerService;
+  - localhost-only bridge через ADB reverse;
+  - ephemeral 256-bit-class token;
+  - Bearer authentication;
+  - bounded notification queue;
+  - Companion status/events/enable/disable API;
+  - notification drawer в плавающем телефоне;
+  - Android APK build/release workflow;
+  - Python/API/web/source contract tests.
+- Следующий шаг: PHONE-005B — после успешной сборки закрепить digest APK и сделать кнопку автоматической установки.

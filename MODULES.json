@@ -22,13 +22,19 @@
     {
       "id": "sayuri-phone",
       "display_name": "Телефон Sayuri",
-      "description": "Плавающее Android-окно: H.264/WebCodecs, встроенный Opus-звук, двусторонний Unicode clipboard, мышь/клавиатура, USB/Wi-Fi ADB, scrcpy 4.1, файлы, снимки, запись и запуск приложений.",
+      "description": "Глобальный Android workspace: H.264/WebCodecs, Opus, clipboard, клавиатура/мышь, файлы, приложения и локальный Sayuri Companion.",
       "path": "phone"
+    },
+    {
+      "id": "sayuri-companion",
+      "display_name": "Sayuri Companion",
+      "description": "Android-компаньон: локальное токенизированное сопряжение и передача уведомлений через ADB reverse без открытия Sayuri в сеть.",
+      "path": "companion"
     },
     {
       "id": "web-ui",
       "display_name": "Веб-интерфейс",
-      "description": "Локальная оболочка Sayuri с плавающим Телефон Sayuri, H.264/Opus WebCodecs, двусторонним clipboard, Диском, ДНК и системными настройками.",
+      "description": "Локальная оболочка Sayuri с плавающим телефоном, уведомлениями Companion, Диском, ДНК и системными настройками.",
       "path": "web"
     },
     {

@@ -316,6 +316,28 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
             if parsed.path == "/api/phone":
                 self._json(self.server.core.phone.health())
                 return
+            if parsed.path == "/api/phone/companion":
+                serial = query.get("serial", [None])[0]
+                self._json(self.server.core.phone.companion_status(serial))
+                return
+            if parsed.path == "/api/phone/companion/events":
+                serial = query.get("serial", [None])[0]
+                try:
+                    limit = int(query.get("limit", ["50"])[0])
+                except ValueError:
+                    limit = 50
+                try:
+                    after = int(query.get("after", ["0"])[0])
+                except ValueError:
+                    after = 0
+                self._json(
+                    self.server.core.phone.companion_events(
+                        serial,
+                        limit=limit,
+                        after=after,
+                    )
+                )
+                return
             if parsed.path == "/api/phone/apps":
                 serial = query.get("serial", [None])[0]
                 self._json({
@@ -541,6 +563,61 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
                 if not isinstance(changes, dict):
                     raise BadRequestError("Поле settings должно быть объектом.")
                 self._json(self.server.core.update_settings(changes))
+                return
+
+            if parsed.path == "/api/phone/companion/events":
+                payload = self._read_json()
+                authorization = self.headers.get("Authorization", "")
+                token = (
+                    authorization[len("Bearer "):].strip()
+                    if authorization.startswith("Bearer ")
+                    else ""
+                )
+                serial = self.headers.get("X-Sayuri-Phone-Serial", "").strip()
+                try:
+                    self._json(
+                        self.server.core.phone.companion_event(
+                            serial,
+                            token,
+                            payload,
+                        )
+                    )
+                except PermissionError as exc:
+                    self._error(
+                        SayuriError(
+                            "SAYURI-COMPANION-403",
+                            str(exc),
+                            HTTPStatus.FORBIDDEN,
+                        ),
+                        request_id,
+                    )
+                return
+
+            if parsed.path == "/api/phone/companion/enable":
+                payload = self._read_json()
+                result = self.server.core.phone.enable_companion(
+                    payload.get("serial"),
+                    host_port=self.server.server_port,
+                )
+                self.server.core.database.record_event(
+                    "Телефон Sayuri",
+                    "Sayuri Companion: сопряжение запущено",
+                    details={"serial": result.get("serial")},
+                )
+                self._json(result)
+                return
+
+            if parsed.path == "/api/phone/companion/disable":
+                payload = self._read_json()
+                result = self.server.core.phone.disable_companion(
+                    payload.get("serial")
+                )
+                self.server.core.database.record_event(
+                    "Телефон Sayuri",
+                    "Sayuri Companion отключён",
+                    details={"serial": result.get("serial")},
+                )
+                self._json(result)
                 return
 
             if parsed.path == "/api/phone/pair":

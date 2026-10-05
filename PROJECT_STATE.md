@@ -720,3 +720,51 @@ Preflight теперь отдельно выводит `диск_sayuri`, что
   - полный Unicode гарантирован через clipboard/text bar и через native scrcpy UHID;
   - browser AudioDecoder зависит от поддержки Chromium/WebCodecs; при отсутствии audio отключается отдельно.
 - Добавлены binary protocol tests, API tests и web-contract tests.
+
+
+## PHONE-005A — Sayuri Companion 0.1
+
+- Дата: 2026-10-05.
+- Исходная ревизия: `c3aaea5a94db1e955e0fabd43d9863e74580eea7`.
+- Цель: следующий слой после PHONE 0.6 — уведомления и глубокая Android-интеграция без открытия локального сервера Sayuri в LAN.
+- Версии контрольной точки:
+  - проект `0.1.30`;
+  - Ядро Саюри `0.1.24`;
+  - Телефон Sayuri `0.7.0`;
+  - Web UI `0.10.0`;
+  - Sayuri Companion `0.1.0`.
+- Добавлен отдельный Android-модуль `companion/`.
+- Android build stack:
+  - AGP `9.4.0`;
+  - Gradle `9.6.1`;
+  - JDK `17`;
+  - compileSdk/targetSdk `36`;
+  - minSdk `26`.
+- Companion содержит:
+  - MainActivity;
+  - PairingActivity с явным подтверждением пользователя;
+  - NotificationListenerService;
+  - локальный HTTP client только к `127.0.0.1`.
+- Desktop bridge:
+  - random token per pairing;
+  - `adb reverse tcp:8766 tcp:<current Sayuri port>`;
+  - token не возвращается web-клиенту;
+  - события принимаются только с Bearer token + serial;
+  - очередь ограничена и живёт только в текущем процессе;
+  - notification content не записывается в системный event log.
+- События:
+  - listener_connected;
+  - listener_disconnected;
+  - notification_posted;
+  - notification_removed;
+  - heartbeat.
+- UI:
+  - компактный Companion-блок на странице телефона;
+  - колокольчик в floating phone;
+  - локальная лента уведомлений без отдельного пункта меню.
+- Android требует отдельного пользовательского разрешения Notification Access; Sayuri не пытается обходить системное разрешение.
+- Добавлен отдельный workflow `Sayuri Companion`:
+  - собирает APK из исходников;
+  - проверяет Gradle distribution SHA-256;
+  - публикует versioned APK + sha256 в GitHub Release `companion-v0.1.0`.
+- Следующий patch PHONE-005B после успешной Android-сборки: взять digest опубликованного APK и добавить проверяемую автоматическую установку из Телефон Sayuri.

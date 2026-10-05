@@ -747,3 +747,92 @@ Audio response:
 - audio failure → audio off only;
 - clipboard failure → clipboard action error only;
 - disconnect → all device-bound streams cleaned.
+
+
+## Телефон Sayuri 0.7 — Sayuri Companion 0.1
+
+### Android module
+
+```text
+companion/
+  VERSION
+  settings.gradle
+  build.gradle
+  gradle.properties
+  app/
+    build.gradle
+    src/main/AndroidManifest.xml
+    src/main/java/com/sayuri/tsukishiro/companion/
+      BridgeClient.java
+      MainActivity.java
+      PairingActivity.java
+      SayuriNotificationListener.java
+```
+
+Build:
+- AGP 9.4.0;
+- Gradle 9.6.1;
+- JDK 17;
+- compileSdk/targetSdk 36;
+- minSdk 26.
+
+### Pairing flow
+
+```text
+Sayuri desktop
+  POST /api/phone/companion/enable
+    ↓
+random token
+    ↓
+adb reverse tcp:8766 tcp:<current desktop port>
+    ↓
+adb shell am start PairingActivity
+    ↓
+user presses "Разрешить подключение"
+    ↓
+token stored in private SharedPreferences
+    ↓
+heartbeat → 127.0.0.1:8766
+    ↓
+ADB reverse
+    ↓
+POST /api/phone/companion/events
+```
+
+### Companion API
+
+```text
+GET  /api/phone/companion?serial=...
+GET  /api/phone/companion/events?serial=...&after=N
+POST /api/phone/companion/enable
+POST /api/phone/companion/disable
+POST /api/phone/companion/events
+```
+
+Device event POST requires:
+- `Authorization: Bearer <ephemeral token>`;
+- `X-Sayuri-Phone-Serial`.
+
+### Notification privacy
+
+Only bounded fields are accepted:
+- package;
+- title;
+- text;
+- subtext;
+- notification id;
+- tag;
+- event timestamp.
+
+Lengths are capped. Unknown event types are rejected.
+Notification content is not copied into the standard system log.
+
+### Build/release
+
+`.github/workflows/companion.yml`:
+- downloads Gradle 9.6.1;
+- verifies SHA-256 `9c0f7faeeb306cb14e4279a3e084ca6b596894089a0638e68a07c945a32c9e14`;
+- installs Android SDK 36;
+- builds debug APK;
+- uploads Actions artifact;
+- publishes `companion-v0.1.0` release with APK + sha256 file.

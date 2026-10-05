@@ -344,3 +344,23 @@
   - audio никогда не стартует автоматически без пользовательского клика;
   - браузерный AudioDecoder является optional capability;
   - запуск native scrcpy должен останавливать embedded audio, чтобы исключить двойной звук.
+
+
+## D-024 — PHONE-005: Companion использует ADB reverse и явное Android-разрешение
+
+- Дата: 2026-10-05.
+- Статус: принято.
+- Причина: для уведомлений Android одного scrcpy/ADB screenshot/control недостаточно; нужен системный NotificationListenerService.
+- Sayuri Companion является отдельным Android-приложением.
+- Desktop server остаётся `127.0.0.1`; LAN listener не добавляется.
+- Device → desktop transport:
+  `Android 127.0.0.1:8766 → adb reverse → текущий loopback-port Sayuri`.
+- Аутентификация:
+  - desktop генерирует случайный token;
+  - token передаётся приложению через explicit PairingActivity;
+  - пользователь подтверждает pairing на телефоне;
+  - Companion события требуют Bearer token и serial;
+  - token не возвращается browser UI.
+- Notification content не пишется в обычный журнал Sayuri; он живёт в ограниченной ephemeral queue.
+- Доступ к уведомлениям выдаётся только через штатные Android Notification Listener Settings.
+- APK не загружается/устанавливается до фактической CI-сборки и получения проверяемого digest.

@@ -50,6 +50,12 @@ const phoneState = {
   qualityProfile: localStorage.getItem('sayuri-phone-quality-profile') || 'quality',
   recordingSessions: new Set(),
   apps: [],
+  companionTimer: null,
+  companionStatus: null,
+  companionSerial: null,
+  notificationEvents: [],
+  notificationLastSequence: 0,
+  notificationDrawerOpen: false,
   lastFrameAt: 0
 };
 
@@ -113,6 +119,7 @@ function showView(name) {
   if (!phoneState.viewActive && !phoneState.floatingOpen) {
     stopPhoneVideo();
     stopPhoneReconnectLoop();
+    stopPhoneCompanionPolling();
   }
 
   document.querySelectorAll('.view').forEach((view) => {
@@ -1566,6 +1573,7 @@ function clearPhoneFrameImage() {
 function handlePhoneDisconnected(message = 'Телефон отключён.') {
   stopPhoneVideo();
   stopPhoneAudio();
+  stopPhoneCompanionPolling();
   phoneState.selectedSerial = null;
   phoneState.selectedDevice = null;
   phoneState.pointer = null;
@@ -2288,6 +2296,7 @@ function renderPhone(data) {
   const selectedChanged = selected?.serial !== phoneState.selectedSerial;
   phoneState.selectedDevice = selected;
   phoneState.selectedSerial = selected?.serial || null;
+  if (selectedChanged) resetPhoneCompanion(phoneState.selectedSerial);
 
   const launcher = byId('phone-float-launcher');
   launcher.classList.toggle('connected', Boolean(selected));
@@ -2382,6 +2391,11 @@ function renderPhone(data) {
   }
 
   updatePhoneFloatingState();
+  if (selected && phoneStatusActive() && !phoneState.companionTimer) {
+    loadPhoneCompanion().catch(() => schedulePhoneCompanionPolling(4000));
+  } else if (!selected) {
+    renderPhoneCompanionStatus(null);
+  }
 
   if (
     selected
@@ -2600,7 +2614,10 @@ function closePhoneFloat() {
   byId('phone-float-launcher').classList.remove('hidden');
   stopPhoneVideo();
   stopPhoneAudio();
-  if (!phoneState.viewActive) stopPhoneReconnectLoop();
+  if (!phoneState.viewActive) {
+    stopPhoneReconnectLoop();
+    stopPhoneCompanionPolling();
+  }
 }
 
 function togglePhoneFloatMinimize() {
@@ -2920,6 +2937,239 @@ function renderPhoneApps() {
   }
 }
 
+function stopPhoneCompanionPolling() {
+  if (phoneState.companionTimer) {
+    window.clearTimeout(phoneState.companionTimer);
+    phoneState.companionTimer = null;
+  }
+}
+
+function schedulePhoneCompanionPolling(delay = 3000) {
+  stopPhoneCompanionPolling();
+  if (!phoneStatusActive() || !phoneState.selectedSerial) return;
+  phoneState.companionTimer = window.setTimeout(() => {
+    phoneState.companionTimer = null;
+    loadPhoneCompanion().catch(() => {
+      schedulePhoneCompanionPolling(5000);
+    });
+  }, delay);
+}
+
+function resetPhoneCompanion(serial) {
+  stopPhoneCompanionPolling();
+  phoneState.companionStatus = null;
+  phoneState.companionSerial = serial || null;
+  phoneState.notificationEvents = [];
+  phoneState.notificationLastSequence = 0;
+  renderPhoneNotifications();
+}
+
+function renderPhoneCompanionStatus(status) {
+  phoneState.companionStatus = status || null;
+  const copy = byId('phone-companion-status');
+  const enable = byId('phone-companion-enable');
+  const disable = byId('phone-companion-disable');
+  const live = byId('phone-companion-live-state');
+  const notificationButton = byId('phone-notifications');
+
+  if (!phoneState.selectedSerial) {
+    copy.textContent = 'Подключите авторизованный Android.';
+    enable.disabled = true;
+    disable.classList.add('hidden');
+    live.textContent = 'Companion не подключён';
+    notificationButton.disabled = true;
+    return;
+  }
+
+  if (!status?.installed) {
+    copy.textContent = 'Sayuri Companion ещё не установлен на телефоне.';
+    enable.textContent = 'Companion не установлен';
+    enable.disabled = true;
+    disable.classList.add('hidden');
+    live.textContent = 'Нужен Sayuri Companion';
+    notificationButton.disabled = true;
+    return;
+  }
+
+  enable.disabled = false;
+  notificationButton.disabled = !status.paired;
+  disable.classList.toggle('hidden', !status.paired);
+
+  if (!status.paired) {
+    copy.textContent = 'Companion установлен. Нажмите «Сопрячь Companion» и подтвердите подключение на телефоне.';
+    enable.textContent = 'Сопрячь Companion';
+    live.textContent = 'Готов к сопряжению';
+    return;
+  }
+
+  if (!status.last_seen_at) {
+    copy.textContent = 'Сопряжение создано. Подтвердите подключение в приложении Sayuri Companion на телефоне.';
+    enable.textContent = 'Повторить сопряжение';
+    live.textContent = 'Ожидаю подтверждение';
+    return;
+  }
+
+  enable.textContent = 'Пересопрячь';
+  if (!status.notification_access) {
+    copy.textContent = 'Companion связан с Sayuri. На телефоне разрешите Sayuri Companion доступ к уведомлениям.';
+    live.textContent = 'Нет доступа к уведомлениям';
+  } else {
+    copy.textContent = `Companion готов · событий: ${status.events || 0}`;
+    live.textContent = 'Уведомления подключены';
+  }
+}
+
+function applyPhoneNotificationEvent(event) {
+  if (!event || !event.type) return;
+  phoneState.notificationLastSequence = Math.max(
+    phoneState.notificationLastSequence,
+    Number(event.sequence) || 0
+  );
+
+  if (event.type === 'notification_removed') {
+    phoneState.notificationEvents = phoneState.notificationEvents.filter((item) => !(
+      item.package === event.package
+      && Number(item.notification_id || 0) === Number(event.notification_id || 0)
+      && String(item.tag || '') === String(event.tag || '')
+    ));
+    return;
+  }
+
+  if (event.type !== 'notification_posted') return;
+
+  phoneState.notificationEvents = phoneState.notificationEvents.filter((item) => !(
+    item.package === event.package
+    && Number(item.notification_id || 0) === Number(event.notification_id || 0)
+    && String(item.tag || '') === String(event.tag || '')
+  ));
+  phoneState.notificationEvents.push(event);
+  if (phoneState.notificationEvents.length > 80) {
+    phoneState.notificationEvents.splice(0, phoneState.notificationEvents.length - 80);
+  }
+}
+
+function renderPhoneNotifications() {
+  const list = byId('phone-notification-list');
+  const count = byId('phone-notification-count');
+  if (!list || !count) return;
+
+  const events = phoneState.notificationEvents.slice().reverse();
+  count.textContent = String(events.length);
+  count.classList.toggle('has-items', events.length > 0);
+  list.replaceChildren();
+
+  if (!events.length) {
+    const empty = document.createElement('span');
+    empty.className = 'phone-notification-empty';
+    empty.textContent = 'Новых уведомлений нет';
+    list.append(empty);
+    return;
+  }
+
+  for (const event of events.slice(0, 50)) {
+    const row = document.createElement('article');
+    row.className = 'phone-notification-item';
+
+    const top = document.createElement('div');
+    top.className = 'phone-notification-item-head';
+    const app = document.createElement('strong');
+    app.textContent = event.package || 'Android';
+    const time = document.createElement('time');
+    time.textContent = formatTime(event.event_time || event.received_at * 1000);
+    top.append(app, time);
+
+    const title = document.createElement('b');
+    title.textContent = event.title || 'Уведомление';
+    const body = document.createElement('p');
+    body.textContent = event.text || event.subtext || '';
+    row.append(top, title);
+    if (body.textContent) row.append(body);
+    list.append(row);
+  }
+}
+
+async function loadPhoneNotificationEvents() {
+  if (!phoneState.selectedSerial || !phoneState.companionStatus?.paired) return;
+  const params = new URLSearchParams({
+    serial: phoneState.selectedSerial,
+    limit: '100',
+    after: String(phoneState.notificationLastSequence || 0)
+  });
+  const response = await fetch(`/api/phone/companion/events?${params}`, {
+    cache: 'no-store'
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data?.error?.message || `HTTP ${response.status}`);
+  for (const event of data.events || []) applyPhoneNotificationEvent(event);
+  renderPhoneNotifications();
+}
+
+async function loadPhoneCompanion() {
+  if (!phoneState.selectedSerial) {
+    renderPhoneCompanionStatus(null);
+    return;
+  }
+  const serial = phoneState.selectedSerial;
+  if (phoneState.companionSerial !== serial) resetPhoneCompanion(serial);
+
+  const response = await fetch(
+    `/api/phone/companion?serial=${encodeURIComponent(serial)}`,
+    {cache: 'no-store'}
+  );
+  const data = await response.json();
+  if (!response.ok) throw new Error(data?.error?.message || `HTTP ${response.status}`);
+  if (serial !== phoneState.selectedSerial) return;
+
+  renderPhoneCompanionStatus(data);
+  if (data.paired) {
+    try {
+      await loadPhoneNotificationEvents();
+    } catch {}
+  }
+  schedulePhoneCompanionPolling(data.last_seen_at ? 2200 : 1600);
+}
+
+async function enablePhoneCompanion() {
+  if (!phoneState.selectedSerial) return;
+  const button = byId('phone-companion-enable');
+  button.disabled = true;
+  try {
+    const result = await postJson('/api/phone/companion/enable', {
+      serial: phoneState.selectedSerial
+    });
+    showPhoneMessage(
+      result.status || 'Подтвердите сопряжение в Sayuri Companion на телефоне.'
+    );
+    await loadPhoneCompanion();
+  } catch (error) {
+    showPhoneError(error);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function disablePhoneCompanion() {
+  if (!phoneState.selectedSerial) return;
+  try {
+    await postJson('/api/phone/companion/disable', {
+      serial: phoneState.selectedSerial
+    });
+    resetPhoneCompanion(phoneState.selectedSerial);
+    await loadPhoneCompanion();
+  } catch (error) {
+    showPhoneError(error);
+  }
+}
+
+function togglePhoneNotifications() {
+  const drawer = byId('phone-notification-drawer');
+  phoneState.notificationDrawerOpen = drawer.classList.contains('hidden');
+  drawer.classList.toggle('hidden', !phoneState.notificationDrawerOpen);
+  if (phoneState.notificationDrawerOpen) {
+    loadPhoneNotificationEvents().catch(showPhoneError);
+  }
+}
+
 async function pairPhone(event) {
   event.preventDefault();
   const address = byId('phone-pair-address').value.trim();
@@ -3106,6 +3356,13 @@ byId('phone-file-picker').addEventListener('change', async (event) => {
 byId('phone-apps').addEventListener('click', loadPhoneApps);
 byId('phone-app-close').addEventListener('click', () => byId('phone-app-drawer').classList.add('hidden'));
 byId('phone-app-search').addEventListener('input', renderPhoneApps);
+byId('phone-companion-enable').addEventListener('click', enablePhoneCompanion);
+byId('phone-companion-disable').addEventListener('click', disablePhoneCompanion);
+byId('phone-notifications').addEventListener('click', togglePhoneNotifications);
+byId('phone-notification-close').addEventListener('click', () => {
+  phoneState.notificationDrawerOpen = false;
+  byId('phone-notification-drawer').classList.add('hidden');
+});
 
 document.querySelectorAll('[data-phone-key]').forEach((button) => {
   button.addEventListener('click', () => sendPhoneKey(button.dataset.phoneKey));

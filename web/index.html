@@ -345,6 +345,18 @@
             </form>
           </article>
 
+          <article class="phone-panel phone-companion-panel">
+            <div class="section-head">
+              <div><p class="eyebrow">COMPANION</p><h3>Уведомления Android</h3></div>
+            </div>
+            <p class="phone-help" id="phone-companion-status">Проверяю Sayuri Companion…</p>
+            <div class="phone-companion-actions">
+              <button class="primary-button" id="phone-companion-enable" type="button" disabled>Сопрячь Companion</button>
+              <button class="secondary-button hidden" id="phone-companion-disable" type="button">Отключить</button>
+            </div>
+            <p class="phone-help">Companion передаёт уведомления только через локальный ADB-туннель. Доступ к уведомлениям подтверждается отдельно на самом телефоне.</p>
+          </article>
+
           <article class="phone-panel phone-safety-panel">
             <div class="section-head">
               <div><p class="eyebrow">БЕЗОПАСНОСТЬ</p><h3>Локальный мост</h3></div>
@@ -467,6 +479,9 @@
         <button id="phone-copy" type="button" title="Буфер Android → компьютер">Тел→ПК</button>
         <button id="phone-file" type="button" title="Отправить файл в Download телефона">Файл</button>
         <button id="phone-apps" type="button" title="Открыть приложение">Приложения</button>
+        <button id="phone-notifications" type="button" title="Уведомления Android">
+          🔔 <span id="phone-notification-count">0</span>
+        </button>
         <input id="phone-file-picker" class="hidden" type="file" multiple>
       </div>
 
@@ -477,6 +492,19 @@
           <button id="phone-app-close" type="button" aria-label="Закрыть список приложений">×</button>
         </div>
         <div class="phone-app-list" id="phone-app-list"></div>
+      </div>
+
+      <div class="phone-notification-drawer hidden" id="phone-notification-drawer">
+        <div class="phone-notification-drawer-head">
+          <div>
+            <strong>Уведомления</strong>
+            <small id="phone-companion-live-state">Companion не подключён</small>
+          </div>
+          <button id="phone-notification-close" type="button" aria-label="Закрыть уведомления">×</button>
+        </div>
+        <div class="phone-notification-list" id="phone-notification-list">
+          <span class="phone-notification-empty">Новых уведомлений нет</span>
+        </div>
       </div>
 
       <form class="phone-keyboard-bar" id="phone-text-form">

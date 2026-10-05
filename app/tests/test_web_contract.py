@@ -100,6 +100,11 @@ class WebContractTests(unittest.TestCase):
         self.assertIn('id="phone-file"', html)
         self.assertIn('id="phone-apps"', html)
         self.assertIn('id="phone-app-drawer"', html)
+        self.assertIn('id="phone-companion-enable"', html)
+        self.assertIn('id="phone-companion-disable"', html)
+        self.assertIn('id="phone-notifications"', html)
+        self.assertIn('id="phone-notification-drawer"', html)
+        self.assertIn('id="phone-notification-list"', html)
         self.assertIn('data-phone-key="BACK"', html)
 
         self.assertIn("/api/phone/frame", script)
@@ -115,6 +120,13 @@ class WebContractTests(unittest.TestCase):
         self.assertIn("/api/phone/files/push", script)
         self.assertIn("/api/phone/files/upload", script)
         self.assertIn("/api/phone/apps", script)
+        self.assertIn("/api/phone/companion", script)
+        self.assertIn("/api/phone/companion/enable", script)
+        self.assertIn("/api/phone/companion/disable", script)
+        self.assertIn("/api/phone/companion/events", script)
+        self.assertIn("loadPhoneCompanion", script)
+        self.assertIn("renderPhoneNotifications", script)
+        self.assertIn("togglePhoneNotifications", script)
         self.assertIn("togglePhoneKeyboardCapture", script)
         self.assertIn("togglePhoneAudio", script)
         self.assertIn("consumePhoneOpusStream", script)
@@ -156,6 +168,9 @@ class WebContractTests(unittest.TestCase):
         self.assertIn(".phone-video-canvas", css)
         self.assertIn(".phone-live-badge.h264", css)
         self.assertIn("#phone-audio.active", css)
+        self.assertIn(".phone-companion-panel", css)
+        self.assertIn(".phone-notification-drawer", css)
+        self.assertIn(".phone-notification-item", css)
 
 
 if __name__ == "__main__":

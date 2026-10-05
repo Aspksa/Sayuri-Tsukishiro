@@ -19,10 +19,18 @@ from .control import (
     encode_set_clipboard,
     recv_device_message,
 )
+from .companion import (
+    COMPANION_ACTIVITY,
+    COMPANION_DEVICE_PORT,
+    COMPANION_LISTENER,
+    COMPANION_PACKAGE,
+    COMPANION_PROTOCOL_VERSION,
+    CompanionRegistry,
+)
 from .h264 import iter_h264_bridge_records
 
 
-PHONE_BACKEND_VERSION = "0.6.0"
+PHONE_BACKEND_VERSION = "0.7.0"
 SCRCPY_VERSION = "4.1"
 COMMAND_TIMEOUT_SECONDS = 20
 FRAME_TIMEOUT_SECONDS = 8
@@ -72,6 +80,7 @@ class PhoneService:
         self._frame_cache: dict[str, dict[str, Any]] = {}
         self._h264_streams: set[str] = set()
         self._audio_streams: set[str] = set()
+        self.companion = CompanionRegistry()
         self._lock = threading.RLock()
         self._frame_lock = threading.Lock()
 
@@ -305,6 +314,9 @@ class PhoneService:
                 "keyboard_input": True,
                 "mouse_wheel": True,
                 "floating_window": True,
+                "companion": True,
+                "notifications": True,
+                "companion_protocol": COMPANION_PROTOCOL_VERSION,
             },
             "security": {
                 "loopback_project_only": True,
@@ -1254,6 +1266,183 @@ class PhoneService:
         if result.returncode != 0:
             raise OSError((result.stderr or result.stdout or "Не удалось открыть приложение.").strip())
         return {"status": "приложение открыто", "serial": device_serial, "package": requested}
+
+    def _companion_installed(self, adb: Path, serial: str) -> bool:
+        result = self._run(
+            [str(adb), "-s", serial, "shell", "pm", "path", COMPANION_PACKAGE],
+            timeout=COMMAND_TIMEOUT_SECONDS,
+        )
+        return result.returncode == 0 and "package:" in result.stdout
+
+    def _companion_notification_access(self, adb: Path, serial: str) -> bool:
+        result = self._run(
+            [
+                str(adb), "-s", serial, "shell", "settings", "get", "secure",
+                "enabled_notification_listeners",
+            ],
+            timeout=COMMAND_TIMEOUT_SECONDS,
+        )
+        if result.returncode != 0:
+            return False
+        enabled = (result.stdout or "").strip()
+        return COMPANION_PACKAGE in enabled or COMPANION_LISTENER in enabled
+
+    def companion_status(self, serial: Any = None) -> dict[str, Any]:
+        device = self._select_authorized_device(serial)
+        device_serial = device["serial"]
+        adb = self._resolve_adb()
+        if adb is None:
+            raise OSError("ADB runtime не установлен.")
+
+        installed = self._companion_installed(adb, device_serial)
+        notification_access = (
+            self._companion_notification_access(adb, device_serial)
+            if installed
+            else False
+        )
+        registry = self.companion.status(device_serial)
+        return {
+            "serial": device_serial,
+            "package": COMPANION_PACKAGE,
+            "installed": installed,
+            "notification_access": notification_access,
+            "paired": registry["paired"],
+            "last_seen_at": registry["last_seen_at"],
+            "events": registry["events"],
+            "last_sequence": registry["last_sequence"],
+            "protocol_version": COMPANION_PROTOCOL_VERSION,
+            "device_port": COMPANION_DEVICE_PORT,
+        }
+
+    def enable_companion(self, serial: Any, *, host_port: int) -> dict[str, Any]:
+        if isinstance(host_port, bool):
+            raise ValueError("Некорректный порт локального сервера.")
+        try:
+            port = int(host_port)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Некорректный порт локального сервера.") from exc
+        if port < 1 or port > 65535:
+            raise ValueError("Некорректный порт локального сервера.")
+
+        device = self._select_authorized_device(serial)
+        device_serial = device["serial"]
+        adb = self._resolve_adb()
+        if adb is None:
+            raise OSError("ADB runtime не установлен.")
+        if not self._companion_installed(adb, device_serial):
+            raise FileNotFoundError(
+                "Sayuri Companion не установлен на телефоне."
+            )
+
+        reverse = self._run(
+            [
+                str(adb), "-s", device_serial,
+                "reverse",
+                f"tcp:{COMPANION_DEVICE_PORT}",
+                f"tcp:{port}",
+            ],
+            timeout=COMMAND_TIMEOUT_SECONDS,
+        )
+        if reverse.returncode != 0:
+            raise OSError(
+                (reverse.stderr or reverse.stdout or "Не удалось создать Companion tunnel.").strip()
+            )
+
+        token = self.companion.issue(device_serial)
+        launch = self._run(
+            [
+                str(adb), "-s", device_serial,
+                "shell", "am", "start",
+                "-n", COMPANION_ACTIVITY,
+                "--es", "sayuri_token", token,
+                "--es", "sayuri_serial", device_serial,
+                "--ei", "sayuri_port", str(COMPANION_DEVICE_PORT),
+            ],
+            timeout=COMMAND_TIMEOUT_SECONDS,
+        )
+        if launch.returncode != 0 or "Error type" in (launch.stdout or ""):
+            self.companion.revoke(device_serial)
+            try:
+                self._run(
+                    [
+                        str(adb), "-s", device_serial,
+                        "reverse", "--remove",
+                        f"tcp:{COMPANION_DEVICE_PORT}",
+                    ],
+                    timeout=5,
+                )
+            except OSError:
+                pass
+            raise OSError(
+                (launch.stderr or launch.stdout or "Не удалось открыть Sayuri Companion.").strip()
+            )
+
+        return {
+            "status": "ожидается подтверждение на телефоне",
+            "serial": device_serial,
+            "package": COMPANION_PACKAGE,
+            "protocol_version": COMPANION_PROTOCOL_VERSION,
+            "notification_access": self._companion_notification_access(
+                adb, device_serial
+            ),
+            "user_action_required": True,
+        }
+
+    def disable_companion(self, serial: Any) -> dict[str, Any]:
+        device = self._select_authorized_device(serial)
+        device_serial = device["serial"]
+        adb = self._resolve_adb()
+        if adb is None:
+            raise OSError("ADB runtime не установлен.")
+        self.companion.revoke(device_serial)
+        result = self._run(
+            [
+                str(adb), "-s", device_serial,
+                "reverse", "--remove",
+                f"tcp:{COMPANION_DEVICE_PORT}",
+            ],
+            timeout=COMMAND_TIMEOUT_SECONDS,
+        )
+        return {
+            "status": "companion отключён",
+            "serial": device_serial,
+            "tunnel_removed": result.returncode == 0,
+        }
+
+    def companion_event(
+        self,
+        serial: Any,
+        token: Any,
+        payload: Any,
+    ) -> dict[str, Any]:
+        if not isinstance(serial, str) or not serial.strip():
+            raise PermissionError("Companion serial не указан.")
+        if not isinstance(token, str) or not token.strip():
+            raise PermissionError("Companion token не указан.")
+        return self.companion.ingest(serial.strip(), token.strip(), payload)
+
+    def companion_events(
+        self,
+        serial: Any = None,
+        *,
+        limit: int = 50,
+        after: int = 0,
+    ) -> dict[str, Any]:
+        device_serial = None
+        if serial is not None:
+            if not isinstance(serial, str) or not serial.strip():
+                raise ValueError("Некорректный serial телефона.")
+            device_serial = serial.strip()
+        events = self.companion.events(
+            serial=device_serial,
+            limit=limit,
+            after=after,
+        )
+        return {
+            "events": events,
+            "count": len(events),
+            "protocol_version": COMPANION_PROTOCOL_VERSION,
+        }
 
     def stop_control(self, serial: Any, *, missing_ok: bool = False) -> dict[str, Any]:
         if not isinstance(serial, str) or not serial.strip():
