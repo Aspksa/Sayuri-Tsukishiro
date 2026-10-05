@@ -2143,38 +2143,79 @@ class MemorySystemV4:
             meta = db.execute(
                 "SELECT value FROM memory_v4_meta WHERE key='bootstrap_version'"
             ).fetchone()
-        if meta and meta["value"] == "4.1":
+        version = str(meta["value"]) if meta else None
+
+        if version == "4.1":
             return {
                 "entries": len(entries),
                 "ingested": 0,
-                "states": self.refresh_memory_states(),
                 "already_bootstrapped": True,
+            }
+
+        if version == "4.0":
+            states = self.refresh_memory_states()
+            verification = self.refresh_verification_questions()
+            completed = self._now()
+            with self._connect() as db:
+                db.execute(
+                    """
+                    INSERT INTO memory_v4_meta(key, value, updated_at)
+                    VALUES('bootstrap_version', '4.1', ?)
+                    ON CONFLICT(key) DO UPDATE SET
+                        value='4.1',
+                        updated_at=excluded.updated_at
+                    """,
+                    (completed,),
+                )
+                db.execute(
+                    """
+                    INSERT INTO memory_v4_meta(key, value, updated_at)
+                    VALUES('last_quality_maintenance', ?, ?)
+                    ON CONFLICT(key) DO UPDATE SET
+                        value=excluded.value,
+                        updated_at=excluded.updated_at
+                    """,
+                    (completed, completed),
+                )
+            self._audit(
+                "memory_quality_upgrade",
+                "system",
+                None,
+                {
+                    "from": "4.0",
+                    "to": "4.1",
+                    "entries": len(entries),
+                    "states": states,
+                    "verification": verification,
+                },
+            )
+            return {
+                "entries": len(entries),
+                "ingested": 0,
+                "states": states,
+                "verification": verification,
+                "already_bootstrapped": False,
+                "upgraded_from": "4.0",
             }
 
         ingested = 0
         for entry in entries:
             self.ingest_memory(entry)
             ingested += 1
-        now = self._now()
+        states = self.refresh_memory_states()
+        verification = self.refresh_verification_questions()
+        completed = self._now()
         with self._connect() as db:
             db.execute(
                 """
                 INSERT INTO memory_v4_meta(key, value, updated_at)
                 VALUES('bootstrap_version', '4.1', ?)
-                ON CONFLICT(key) DO UPDATE SET value='4.1', updated_at=excluded.updated_at
+                ON CONFLICT(key) DO UPDATE SET
+                    value='4.1',
+                    updated_at=excluded.updated_at
                 """,
-                (now,),
+                (completed,),
             )
-        self._audit(
-            "memory_v4_bootstrap",
-            "system",
-            None,
-            {"entries": len(entries), "ingested": ingested},
-        )
-        states = self.refresh_memory_states()
-        verification = self.refresh_verification_questions()
-        completed = self._now()
-        with self._connect() as db:
             db.execute(
                 """
                 INSERT INTO memory_v4_meta(key, value, updated_at)
@@ -2185,6 +2226,16 @@ class MemorySystemV4:
                 """,
                 (completed, completed),
             )
+        self._audit(
+            "memory_v4_bootstrap",
+            "system",
+            None,
+            {
+                "version": "4.1",
+                "entries": len(entries),
+                "ingested": ingested,
+            },
+        )
         return {
             "entries": len(entries),
             "ingested": ingested,
@@ -2192,6 +2243,7 @@ class MemorySystemV4:
             "verification": verification,
             "already_bootstrapped": False,
         }
+
 
     def refresh_verification_questions(self) -> dict[str, Any]:
         opened = 0
