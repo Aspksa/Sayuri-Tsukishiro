@@ -163,8 +163,17 @@ class MemoryV3Tests(unittest.TestCase):
             self.assertEqual(resolved["resolution"], "prefer_new")
             self.assertIsNone(memory.get(old["id"]))
             self.assertIsNotNone(memory.get(new["id"]))
+            graph = v3.graph()
+            archived_node = next(
+                node
+                for node in graph["nodes"]
+                if node["type"] == "memory" and node["key"] == old["id"]
+            )
+            self.assertFalse(archived_node["metadata"]["active"])
+            self.assertTrue(archived_node["metadata"]["archived_at"])
             events = [item["event_type"] for item in v3.timeline()]
             self.assertIn("memory_conflict_opened", events)
+            self.assertIn("memory_archived", events)
             self.assertIn("memory_conflict_resolved", events)
 
     def test_episodic_memory_reuses_fingerprint_on_retry(self):
