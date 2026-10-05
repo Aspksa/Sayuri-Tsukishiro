@@ -204,3 +204,17 @@
 - Добавлены runtime/API/Web/unit tests.
 - Релиз завершается только после зелёного атомарного workflow `0.1.44` и финального CI на `main`.
 
+## MEM-006 — Memory 4.0 Hardening
+
+- Статус: `implemented; final atomic CI pending`.
+- Локальный поиск/просмотр больше не считается обучающим recall и не меняет utility/use counters.
+- Privacy firewall `cloud_allowed=false` распространён на все memory-derived Cloud-context слои: Memory 3.0, Experience, Goals, Tasks, Failures и Questions.
+- Protected memory остаётся доступной локально, но не может попасть в Cloud.ru обходным путём через производный контекст.
+- Последующий success после failure хранится как correlation-only `followed_by_success`, а не как доказанное исправление.
+- Failure Memory требует явного подтверждения resolution пользователем.
+- Повтор ранее исправленной ошибки переоткрывает failure pattern.
+- Повтор одинакового подтверждения resolution идемпотентен.
+- Добавлен API/UI для подтверждённого закрытия Failure Memory.
+- Добавлены регрессионные тесты privacy firewall, read-only recall, causal semantics, повторного failure и HTTP/Web contract.
+- Приёмка: атомарный release commit `0.1.45` от текущего `main` обязан пройти полный workflow Versions и финальный CI на `main`.
+
