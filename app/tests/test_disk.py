@@ -307,7 +307,8 @@ class DiskServiceTests(unittest.TestCase):
             self.assertFalse(forced["cached"])
             self.assertEqual(forced["molecules"]["total"], dna["molecules"]["total"])
             self.assertEqual(service.health()["dna_analyzer_version"], "0.7.0")
-            self.assertEqual(service.health()["dna_evolution_version"], "0.6.0")\n            self.assertEqual(service.health()["dna_spatial_version"], "0.7.0")
+            self.assertEqual(service.health()["dna_evolution_version"], "0.6.0")
+            self.assertEqual(service.health()["dna_spatial_version"], "0.7.0")
 
 
     def test_dna_04_normalization_profile_fingerprint_graph_and_feedback(self):
