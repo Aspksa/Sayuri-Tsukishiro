@@ -247,6 +247,14 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
             if parsed.path == "/api/sayuri/avatars":
                 self._json(self.server.core.sayuri_avatars())
                 return
+            if parsed.path == "/api/sayuri/actions":
+                raw_limit = query.get("limit", ["30"])[0]
+                try:
+                    limit = int(raw_limit)
+                except ValueError:
+                    limit = 30
+                self._json(self.server.core.sayuri_actions(limit))
+                return
             if parsed.path.startswith("/api/sayuri/avatar/"):
                 slot = parsed.path[len("/api/sayuri/avatar/"):].strip("/")
                 if not slot:
@@ -441,6 +449,33 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
                         context=payload.get("context"),
                     )
                 )
+                return
+
+            if parsed.path == "/api/sayuri/actions/plan":
+                payload = self._read_json()
+                text = payload.get("text")
+                if not isinstance(text, str):
+                    raise BadRequestError("Поле text должно быть строкой.")
+                self._json(
+                    self.server.core.plan_sayuri_action(
+                        text=text,
+                        context=payload.get("context"),
+                    )
+                )
+                return
+
+            if parsed.path.startswith("/api/sayuri/actions/") and parsed.path.endswith("/confirm"):
+                action_id = parsed.path[len("/api/sayuri/actions/"):-len("/confirm")].strip("/")
+                if not action_id:
+                    raise BadRequestError("Не указано действие.")
+                self._json(self.server.core.confirm_sayuri_action(action_id))
+                return
+
+            if parsed.path.startswith("/api/sayuri/actions/") and parsed.path.endswith("/cancel"):
+                action_id = parsed.path[len("/api/sayuri/actions/"):-len("/cancel")].strip("/")
+                if not action_id:
+                    raise BadRequestError("Не указано действие.")
+                self._json(self.server.core.cancel_sayuri_action(action_id))
                 return
 
             if parsed.path == "/api/sayuri/memory":
