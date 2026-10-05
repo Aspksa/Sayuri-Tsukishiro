@@ -7,6 +7,7 @@ import unittest
 
 from agent.avatar import AvatarStore
 from agent.memory import SayuriMemory
+from agent.memory_intelligence import MemoryIntelligence
 from agent.runtime import SayuriAgent
 
 
@@ -75,6 +76,103 @@ class SayuriMemoryTests(unittest.TestCase):
 
             self.assertEqual(found["personal"][0]["scope"], "personal")
             self.assertEqual(found["project"][0]["scope"], "project")
+
+
+class SayuriMemoryIntelligenceTests(unittest.TestCase):
+    def test_chat_message_creates_review_candidate_with_context(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            memory = SayuriMemory(root / "memory.db")
+            memory.initialize()
+            intelligence = MemoryIntelligence(root / "memory.db", memory)
+
+            candidates = intelligence.analyze_message(
+                "В проекте Sayuri нужно хранить память отдельно от документов",
+                {
+                    "view": "disk",
+                    "current_document": {
+                        "id": "file-1",
+                        "kind": "file",
+                        "name": "ТЗ.pdf",
+                        "category": "document",
+                    },
+                },
+            )
+
+            self.assertEqual(len(candidates), 1)
+            candidate = candidates[0]
+            self.assertEqual(candidate["scope"], "project")
+            self.assertIn(candidate["kind"], {"decision", "task"})
+            self.assertEqual(candidate["status"], "pending")
+            self.assertEqual(candidate["source_context"]["current_document"]["name"], "ТЗ.pdf")
+            self.assertEqual(memory.stats()["total"], 0)
+
+    def test_candidate_requires_review_before_becoming_memory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            memory = SayuriMemory(root / "memory.db")
+            memory.initialize()
+            intelligence = MemoryIntelligence(root / "memory.db", memory)
+
+            candidate = intelligence.analyze_message(
+                "Я предпочитаю светлый интерфейс без лишней анимации",
+                {"view": "sayuri"},
+            )[0]
+
+            self.assertEqual(candidate["scope"], "personal")
+            self.assertEqual(candidate["kind"], "preference")
+            self.assertEqual(memory.stats()["personal"]["count"], 0)
+
+            reviewed = intelligence.review(candidate["id"], "accept")
+            self.assertEqual(reviewed["status"], "accepted")
+            entries = memory.list(scope="personal")
+            self.assertEqual(len(entries), 1)
+            self.assertEqual(entries[0]["source"], "memory_intelligence_confirmed")
+            self.assertIsNotNone(entries[0]["confidence"])
+            self.assertEqual(entries[0]["source_context"]["view"], "sayuri")
+
+    def test_duplicate_candidate_is_marked_without_second_memory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            memory = SayuriMemory(root / "memory.db")
+            memory.initialize()
+            memory.add(
+                scope="personal",
+                kind="preference",
+                content="Я предпочитаю светлый интерфейс",
+                importance=4,
+            )
+            intelligence = MemoryIntelligence(root / "memory.db", memory)
+
+            candidate = intelligence.analyze_message(
+                "Я предпочитаю светлый интерфейс",
+                {"view": "home"},
+            )[0]
+
+            self.assertEqual(candidate["relation"], "duplicate")
+            self.assertEqual(candidate["status"], "duplicate")
+            self.assertEqual(memory.stats()["personal"]["count"], 1)
+
+    def test_automation_settings_are_local_and_validated(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            memory = SayuriMemory(root / "memory.db")
+            memory.initialize()
+            intelligence = MemoryIntelligence(root / "memory.db", memory)
+
+            settings = intelligence.update_settings({
+                "candidate_generation": False,
+                "auto_save_high_confidence": True,
+                "auto_save_threshold": 0.99,
+            })
+
+            self.assertFalse(settings["candidate_generation"])
+            self.assertTrue(settings["auto_save_high_confidence"])
+            self.assertEqual(settings["auto_save_threshold"], 0.99)
+            self.assertEqual(
+                intelligence.analyze_message("Я предпочитаю компактный интерфейс"),
+                [],
+            )
 
 
 class SayuriAvatarTests(unittest.TestCase):
