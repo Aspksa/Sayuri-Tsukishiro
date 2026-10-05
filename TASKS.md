@@ -164,7 +164,7 @@
 
 
 ## PHONE-004A — Pro Control & Media
-- Статус: `implemented; CI pending`.
+- Статус: `implemented; повторный CI pending`.
 - Готово:
   - keyboard capture switch;
   - scrcpy UHID keyboard;

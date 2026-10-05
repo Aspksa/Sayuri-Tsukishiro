@@ -11,7 +11,7 @@ import time
 import uuid
 
 
-PHONE_BACKEND_VERSION = "0.4.0"
+PHONE_BACKEND_VERSION = "0.4.1"
 SCRCPY_VERSION = "4.1"
 COMMAND_TIMEOUT_SECONDS = 20
 FRAME_TIMEOUT_SECONDS = 8
@@ -825,11 +825,11 @@ class PhoneService:
         return packages[:500]
 
     def launch_app(self, serial: Any, package: Any) -> dict[str, Any]:
-        device = self._select_authorized_device(serial)
-        device_serial = device["serial"]
         if not isinstance(package, str) or not PACKAGE_RE.fullmatch(package.strip()):
             raise ValueError("Некорректное имя Android-пакета.")
         requested = package.strip()
+        device = self._select_authorized_device(serial)
+        device_serial = device["serial"]
         installed = {item["package"] for item in self.list_apps(device_serial)}
         if requested not in installed:
             raise ValueError("Приложение не найдено среди установленных пользовательских приложений.")

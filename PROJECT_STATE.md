@@ -615,3 +615,16 @@ Preflight теперь отдельно выводит `диск_sayuri`, что
   - полный Unicode доступен в нативном scrcpy через UHID;
   - двухсторонний Android clipboard и embedded audio требуют control/media bridge или Android companion.
 - Следующий шаг в той же пользовательской задаче: PHONE-004B — локальный H.264 media bridge + WebCodecs с fallback на PNG.
+
+
+## Исправление PHONE-004A 0.4.1
+
+Первый CI версии 0.1.26 подтвердил:
+- новые API capture/recording/file push/apps — success;
+- keyboard/UHID/quality tests — success;
+- web contract — success;
+- Windows launcher — success.
+
+Единственный сбой: safety-test передал вредоносное имя Android-пакета при отсутствии mock-устройства. `launch_app()` сначала обращался к устройству, поэтому возвращал disconnect раньше validation error.
+
+В `0.1.27 / Телефон Sayuri 0.4.1` package name валидируется до любого обращения к ADB. Это усиливает security boundary; функциональность PHONE-004A не ослаблялась.
