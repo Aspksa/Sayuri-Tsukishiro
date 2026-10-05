@@ -5,6 +5,7 @@
 ### 0.1.45 — 2026-10-06 — Memory 4.0 Hardening
 
 - Локальный поиск/просмотр памяти больше не увеличивает `use_count`, `recall_count` и не создаёт обучающий recall-audit.
+- AI recall стал двухфазным: usage/audit фиксируются только после успешного ответа Cloud.ru; ошибка провайдера не обучает память.
 - Explainable Recall остаётся доступным в Личном кабинете без искусственного роста utility.
 - Сквозной privacy firewall `cloud_allowed=false` распространён на Memory 3.0, Experience Learning, Goals, Tasks, Failures и Questions перед Cloud.ru.
 - Protected memory не может попасть в AI-context обходным путём через производные слои памяти.
