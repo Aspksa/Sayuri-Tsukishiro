@@ -4,13 +4,13 @@
     {
       "id": "sayuri-core",
       "display_name": "Ядро Саюри",
-      "description": "Системное ядро, SQLite, конфигурация, API и диагностика.",
+      "description": "Системное ядро, SQLite, конфигурация, API, диагностика и локальные сервисы Sayuri.",
       "path": "app"
     },
     {
       "id": "agent-core",
       "display_name": "Агентное ядро",
-      "description": "Sayuri Agent Core: Cloud.ru Foundation Models, только DeepSeek-V4-Flash, безопасное локальное хранение ключа и контекстный чат.",
+      "description": "Sayuri Agent Core: Cloud.ru/DeepSeek-V4-Flash, раздельная долговременная личная и проектная память, безопасные локальные секреты и менеджер аватаров.",
       "path": "agent"
     },
     {
@@ -22,7 +22,7 @@
     {
       "id": "web-ui",
       "display_name": "Веб-интерфейс",
-      "description": "Единая светлая оболочка Sayuri с глобальной помощницей, Личным кабинетом, чатом, Диском, ДНК и системными настройками.",
+      "description": "Единая светлая оболочка Sayuri с глобальной помощницей, Личным кабинетом, памятью, студией аватаров, чатом, Диском и ДНК.",
       "path": "web"
     },
     {
