@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from io import BytesIO
 from pathlib import Path
 import subprocess
 import tempfile
@@ -80,14 +81,20 @@ R58M123ABC device product:a56xeea model:SM_A556E device:a56x transport_id:1
                     }
                 ],
             ), patch("phone.service.subprocess.Popen", return_value=process) as popen:
-                result = service.start_control("R58M123ABC")
+                result = service.start_control("R58M123ABC", profile="quality")
 
             self.assertEqual(result["status"], "управление запущено")
+            self.assertEqual(result["profile"], "quality")
+            self.assertEqual(result["keyboard"], "uhid")
             argv = popen.call_args.args[0]
             self.assertEqual(argv[0], "C:/runtime/scrcpy.exe")
             self.assertIn("--serial", argv)
             self.assertIn("R58M123ABC", argv)
             self.assertIn("--window-title", argv)
+            self.assertIn("--keyboard=uhid", argv)
+            self.assertIn("--video-codec=h264", argv)
+            self.assertIn("1920", argv)
+            self.assertIn("16M", argv)
             self.assertNotIn("shell", popen.call_args.kwargs)
 
 
@@ -272,6 +279,95 @@ R58M123ABC device product:a56xeea model:SM_A556E device:a56x transport_id:1
 
 
 
+    def test_quality_profile_is_allowlisted(self):
+        with self.assertRaises(ValueError):
+            PhoneService._quality_profile("ultra;rm")
+        name, profile = PhoneService._quality_profile("balanced")
+        self.assertEqual(name, "balanced")
+        self.assertEqual(profile["max_fps"], "60")
+        self.assertEqual(profile["video_bit_rate"], "8M")
+
+    def test_recording_uses_official_scrcpy_and_returns_finished_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            service = PhoneService(Path(tmp))
+            service.initialize()
+            process = MagicMock()
+            process.pid = 778
+            process.poll.return_value = None
+            process.wait.return_value = 0
+            with patch.object(service, "_resolve_scrcpy", return_value=Path("C:/runtime/scrcpy.exe")), patch.object(
+                service,
+                "_select_authorized_device",
+                return_value={"serial": "R58M123ABC", "authorized": True},
+            ), patch("phone.service.subprocess.Popen", return_value=process) as popen:
+                started = service.start_recording("R58M123ABC", profile="balanced", audio=True)
+
+            self.assertEqual(started["status"], "запись начата")
+            argv = popen.call_args.args[0]
+            self.assertIn("--no-playback", argv)
+            self.assertIn("--no-window", argv)
+            self.assertIn("--no-control", argv)
+            self.assertIn("--video-codec=h264", argv)
+            self.assertTrue(any(value.startswith("--record=") for value in argv))
+
+            state = service._recordings["R58M123ABC"]
+            state["path"].write_bytes(b"fake-mp4")
+            stopped = service.stop_recording("R58M123ABC")
+            self.assertEqual(stopped["status"], "запись остановлена")
+            self.assertEqual(stopped["size_bytes"], 8)
+            self.assertTrue(stopped["path"].is_file())
+
+    def test_push_file_and_app_launch_are_allowlisted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            service = PhoneService(root)
+            service.initialize()
+            source = root / "report.pdf"
+            source.write_bytes(b"pdf")
+            completed = subprocess.CompletedProcess(args=[], returncode=0, stdout="ok", stderr="")
+            packages = subprocess.CompletedProcess(
+                args=[],
+                returncode=0,
+                stdout="package:org.example.safe\npackage:com.sample.app\n",
+                stderr="",
+            )
+
+            with patch.object(
+                service,
+                "_select_authorized_device",
+                return_value={"serial": "R58M123ABC", "authorized": True},
+            ), patch.object(
+                service, "_resolve_adb", return_value=Path("adb.exe")
+            ), patch.object(
+                service,
+                "_run",
+                side_effect=[completed, completed],
+            ) as run:
+                pushed = service.push_file("R58M123ABC", source, "../Отчёт?.pdf")
+
+            self.assertEqual(pushed["name"], "Отчёт_.pdf")
+            self.assertEqual(pushed["remote_path"], "/sdcard/Download/Отчёт_.pdf")
+            self.assertIn("push", run.call_args_list[0].args[0])
+
+            with patch.object(
+                service,
+                "_select_authorized_device",
+                return_value={"serial": "R58M123ABC", "authorized": True},
+            ), patch.object(
+                service, "_resolve_adb", return_value=Path("adb.exe")
+            ), patch.object(
+                service,
+                "_run",
+                side_effect=[packages, completed],
+            ) as run:
+                launched = service.launch_app("R58M123ABC", "org.example.safe")
+
+            self.assertEqual(launched["package"], "org.example.safe")
+            self.assertIn("monkey", run.call_args_list[1].args[0])
+            with self.assertRaises(ValueError):
+                service.launch_app("R58M123ABC", "org.example.safe;rm")
+
+
 class PhoneApiTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -335,9 +431,13 @@ class PhoneApiTests(unittest.TestCase):
         )
         started = self.post_json(
             "/api/phone/control/start",
-            {"serial": "R58M123ABC"},
+            {"serial": "R58M123ABC", "profile": "quality"},
         )
         self.assertEqual(started["status"], "управление запущено")
+        self.core.phone.start_control.assert_called_once_with(
+            "R58M123ABC",
+            profile="quality",
+        )
 
 
     def test_embedded_frame_and_input_routes(self):
@@ -419,6 +519,107 @@ class PhoneApiTests(unittest.TestCase):
         payload = json.loads(captured.exception.read().decode("utf-8"))
         self.assertEqual(payload["error"]["code"], "SAYURI-PHONE-409")
         self.assertIn("отключён", payload["error"]["message"])
+
+
+    def test_phone_pro_routes_capture_recording_apps_and_file_push(self):
+        frame_bytes = PhoneServiceTests.fake_png(1080, 2340)
+        self.core.phone.screen_frame = MagicMock(
+            return_value={
+                "serial": "R58M123ABC",
+                "data": frame_bytes,
+                "width": 1080,
+                "height": 2340,
+                "cached": False,
+            }
+        )
+        captured = self.post_json(
+            "/api/phone/capture",
+            {"serial": "R58M123ABC"},
+        )
+        self.assertEqual(captured["status"], "снимок сохранён")
+        stored = self.core.disk.get_file(captured["file"]["id"])
+        self.assertEqual(stored["content_type"], "image/png")
+        self.assertEqual(stored["path"].read_bytes(), frame_bytes)
+
+        self.core.phone.start_recording = MagicMock(
+            return_value={
+                "status": "запись начата",
+                "serial": "R58M123ABC",
+                "profile": "quality",
+                "audio": True,
+            }
+        )
+        recording = self.post_json(
+            "/api/phone/recording/start",
+            {"serial": "R58M123ABC", "profile": "quality", "audio": True},
+        )
+        self.assertEqual(recording["status"], "запись начата")
+
+        recording_path = Path(self.temp.name) / "phone-record.mp4"
+        recording_path.write_bytes(b"video")
+        self.core.phone.stop_recording = MagicMock(
+            return_value={
+                "status": "запись остановлена",
+                "serial": "R58M123ABC",
+                "path": recording_path,
+                "name": "phone-record.mp4",
+                "size_bytes": 5,
+                "profile": "quality",
+                "audio": True,
+            }
+        )
+        stopped = self.post_json(
+            "/api/phone/recording/stop",
+            {"serial": "R58M123ABC"},
+        )
+        self.assertEqual(stopped["status"], "запись остановлена")
+        self.assertFalse(recording_path.exists())
+        saved_video = self.core.disk.get_file(stopped["file"]["id"])
+        self.assertEqual(saved_video["path"].read_bytes(), b"video")
+
+        disk_item = self.core.disk.store_stream(
+            name="report.txt",
+            content_type="text/plain",
+            size_bytes=4,
+            stream=BytesIO(b"data"),
+        )
+        self.core.phone.push_file = MagicMock(
+            return_value={
+                "status": "файл отправлен",
+                "serial": "R58M123ABC",
+                "name": "report.txt",
+                "size_bytes": 4,
+                "remote_path": "/sdcard/Download/report.txt",
+            }
+        )
+        pushed = self.post_json(
+            "/api/phone/files/push",
+            {"serial": "R58M123ABC", "file_id": disk_item["id"]},
+        )
+        self.assertEqual(pushed["status"], "файл отправлен")
+
+        self.core.phone.list_apps = MagicMock(
+            return_value=[{"package": "org.example.safe", "label": "org.example.safe"}]
+        )
+        with urllib.request.urlopen(
+            self.base + "/api/phone/apps?serial=R58M123ABC",
+            timeout=3,
+        ) as response:
+            apps = json.loads(response.read().decode("utf-8"))
+        self.assertEqual(apps["apps"][0]["package"], "org.example.safe")
+
+        self.core.phone.launch_app = MagicMock(
+            return_value={
+                "status": "приложение открыто",
+                "serial": "R58M123ABC",
+                "package": "org.example.safe",
+            }
+        )
+        launched = self.post_json(
+            "/api/phone/apps/launch",
+            {"serial": "R58M123ABC", "package": "org.example.safe"},
+        )
+        self.assertEqual(launched["status"], "приложение открыто")
 
 
 if __name__ == "__main__":

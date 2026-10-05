@@ -29,6 +29,10 @@ const phoneState = {
   resizeObserver: null,
   textBuffer: '',
   textTimer: null,
+  keyboardCaptured: localStorage.getItem('sayuri-phone-keyboard-capture') === '1',
+  qualityProfile: localStorage.getItem('sayuri-phone-quality-profile') || 'quality',
+  recordingSessions: new Set(),
+  apps: [],
   lastFrameAt: 0
 };
 
@@ -1639,6 +1643,9 @@ function updatePhoneFloatingState() {
   const device = phoneState.selectedDevice;
   const nativeButton = byId('phone-open-native');
   const keyButtons = document.querySelectorAll('[data-phone-key]');
+  const proControls = document.querySelectorAll(
+    '#phone-quality-profile, #phone-capture, #phone-record, #phone-paste, #phone-file, #phone-apps'
+  );
 
   if (!device) {
     stopPhoneFrameLoop();
@@ -1652,6 +1659,8 @@ function updatePhoneFloatingState() {
     byId('phone-frame-status').textContent = 'Sayuri ждёт авторизованное устройство';
     nativeButton.disabled = true;
     keyButtons.forEach((button) => { button.disabled = true; });
+    proControls.forEach((control) => { control.disabled = true; });
+    byId('phone-app-drawer').classList.add('hidden');
     clearPhoneFrameImage();
     schedulePhoneReconnect(2500);
     return;
@@ -1664,10 +1673,16 @@ function updatePhoneFloatingState() {
   byId('phone-live-subtitle').textContent =
     `${device.connection === 'wifi' ? 'Wi-Fi' : 'USB'} · ${device.serial}`;
   nativeButton.disabled = false;
+  proControls.forEach((control) => { control.disabled = false; });
 
   const nativeOpen = phoneState.nativeSessions.has(device.serial);
   nativeButton.textContent = nativeOpen ? 'СТОП 60 FPS' : '60 FPS';
   keyButtons.forEach((button) => { button.disabled = false; });
+
+  const recording = phoneState.recordingSessions.has(device.serial);
+  const recordButton = byId('phone-record');
+  recordButton.classList.toggle('recording', recording);
+  recordButton.textContent = recording ? '■ Стоп' : '● Запись';
 
   if (nativeOpen) {
     stopPhoneFrameLoop();
@@ -1697,6 +1712,7 @@ function renderPhone(data) {
   const devices = Array.isArray(data.devices) ? data.devices : [];
   const sessions = new Set(data.control_sessions || []);
   phoneState.nativeSessions = sessions;
+  phoneState.recordingSessions = new Set(data.recording_sessions || []);
 
   byId('phone-runtime-state').textContent = runtime.ready ? 'ГОТОВ' : 'НЕ УСТАНОВЛЕН';
   byId('phone-runtime-detail').textContent = runtime.ready
@@ -1911,7 +1927,10 @@ async function toggleNativePhoneWindow() {
   try {
     const result = await postJson(
       nativeOpen ? '/api/phone/control/stop' : '/api/phone/control/start',
-      {serial: phoneState.selectedSerial}
+      {
+        serial: phoneState.selectedSerial,
+        profile: phoneState.qualityProfile
+      }
     );
     showPhoneMessage(result.status || 'Готово');
     await loadPhone();
@@ -2037,6 +2056,8 @@ function initializePhoneFloatingWindow() {
   floating.style.width = `${layout.width}px`;
   floating.style.height = `${layout.height}px`;
   applyPhoneRotation();
+  setPhoneQualityProfile(phoneState.qualityProfile);
+  updatePhoneKeyboardCaptureUI();
 
   if (phoneState.floatingOpen) {
     floating.classList.remove('hidden');
@@ -2091,7 +2112,7 @@ function safePhoneKeyboardCharacter(value) {
 }
 
 function handlePhoneKeyboard(event) {
-  if (!phoneState.selectedSerial || event.ctrlKey || event.altKey || event.metaKey) return;
+  if (!phoneState.keyboardCaptured || !phoneState.selectedSerial || event.ctrlKey || event.altKey || event.metaKey) return;
   const keyMap = {
     Backspace: 'DELETE',
     Enter: 'ENTER',
@@ -2112,6 +2133,176 @@ function handlePhoneKeyboard(event) {
   if (event.key.length === 1 && safePhoneKeyboardCharacter(event.key)) {
     event.preventDefault();
     queuePhoneText(event.key);
+  }
+}
+
+function updatePhoneKeyboardCaptureUI() {
+  const button = byId('phone-keyboard-capture');
+  button.classList.toggle('active', phoneState.keyboardCaptured);
+  button.textContent = phoneState.keyboardCaptured ? 'КЛАВ: ТЕЛЕФОН' : 'КЛАВ: SAYURI';
+  byId('phone-keyboard-hint').textContent = phoneState.keyboardCaptured
+    ? 'Клавиатура ПК захвачена телефоном · Esc = Назад · выключите захват, чтобы печатать в Sayuri'
+    : 'Клавиатура Sayuri · включите захват, чтобы печатать с ПК прямо в Android';
+}
+
+function togglePhoneKeyboardCapture() {
+  phoneState.keyboardCaptured = !phoneState.keyboardCaptured;
+  localStorage.setItem('sayuri-phone-keyboard-capture', phoneState.keyboardCaptured ? '1' : '0');
+  updatePhoneKeyboardCaptureUI();
+  if (phoneState.keyboardCaptured) {
+    byId('phone-screen-shell').focus({preventScroll: true});
+  }
+}
+
+function setPhoneQualityProfile(value) {
+  const allowed = new Set(['economy', 'balanced', 'quality']);
+  phoneState.qualityProfile = allowed.has(value) ? value : 'quality';
+  localStorage.setItem('sayuri-phone-quality-profile', phoneState.qualityProfile);
+  byId('phone-quality-profile').value = phoneState.qualityProfile;
+}
+
+async function capturePhoneToDisk() {
+  if (!phoneState.selectedSerial) return;
+  const button = byId('phone-capture');
+  button.disabled = true;
+  try {
+    const result = await postJson('/api/phone/capture', {
+      serial: phoneState.selectedSerial
+    });
+    byId('phone-frame-status').textContent = `Снимок сохранён в Диск Sayuri: ${result.file?.name || 'PNG'}`;
+  } catch (error) {
+    showPhoneError(error);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function togglePhoneRecording() {
+  if (!phoneState.selectedSerial) return;
+  const recording = phoneState.recordingSessions.has(phoneState.selectedSerial);
+  const button = byId('phone-record');
+  button.disabled = true;
+  try {
+    const result = await postJson(
+      recording ? '/api/phone/recording/stop' : '/api/phone/recording/start',
+      {
+        serial: phoneState.selectedSerial,
+        profile: phoneState.qualityProfile,
+        audio: true
+      }
+    );
+    byId('phone-frame-status').textContent = recording
+      ? `Запись сохранена в Диск Sayuri: ${result.file?.name || result.name || 'MP4'}`
+      : 'Запись экрана и звука начата';
+    await loadPhone();
+  } catch (error) {
+    showPhoneError(error);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function pasteComputerClipboardToPhone() {
+  if (!phoneState.selectedSerial) return;
+  try {
+    if (!navigator.clipboard?.readText) {
+      throw new Error('Браузер не разрешает чтение буфера обмена.');
+    }
+    const text = await navigator.clipboard.readText();
+    if (!text) throw new Error('Буфер обмена пуст.');
+    await sendPhoneText(text.slice(0, 250));
+    byId('phone-frame-status').textContent = 'Текст из буфера ПК отправлен в телефон';
+  } catch (error) {
+    showPhoneError(error);
+  }
+}
+
+async function uploadComputerFileToPhone(file) {
+  if (!phoneState.selectedSerial || !file) return;
+  const response = await fetch('/api/phone/files/upload', {
+    method: 'POST',
+    headers: {
+      'Content-Type': file.type || 'application/octet-stream',
+      'X-Sayuri-Filename': encodeURIComponent(file.name),
+      'X-Sayuri-Phone-Serial': phoneState.selectedSerial
+    },
+    body: file
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data?.error?.message || `HTTP ${response.status}`);
+  byId('phone-frame-status').textContent = `Файл отправлен: ${data.name}`;
+  return data;
+}
+
+async function pushDiskItemsToPhone(items) {
+  if (!phoneState.selectedSerial) return;
+  const files = items.filter((item) => item?.kind === 'file' && item?.id);
+  if (!files.length) throw new Error('Перетащите файл, а не папку.');
+  for (const item of files.slice(0, 20)) {
+    await postJson('/api/phone/files/push', {
+      serial: phoneState.selectedSerial,
+      file_id: item.id
+    });
+  }
+  byId('phone-frame-status').textContent = `На телефон отправлено файлов: ${Math.min(files.length, 20)}`;
+}
+
+async function loadPhoneApps() {
+  if (!phoneState.selectedSerial) return;
+  const drawer = byId('phone-app-drawer');
+  drawer.classList.remove('hidden');
+  byId('phone-app-list').innerHTML = '<span class="phone-app-loading">Загрузка…</span>';
+  try {
+    const response = await fetch(
+      `/api/phone/apps?serial=${encodeURIComponent(phoneState.selectedSerial)}`,
+      {cache: 'no-store'}
+    );
+    const data = await response.json();
+    if (!response.ok) throw new Error(data?.error?.message || `HTTP ${response.status}`);
+    phoneState.apps = Array.isArray(data.apps) ? data.apps : [];
+    renderPhoneApps();
+  } catch (error) {
+    byId('phone-app-list').textContent = `Ошибка: ${error instanceof Error ? error.message : String(error)}`;
+  }
+}
+
+function renderPhoneApps() {
+  const list = byId('phone-app-list');
+  const query = byId('phone-app-search').value.trim().toLowerCase();
+  list.replaceChildren();
+  const apps = phoneState.apps.filter((app) => {
+    const haystack = `${app.label || ''} ${app.package || ''}`.toLowerCase();
+    return !query || haystack.includes(query.toLowerCase());
+  });
+  if (!apps.length) {
+    const empty = document.createElement('span');
+    empty.className = 'phone-app-loading';
+    empty.textContent = 'Приложения не найдены';
+    list.append(empty);
+    return;
+  }
+  for (const app of apps.slice(0, 200)) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'phone-app-item';
+    const label = document.createElement('strong');
+    label.textContent = app.label || app.package;
+    const packageName = document.createElement('small');
+    packageName.textContent = app.package;
+    button.append(label, packageName);
+    button.addEventListener('click', async () => {
+      try {
+        await postJson('/api/phone/apps/launch', {
+          serial: phoneState.selectedSerial,
+          package: app.package
+        });
+        drawer.classList.add('hidden');
+        schedulePhoneFrame(120);
+      } catch (error) {
+        showPhoneError(error);
+      }
+    });
+    list.append(button);
   }
 }
 
@@ -2278,6 +2469,27 @@ byId('phone-float-close').addEventListener('click', closePhoneFloat);
 byId('phone-float-minimize').addEventListener('click', togglePhoneFloatMinimize);
 byId('phone-float-rotate').addEventListener('click', rotatePhoneFloat);
 byId('phone-open-native').addEventListener('click', toggleNativePhoneWindow);
+byId('phone-keyboard-capture').addEventListener('click', togglePhoneKeyboardCapture);
+byId('phone-quality-profile').addEventListener('change', (event) => {
+  setPhoneQualityProfile(event.target.value);
+});
+byId('phone-capture').addEventListener('click', capturePhoneToDisk);
+byId('phone-record').addEventListener('click', togglePhoneRecording);
+byId('phone-paste').addEventListener('click', pasteComputerClipboardToPhone);
+byId('phone-file').addEventListener('click', () => byId('phone-file-picker').click());
+byId('phone-file-picker').addEventListener('change', async (event) => {
+  const files = Array.from(event.target.files || []);
+  try {
+    for (const file of files.slice(0, 20)) await uploadComputerFileToPhone(file);
+  } catch (error) {
+    showPhoneError(error);
+  } finally {
+    event.target.value = '';
+  }
+});
+byId('phone-apps').addEventListener('click', loadPhoneApps);
+byId('phone-app-close').addEventListener('click', () => byId('phone-app-drawer').classList.add('hidden'));
+byId('phone-app-search').addEventListener('input', renderPhoneApps);
 
 document.querySelectorAll('[data-phone-key]').forEach((button) => {
   button.addEventListener('click', () => sendPhoneKey(button.dataset.phoneKey));
@@ -2305,6 +2517,35 @@ phoneFloatHeader.addEventListener('pointercancel', endPhoneFloatDrag);
 const phoneScreen = byId('phone-screen');
 const phoneScreenStage = byId('phone-screen-shell');
 
+phoneScreenStage.addEventListener('dragover', (event) => {
+  if (!phoneState.selectedSerial) return;
+  event.preventDefault();
+  event.dataTransfer.dropEffect = 'copy';
+  phoneScreenStage.classList.add('phone-file-drop-active');
+});
+phoneScreenStage.addEventListener('dragleave', (event) => {
+  if (event.relatedTarget && phoneScreenStage.contains(event.relatedTarget)) return;
+  phoneScreenStage.classList.remove('phone-file-drop-active');
+});
+phoneScreenStage.addEventListener('drop', async (event) => {
+  if (!phoneState.selectedSerial) return;
+  event.preventDefault();
+  event.stopPropagation();
+  phoneScreenStage.classList.remove('phone-file-drop-active');
+  try {
+    const diskPayload = event.dataTransfer.getData('application/x-sayuri-disk');
+    if (diskPayload) {
+      await pushDiskItemsToPhone(JSON.parse(diskPayload));
+      return;
+    }
+    const files = Array.from(event.dataTransfer.files || []);
+    if (!files.length) throw new Error('Нет файлов для отправки.');
+    for (const file of files.slice(0, 20)) await uploadComputerFileToPhone(file);
+  } catch (error) {
+    showPhoneError(error);
+  }
+});
+
 phoneScreen.addEventListener('contextmenu', (event) => {
   event.preventDefault();
   sendPhoneKey('BACK');
@@ -2319,7 +2560,7 @@ phoneScreen.addEventListener('pointerdown', (event) => {
     startedAt: performance.now()
   };
   phoneScreen.setPointerCapture?.(event.pointerId);
-  phoneScreenStage.focus({preventScroll: true});
+  if (phoneState.keyboardCaptured) phoneScreenStage.focus({preventScroll: true});
   event.preventDefault();
 });
 phoneScreen.addEventListener('pointerup', async (event) => {

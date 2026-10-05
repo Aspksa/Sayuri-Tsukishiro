@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from http import HTTPStatus
+from io import BytesIO
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import logging
 import mimetypes
+import time
 import traceback
 from urllib.parse import parse_qs, quote, unquote, urlparse
 import uuid
@@ -232,6 +234,12 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
             if parsed.path == "/api/phone":
                 self._json(self.server.core.phone.health())
                 return
+            if parsed.path == "/api/phone/apps":
+                serial = query.get("serial", [None])[0]
+                self._json({
+                    "apps": self.server.core.phone.list_apps(serial),
+                })
+                return
             if parsed.path == "/api/phone/frame":
                 serial = query.get("serial", [None])[0]
                 try:
@@ -431,8 +439,15 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
 
             if parsed.path == "/api/phone/control/start":
                 payload = self._read_json()
-                result = self.server.core.phone.start_control(payload.get("serial"))
-                self.server.core.database.record_event("Телефон Sayuri", "Управление телефоном запущено")
+                result = self.server.core.phone.start_control(
+                    payload.get("serial"),
+                    profile=payload.get("profile", "quality"),
+                )
+                self.server.core.database.record_event(
+                    "Телефон Sayuri",
+                    "Управление телефоном запущено",
+                    details={"profile": result.get("profile")},
+                )
                 self._json(result)
                 return
 
@@ -486,6 +501,125 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
                         payload.get("text"),
                     )
                 )
+                return
+
+            if parsed.path == "/api/phone/capture":
+                payload = self._read_json()
+                frame = self.server.core.phone.screen_frame(
+                    payload.get("serial"),
+                    force=True,
+                )
+                stamp = time.strftime("%Y-%m-%d_%H-%M-%S")
+                name = f"Телефон Sayuri {stamp}-{uuid.uuid4().hex[:6]}.png"
+                item = self.server.core.disk.store_stream(
+                    name=name,
+                    content_type="image/png",
+                    size_bytes=len(frame["data"]),
+                    stream=BytesIO(frame["data"]),
+                    folder_id=None,
+                )
+                self.server.core.database.record_event(
+                    "Телефон Sayuri",
+                    "Снимок экрана сохранён в Диск Sayuri",
+                    details={"file_id": item["id"], "name": item["name"]},
+                )
+                self._json({"status": "снимок сохранён", "file": item}, HTTPStatus.CREATED)
+                return
+
+            if parsed.path == "/api/phone/recording/start":
+                payload = self._read_json()
+                result = self.server.core.phone.start_recording(
+                    payload.get("serial"),
+                    profile=payload.get("profile", "quality"),
+                    audio=payload.get("audio") is not False,
+                )
+                self.server.core.database.record_event(
+                    "Телефон Sayuri",
+                    "Запись экрана начата",
+                    details={"profile": result.get("profile"), "audio": result.get("audio")},
+                )
+                self._json(result)
+                return
+
+            if parsed.path == "/api/phone/recording/stop":
+                payload = self._read_json()
+                result = self.server.core.phone.stop_recording(payload.get("serial"))
+                path = result.pop("path")
+                try:
+                    with path.open("rb") as source:
+                        item = self.server.core.disk.store_stream(
+                            name=result["name"],
+                            content_type="video/mp4",
+                            size_bytes=result["size_bytes"],
+                            stream=source,
+                            folder_id=None,
+                        )
+                finally:
+                    path.unlink(missing_ok=True)
+                self.server.core.database.record_event(
+                    "Телефон Sayuri",
+                    "Запись экрана сохранена в Диск Sayuri",
+                    details={"file_id": item["id"], "name": item["name"]},
+                )
+                self._json({**result, "file": item})
+                return
+
+            if parsed.path == "/api/phone/files/push":
+                payload = self._read_json()
+                file_id = payload.get("file_id")
+                if not isinstance(file_id, str) or not file_id:
+                    raise BadRequestError("Нужно указать file_id.")
+                item = self.server.core.disk.get_file(file_id)
+                result = self.server.core.phone.push_file(
+                    payload.get("serial"),
+                    item["path"],
+                    item["name"],
+                )
+                self.server.core.database.record_event(
+                    "Телефон Sayuri",
+                    "Файл из Диск Sayuri отправлен на телефон",
+                    details={"file_id": file_id, "name": item["name"]},
+                )
+                self._json(result)
+                return
+
+            if parsed.path == "/api/phone/files/upload":
+                raw_length = self.headers.get("Content-Length", "")
+                try:
+                    size_bytes = int(raw_length)
+                except ValueError as exc:
+                    raise BadRequestError("Для передачи файла требуется корректный Content-Length.") from exc
+                encoded_name = self.headers.get("X-Sayuri-Filename", "")
+                name = unquote(encoded_name).strip()
+                serial = self.headers.get("X-Sayuri-Phone-Serial", "").strip()
+                if not name or not serial:
+                    raise BadRequestError("Не передано имя файла или serial телефона.")
+                result = self.server.core.phone.push_stream(
+                    serial,
+                    name=name,
+                    size_bytes=size_bytes,
+                    stream=self.rfile,
+                )
+                self.server.core.database.record_event(
+                    "Телефон Sayuri",
+                    "Файл с компьютера отправлен на телефон",
+                    details={"name": result["name"], "size_bytes": result["size_bytes"]},
+                )
+                self._json(result, HTTPStatus.CREATED)
+                return
+
+            if parsed.path == "/api/phone/apps/launch":
+                payload = self._read_json()
+                result = self.server.core.phone.launch_app(
+                    payload.get("serial"),
+                    payload.get("package"),
+                )
+                self.server.core.database.record_event(
+                    "Телефон Sayuri",
+                    "Приложение запущено",
+                    details={"package": result["package"]},
+                )
+                self._json(result)
                 return
 
             if parsed.path == "/api/disk/folders":

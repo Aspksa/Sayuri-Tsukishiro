@@ -1,22 +1,31 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, BinaryIO
 import os
 import re
 import shutil
 import subprocess
 import threading
 import time
-from typing import Any
+import uuid
 
 
-PHONE_BACKEND_VERSION = "0.3.0"
+PHONE_BACKEND_VERSION = "0.4.0"
 SCRCPY_VERSION = "4.1"
 COMMAND_TIMEOUT_SECONDS = 20
 FRAME_TIMEOUT_SECONDS = 8
 FRAME_CACHE_SECONDS = 0.35
 MAX_SWIPE_DURATION_MS = 1500
 MAX_TEXT_INPUT_CHARS = 250
+MAX_PHONE_PUSH_BYTES = 512 * 1024 * 1024
+QUALITY_PROFILES = {
+    "economy": {"label": "Эконом", "max_size": "1024", "max_fps": "30", "video_bit_rate": "4M"},
+    "balanced": {"label": "Баланс", "max_size": "1600", "max_fps": "60", "video_bit_rate": "8M"},
+    "quality": {"label": "Качество", "max_size": "1920", "max_fps": "60", "video_bit_rate": "16M"},
+}
+PACKAGE_RE = re.compile(r"^[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)+$")
+SAFE_PHONE_NAME_RE = re.compile(r"[^0-9A-Za-zА-Яа-яЁё._() -]+")
 ANDROID_KEYS = {
     "BACK": "KEYCODE_BACK",
     "HOME": "KEYCODE_HOME",
@@ -45,13 +54,18 @@ class PhoneService:
         self.project_root = project_root
         self.runtime_root = project_root / ".runtime" / "phone"
         self.scrcpy_root = self.runtime_root / "scrcpy"
+        self.recordings_root = self.runtime_root / "recordings"
+        self.uploads_root = self.runtime_root / "uploads"
         self._sessions: dict[str, subprocess.Popen] = {}
+        self._recordings: dict[str, dict[str, Any]] = {}
         self._frame_cache: dict[str, dict[str, Any]] = {}
         self._lock = threading.RLock()
         self._frame_lock = threading.Lock()
 
     def initialize(self) -> None:
         self.runtime_root.mkdir(parents=True, exist_ok=True)
+        self.recordings_root.mkdir(parents=True, exist_ok=True)
+        self.uploads_root.mkdir(parents=True, exist_ok=True)
 
     @staticmethod
     def _creationflags() -> int:
@@ -157,16 +171,33 @@ class PhoneService:
             for serial in dead:
                 self._sessions.pop(serial, None)
 
+            finished_recordings = [
+                serial
+                for serial, state in self._recordings.items()
+                if state["process"].poll() is not None
+            ]
+            for serial in finished_recordings:
+                self._recordings[serial]["finished"] = True
+
     def _drop_device_state(self, serial: str) -> None:
         process = None
+        recording = None
         with self._lock:
             self._frame_cache.pop(serial, None)
             process = self._sessions.pop(serial, None)
+            recording = self._recordings.pop(serial, None)
         if process is not None and process.poll() is None:
             try:
                 process.terminate()
             except OSError:
                 pass
+        if recording is not None:
+            record_process = recording["process"]
+            if record_process.poll() is None:
+                try:
+                    record_process.terminate()
+                except OSError:
+                    pass
 
     def _reconcile_device_state(self, devices: list[dict[str, Any]]) -> None:
         authorized = {
@@ -175,7 +206,7 @@ class PhoneService:
             if item.get("authorized")
         }
         with self._lock:
-            stale = (set(self._frame_cache) | set(self._sessions)) - authorized
+            stale = (set(self._frame_cache) | set(self._sessions) | set(self._recordings)) - authorized
         for serial in stale:
             self._drop_device_state(serial)
 
@@ -217,6 +248,12 @@ class PhoneService:
             "devices": devices,
             "authorized_devices": authorized,
             "control_sessions": sorted(self._sessions),
+            "recording_sessions": sorted(
+                serial
+                for serial, state in self._recordings.items()
+                if state["process"].poll() is None
+            ),
+            "quality_profiles": QUALITY_PROFILES,
             "capabilities": {
                 "usb": True,
                 "wireless_pairing": True,
@@ -224,7 +261,10 @@ class PhoneService:
                 "screen_control": runtime_ready,
                 "audio": runtime_ready,
                 "clipboard": runtime_ready,
-                "file_transfer": False,
+                "file_transfer": adb is not None,
+                "screenshot_to_disk": adb is not None,
+                "screen_recording": runtime_ready,
+                "app_launcher": adb is not None,
                 "embedded_web_stream": adb is not None,
                 "embedded_control": adb is not None,
                 "embedded_frame_interval_ms": int(FRAME_CACHE_SECONDS * 1000),
@@ -541,12 +581,31 @@ class PhoneService:
             "characters": len(safe_text),
         }
 
-    def start_control(self, serial: Any = None) -> dict[str, Any]:
+    @staticmethod
+    def _quality_profile(value: Any) -> tuple[str, dict[str, str]]:
+        key = str(value or "quality").strip().casefold()
+        profile = QUALITY_PROFILES.get(key)
+        if profile is None:
+            raise ValueError("Неизвестный профиль качества.")
+        return key, profile
+
+    @staticmethod
+    def _safe_phone_filename(value: Any) -> str:
+        if not isinstance(value, str):
+            raise ValueError("Не указано имя файла.")
+        name = Path(value).name.strip()
+        name = SAFE_PHONE_NAME_RE.sub("_", name)[:140].strip(" .")
+        if not name or name in {".", ".."}:
+            raise ValueError("Некорректное имя файла.")
+        return name
+
+    def start_control(self, serial: Any = None, *, profile: Any = "quality") -> dict[str, Any]:
         scrcpy = self._resolve_scrcpy()
         if scrcpy is None:
             raise OSError("scrcpy runtime не установлен.")
         device = self._select_authorized_device(serial)
         device_serial = device["serial"]
+        profile_name, quality = self._quality_profile(profile)
 
         self._prune_sessions()
         with self._lock:
@@ -556,6 +615,7 @@ class PhoneService:
                     "status": "уже открыто",
                     "serial": device_serial,
                     "pid": existing.pid,
+                    "profile": profile_name,
                 }
 
             command = [
@@ -563,9 +623,12 @@ class PhoneService:
                 "--serial", device_serial,
                 "--window-title", "Телефон Sayuri",
                 "--stay-awake",
-                "--max-size", "1600",
-                "--max-fps", "60",
-                "--video-bit-rate", "8M",
+                "--keyboard=uhid",
+                "--mouse=sdk",
+                "--video-codec=h264",
+                "--max-size", quality["max_size"],
+                "--max-fps", quality["max_fps"],
+                "--video-bit-rate", quality["video_bit_rate"],
             ]
             process = subprocess.Popen(command, cwd=str(scrcpy.parent))
             self._sessions[device_serial] = process
@@ -575,7 +638,215 @@ class PhoneService:
                 "pid": process.pid,
                 "window": "Телефон Sayuri",
                 "embedded": False,
+                "keyboard": "uhid",
+                "profile": profile_name,
             }
+
+    def start_recording(
+        self,
+        serial: Any = None,
+        *,
+        profile: Any = "quality",
+        audio: bool = True,
+    ) -> dict[str, Any]:
+        scrcpy = self._resolve_scrcpy()
+        if scrcpy is None:
+            raise OSError("scrcpy runtime не установлен.")
+        device = self._select_authorized_device(serial)
+        device_serial = device["serial"]
+        profile_name, quality = self._quality_profile(profile)
+
+        self._prune_sessions()
+        with self._lock:
+            existing = self._recordings.get(device_serial)
+            if existing is not None and existing["process"].poll() is None:
+                return {
+                    "status": "запись уже идёт",
+                    "serial": device_serial,
+                    "profile": existing["profile"],
+                    "started_at": existing["started_at"],
+                }
+
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        safe_serial = re.sub(r"[^A-Za-z0-9._-]", "_", device_serial)[:48]
+        path = self.recordings_root / f"phone-{safe_serial}-{stamp}.mp4"
+        command = [
+            str(scrcpy),
+            "--serial", device_serial,
+            "--no-playback",
+            "--no-window",
+            "--no-control",
+            "--video-codec=h264",
+            "--max-size", quality["max_size"],
+            "--max-fps", quality["max_fps"],
+            "--video-bit-rate", quality["video_bit_rate"],
+            f"--record={path}",
+        ]
+        if not audio:
+            command.append("--no-audio")
+
+        process = subprocess.Popen(
+            command,
+            cwd=str(scrcpy.parent),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        state = {
+            "process": process,
+            "path": path,
+            "profile": profile_name,
+            "audio": bool(audio),
+            "started_at": time.time(),
+            "finished": False,
+        }
+        with self._lock:
+            self._recordings[device_serial] = state
+        return {
+            "status": "запись начата",
+            "serial": device_serial,
+            "profile": profile_name,
+            "audio": bool(audio),
+            "started_at": state["started_at"],
+        }
+
+    def stop_recording(self, serial: Any) -> dict[str, Any]:
+        if not isinstance(serial, str) or not serial.strip():
+            raise ValueError("Не указан идентификатор телефона.")
+        device_serial = serial.strip()
+        with self._lock:
+            state = self._recordings.pop(device_serial, None)
+        if state is None:
+            raise ValueError("Запись для этого телефона не запущена.")
+
+        process = state["process"]
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=8)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=3)
+
+        path = Path(state["path"])
+        if not path.is_file() or path.stat().st_size <= 0:
+            path.unlink(missing_ok=True)
+            raise OSError("Запись завершилась без готового видеофайла.")
+        return {
+            "status": "запись остановлена",
+            "serial": device_serial,
+            "path": path,
+            "name": path.name,
+            "size_bytes": path.stat().st_size,
+            "profile": state["profile"],
+            "audio": state["audio"],
+        }
+
+    def push_file(self, serial: Any, path: Path, name: Any) -> dict[str, Any]:
+        device = self._select_authorized_device(serial)
+        device_serial = device["serial"]
+        if not path.is_file():
+            raise FileNotFoundError("Файл для отправки не найден.")
+        size = path.stat().st_size
+        if size > MAX_PHONE_PUSH_BYTES:
+            raise ValueError("Файл для телефона превышает лимит 512 МБ.")
+        safe_name = self._safe_phone_filename(name)
+        adb = self._resolve_adb()
+        if adb is None:
+            raise OSError("ADB runtime не установлен.")
+
+        remote = f"/sdcard/Download/{safe_name}"
+        result = self._run(
+            [str(adb), "-s", device_serial, "push", str(path), remote],
+            timeout=max(COMMAND_TIMEOUT_SECONDS, 120),
+        )
+        if result.returncode != 0:
+            raise OSError((result.stderr or result.stdout or "Не удалось отправить файл на телефон.").strip())
+
+        self._run(
+            [
+                str(adb), "-s", device_serial, "shell", "am", "broadcast",
+                "-a", "android.intent.action.MEDIA_SCANNER_SCAN_FILE",
+                "-d", f"file://{remote}",
+            ],
+            timeout=COMMAND_TIMEOUT_SECONDS,
+        )
+        return {
+            "status": "файл отправлен",
+            "serial": device_serial,
+            "name": safe_name,
+            "size_bytes": size,
+            "remote_path": remote,
+        }
+
+    def push_stream(
+        self,
+        serial: Any,
+        *,
+        name: Any,
+        size_bytes: int,
+        stream: BinaryIO,
+    ) -> dict[str, Any]:
+        if size_bytes < 0 or size_bytes > MAX_PHONE_PUSH_BYTES:
+            raise ValueError("Размер файла должен быть от 0 до 512 МБ.")
+        safe_name = self._safe_phone_filename(name)
+        temp = self.uploads_root / f"{uuid.uuid4().hex}.part"
+        remaining = size_bytes
+        try:
+            with temp.open("wb") as target:
+                while remaining > 0:
+                    chunk = stream.read(min(1024 * 1024, remaining))
+                    if not chunk:
+                        raise ValueError("Передача файла завершилась раньше заявленного размера.")
+                    target.write(chunk)
+                    remaining -= len(chunk)
+            return self.push_file(serial, temp, safe_name)
+        finally:
+            temp.unlink(missing_ok=True)
+
+    def list_apps(self, serial: Any = None) -> list[dict[str, str]]:
+        device = self._select_authorized_device(serial)
+        device_serial = device["serial"]
+        adb = self._resolve_adb()
+        if adb is None:
+            raise OSError("ADB runtime не установлен.")
+        result = self._run(
+            [str(adb), "-s", device_serial, "shell", "pm", "list", "packages", "-3"]
+        )
+        if result.returncode != 0:
+            raise OSError((result.stderr or result.stdout or "Не удалось получить список приложений.").strip())
+        packages = []
+        for raw in result.stdout.splitlines():
+            value = raw.strip()
+            if value.startswith("package:"):
+                package = value[len("package:"):].strip()
+                if PACKAGE_RE.fullmatch(package):
+                    packages.append({"package": package, "label": package})
+        packages.sort(key=lambda item: item["package"].casefold())
+        return packages[:500]
+
+    def launch_app(self, serial: Any, package: Any) -> dict[str, Any]:
+        device = self._select_authorized_device(serial)
+        device_serial = device["serial"]
+        if not isinstance(package, str) or not PACKAGE_RE.fullmatch(package.strip()):
+            raise ValueError("Некорректное имя Android-пакета.")
+        requested = package.strip()
+        installed = {item["package"] for item in self.list_apps(device_serial)}
+        if requested not in installed:
+            raise ValueError("Приложение не найдено среди установленных пользовательских приложений.")
+        adb = self._resolve_adb()
+        if adb is None:
+            raise OSError("ADB runtime не установлен.")
+        result = self._run(
+            [
+                str(adb), "-s", device_serial, "shell", "monkey",
+                "-p", requested,
+                "-c", "android.intent.category.LAUNCHER",
+                "1",
+            ]
+        )
+        if result.returncode != 0:
+            raise OSError((result.stderr or result.stdout or "Не удалось открыть приложение.").strip())
+        return {"status": "приложение открыто", "serial": device_serial, "package": requested}
 
     def stop_control(self, serial: Any, *, missing_ok: bool = False) -> dict[str, Any]:
         if not isinstance(serial, str) or not serial.strip():

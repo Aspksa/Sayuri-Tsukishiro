@@ -22,13 +22,13 @@
     {
       "id": "sayuri-phone",
       "display_name": "Телефон Sayuri",
-      "description": "Глобальный плавающий Android-дисплей поверх всего проекта: drag/resize/rotate, мышь, колесо, клавиатура, USB/Wi-Fi ADB и официальный scrcpy 60 FPS.",
+      "description": "Плавающий Android workspace: мышь, переключаемая клавиатура ПК, UHID scrcpy, профили качества, снимки/запись в Диск, drag&drop файлов и запуск приложений.",
       "path": "phone"
     },
     {
       "id": "web-ui",
       "display_name": "Веб-интерфейс",
-      "description": "Локальная оболочка Sayuri с независимым плавающим Телефон Sayuri, Диском, ДНК и системными настройками.",
+      "description": "Локальная оболочка Sayuri с глобальным плавающим Телефон Sayuri, Диском, ДНК и системными настройками.",
       "path": "web"
     },
     {

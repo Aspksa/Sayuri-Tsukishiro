@@ -161,3 +161,19 @@
   - embedded audio;
   - гарантированный Unicode IME для всех Android-клавиатур.
 - Следующий этап после проверки UX: PHONE-004 — high-FPS local video bridge и расширенный keyboard/clipboard protocol.
+
+
+## PHONE-004A — Pro Control & Media
+- Статус: `implemented; CI pending`.
+- Готово:
+  - keyboard capture switch;
+  - scrcpy UHID keyboard;
+  - quality profiles;
+  - screenshot → Диск Sayuri;
+  - screen+audio recording → Диск Sayuri;
+  - disk/PC file push → Android Download;
+  - user app list/launch;
+  - clipboard-to-text helper;
+  - security allow-lists and file/package validation.
+- Критерий контрольной точки: полный CI зелёный.
+- Продолжение после CI: PHONE-004B — H.264/WebCodecs video bridge.

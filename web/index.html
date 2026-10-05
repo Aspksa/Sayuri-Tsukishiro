@@ -419,6 +419,7 @@
         </div>
       </div>
       <div class="phone-float-window-actions">
+        <button class="phone-keyboard-capture" id="phone-keyboard-capture" type="button" title="Переключить клавиатуру ПК">КЛАВ: SAYURI</button>
         <span class="phone-live-badge" id="phone-live-badge">ОЖИДАНИЕ</span>
         <button id="phone-float-rotate" type="button" title="Повернуть экран" aria-label="Повернуть экран">↻</button>
         <button id="phone-float-minimize" type="button" title="Свернуть" aria-label="Свернуть">—</button>
@@ -449,7 +450,30 @@
           <button type="button" data-phone-key="POWER" title="Питание" disabled>⌁</button>
         </div>
 
-        <button class="phone-float-native" id="phone-open-native" type="button" disabled title="Открыть официальный scrcpy 60 FPS">60 FPS</button>
+        <button class="phone-float-native" id="phone-open-native" type="button" disabled title="Открыть официальный scrcpy с UHID-клавиатурой">60 FPS</button>
+      </div>
+
+      <div class="phone-pro-tools">
+        <select id="phone-quality-profile" title="Качество">
+          <option value="economy">ECO</option>
+          <option value="balanced">BAL</option>
+          <option value="quality" selected>HQ</option>
+        </select>
+        <button id="phone-capture" type="button" title="Сохранить снимок в Диск Sayuri">Снимок</button>
+        <button id="phone-record" type="button" title="Запись экрана со звуком">● Запись</button>
+        <button id="phone-paste" type="button" title="Вставить текст из буфера компьютера">Вставить</button>
+        <button id="phone-file" type="button" title="Отправить файл в Download телефона">Файл</button>
+        <button id="phone-apps" type="button" title="Открыть приложение">Приложения</button>
+        <input id="phone-file-picker" class="hidden" type="file" multiple>
+      </div>
+
+      <div class="phone-app-drawer hidden" id="phone-app-drawer">
+        <div class="phone-app-drawer-head">
+          <strong>Приложения</strong>
+          <input id="phone-app-search" type="search" placeholder="Поиск пакета…" autocomplete="off">
+          <button id="phone-app-close" type="button" aria-label="Закрыть список приложений">×</button>
+        </div>
+        <div class="phone-app-list" id="phone-app-list"></div>
       </div>
 
       <form class="phone-keyboard-bar" id="phone-text-form">
@@ -458,7 +482,7 @@
       </form>
 
       <div class="phone-float-help">
-        <span id="phone-keyboard-hint">Клик · свайп · колесо · правый клик = Назад · после клика по экрану работает клавиатура ПК</span>
+        <span id="phone-keyboard-hint">Клавиатура Sayuri · включите захват, чтобы печатать с ПК прямо в Android</span>
         <span id="phone-rotation-state">0°</span>
       </div>
     </div>

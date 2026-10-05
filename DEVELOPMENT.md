@@ -511,3 +511,62 @@ Ubuntu CI now performs:
 `node --check web/app.js`
 
 This complements Python unit/web-contract tests.
+
+
+## Телефон Sayuri 0.4 — Pro Control
+
+### Quality profiles
+
+```text
+economy  1024 px · 30 FPS · 4 Mbit/s
+balanced 1600 px · 60 FPS · 8 Mbit/s
+quality  1920 px · 60 FPS · 16 Mbit/s
+```
+
+Нативный scrcpy:
+- H.264;
+- `--keyboard=uhid`;
+- `--mouse=sdk`;
+- audio по стандартному scrcpy pipeline.
+
+### Media API
+
+```text
+POST /api/phone/capture
+POST /api/phone/recording/start
+POST /api/phone/recording/stop
+```
+
+Capture сохраняется в корень Диск Sayuri как PNG.
+Recording создаётся во временном runtime, после остановки импортируется в Диск Sayuri как MP4 и временный файл удаляется.
+
+### File bridge
+
+```text
+POST /api/phone/files/push    # существующий file_id из Диска
+POST /api/phone/files/upload  # binary body с компьютера
+```
+
+Политика:
+- максимум 512 МБ;
+- destination фиксирован: `/sdcard/Download/`;
+- filename нормализуется;
+- APK не устанавливается автоматически.
+
+### App launcher
+
+```text
+GET  /api/phone/apps?serial=...
+POST /api/phone/apps/launch
+```
+
+В 0.4 перечисляются только пользовательские пакеты `pm list packages -3`.
+Запуск разрешён только если package присутствует в текущем списке устройства.
+
+### Keyboard capture
+
+Floating UI имеет явное состояние:
+- `КЛАВ: SAYURI` — физическая клавиатура не перехватывается;
+- `КЛАВ: ТЕЛЕФОН` — keydown внутри phone stage направляется в Android.
+
+Нативный режим использует UHID и остаётся способом для полного IME/Unicode до появления собственного control-protocol bridge.
