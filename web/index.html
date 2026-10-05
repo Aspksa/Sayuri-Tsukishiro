@@ -372,6 +372,7 @@
               <div class="sayuri-memory-stats">
                 <span>Личная <strong id="sayuri-memory-personal">0</strong></span>
                 <span>Проектная <strong id="sayuri-memory-project">0</strong></span>
+                <span>На проверку <strong id="sayuri-memory-pending">0</strong></span>
                 <span>Всего <strong id="sayuri-memory-total">0</strong></span>
               </div>
             </div>
@@ -411,7 +412,55 @@
             </div>
             <div class="sayuri-memory-message" id="sayuri-memory-message" aria-live="polite"></div>
             <div class="sayuri-memory-list" id="sayuri-memory-list"><p class="muted">Загрузка памяти…</p></div>
-            <p class="sayuri-security-note">Быстрое сохранение из чата: «запомни лично: …» или «запомни в проект: …». Обычная переписка автоматически в долговременную память не записывается.</p>
+
+            <section class="sayuri-memory-intelligence">
+              <div class="section-head">
+                <div><p class="eyebrow">MEMORY INTELLIGENCE 2.0</p><h4>Автоматизация памяти</h4></div>
+                <span class="sayuri-memory-guardian-badge">Memory Guardian</span>
+              </div>
+              <p class="sayuri-card-copy">Sayuri автоматически замечает потенциально важные факты, решения, предпочтения и задачи. Они сначала попадают в очередь кандидатов. Дубли отбрасываются, возможные противоречия выделяются отдельно.</p>
+
+              <div class="sayuri-memory-automation-grid">
+                <label>
+                  <span><strong>Автоматически искать важное</strong><small>Анализировать новые сообщения и создавать кандидаты памяти.</small></span>
+                  <input id="memory-intelligence-candidates" type="checkbox" checked>
+                </label>
+                <label>
+                  <span><strong>Искать противоречия</strong><small>Сравнивать новый кандидат с уже сохранёнными воспоминаниями.</small></span>
+                  <input id="memory-intelligence-conflicts" type="checkbox" checked>
+                </label>
+                <label>
+                  <span><strong>Привязывать контекст</strong><small>Сохранять ссылку на текущий раздел и открытый документ.</small></span>
+                  <input id="memory-intelligence-context" type="checkbox" checked>
+                </label>
+                <label>
+                  <span><strong>Автосохранение высокой уверенности</strong><small>Только безопасные проектные факты выше выбранного порога. Выключено по умолчанию.</small></span>
+                  <input id="memory-intelligence-autosave" type="checkbox">
+                </label>
+              </div>
+
+              <div class="sayuri-memory-intelligence-actions">
+                <label>
+                  <span>Порог автосохранения</span>
+                  <select id="memory-intelligence-threshold">
+                    <option value="0.96">96%</option>
+                    <option value="0.97">97%</option>
+                    <option value="0.98">98%</option>
+                    <option value="0.99">99%</option>
+                    <option value="1">100%</option>
+                  </select>
+                </label>
+                <button class="secondary-button" id="memory-intelligence-save" type="button">Сохранить настройки</button>
+                <button class="secondary-button" id="memory-candidates-refresh" type="button">Обновить кандидатов</button>
+              </div>
+
+              <div class="sayuri-memory-candidate-message" id="sayuri-memory-candidate-message" aria-live="polite"></div>
+              <div class="sayuri-memory-candidates" id="sayuri-memory-candidates">
+                <p class="muted">Кандидаты памяти загружаются…</p>
+              </div>
+            </section>
+
+            <p class="sayuri-security-note">Быстрое сохранение из чата: «запомни лично: …» или «запомни в проект: …». Обычная переписка не записывается целиком: автоматизация создаёт только отдельные кандидаты памяти, которые можно принять или отклонить.</p>
           </article>
 
           <article class="sayuri-account-card sayuri-wide-card sayuri-avatar-card">
