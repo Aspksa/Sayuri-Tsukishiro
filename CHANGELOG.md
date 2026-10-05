@@ -2,38 +2,22 @@
 
 ## Невыпущенные изменения
 
-### 0.1.42 — 2026-10-06 — Semantic Memory + Experience Learning
-
-- Добавлен локальный hybrid semantic поиск памяти `hybrid-semantic-v1`.
-- Поиск учитывает формы слов, смысловые concepts, character n-grams, importance и confidence.
-- Semantic retrieval подключён к контексту DeepSeek-V4-Flash без второй облачной модели.
-- Добавлена отдельная локальная память опыта `data/sayuri-experience.db`.
-- Sayuri учится на финальных исходах инструментов, review кандидатов памяти и явной оценке ответов.
-- После достаточного числа примеров опыт мягко калибрует confidence Memory Intelligence в пределах ±8 п.п.
-- Релевантный прошлый опыт делится на `helpful` и `avoid` и передаётся модели как недоверенный справочный контекст.
-- В чате добавлена явная оценка «Полезно / Не помогло».
-- В Личном кабинете добавлены Semantic Memory status, relevance поиска и статистика Experience Learning.
-- Добавлены API `/api/sayuri/experience` и `/api/sayuri/experience/feedback`.
-- Добавлены тесты semantic retrieval, feedback idempotency, relevant experience context, calibration и action learning.
-- Проект: `0.1.42`; Ядро: `0.1.34`; Agent Core: `0.6.0`; Web UI: `0.19.0`.
-
-
 ### 0.1.42 — 2026-10-05 — Semantic Memory + Experience Learning
 
-- Добавлен локальный `hybrid-semantic-v1` для смыслового поиска памяти без второй AI-модели.
-- Semantic Memory использует token overlap, лёгкую морфологию, локальные concepts, character n-grams и quality weighting.
-- Личная и проектная память остаются раздельными на этапе retrieval.
-- Поиск в Личном кабинете показывает semantic relevance.
-- Добавлен отдельный локальный `ExperienceStore` в `data/sayuri-experience.db`.
-- Experience Learning учитывает исходы Safe Actions, review кандидатов памяти и явную оценку ответов.
-- У ответов Sayuri появились «Полезно / Не помогло».
-- Обратная связь idempotent и может быть пересмотрена без создания дублей.
-- Memory Intelligence калибрует confidence по накопленному подтверждённому опыту в пределах ±8%.
-- Релевантный положительный/отрицательный опыт передаётся DeepSeek-V4-Flash отдельным недоверенным context block.
-- В Личном кабинете добавлены метрики опыта и success rate стратегий.
-- Добавлены API опыта и тесты Semantic Memory / Experience Learning.
+- Добавлен полностью локальный смысловой retrieval `hybrid-semantic-v1` без второй облачной модели.
+- Поиск учитывает ключевые слова, лёгкую морфологию, доменные concepts, character n-grams, importance и confidence.
+- Личная и проектная память остаются разделёнными при поиске и формировании AI-context.
+- Semantic Memory подключён к DeepSeek-V4-Flash как недоверенный справочный контекст.
+- Добавлена отдельная локальная память опыта `data/sayuri-experience.db`.
+- Sayuri учитывает финальные исходы Safe Actions, решения по кандидатам памяти и явную оценку ответов.
+- Memory Intelligence мягко калибрует confidence по подтверждённому опыту, только после достаточного evidence и максимум на ±8 п.п.
+- Релевантный опыт разделяется на `helpful` и `avoid`; он не считается фактом и не расширяет разрешения.
+- В чате добавлена оценка «Полезно / Не помогло» с idempotent feedback по `response_id`.
+- Для feedback сохраняются только ограниченные prompt/answer excerpt и безопасный UI-context, а не полная история чата.
+- В Личном кабинете добавлены Semantic Memory status, semantic relevance поиска, метрики опыта и success rate стратегий.
+- Добавлены `GET /api/sayuri/experience` и `POST /api/sayuri/experience/feedback`.
+- Добавлены тесты semantic retrieval, scope boundary, feedback revision, strategy calibration и релевантного experience-context.
 - Проект: `0.1.42`; Ядро: `0.1.34`; Agent Core: `0.6.0`; Web UI: `0.19.0`.
-
 
 ### 0.1.41 — 2026-10-05 — Memory Intelligence 2.0
 
