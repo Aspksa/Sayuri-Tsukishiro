@@ -614,7 +614,10 @@ class SayuriAgent:
         entry = self.memory.get(entry_id, include_inactive=True)
         deleted = self.memory.delete(entry_id)
         if deleted and entry:
-            self.memory_v3.record_memory_removed(entry)
+            try:
+                self.memory_v3.archive_memory(entry)
+            except MemorySystemError as exc:
+                raise AgentRuntimeError(str(exc)) from exc
         return {
             "status": "удалено" if deleted else "не найдено",
             "deleted": deleted,
