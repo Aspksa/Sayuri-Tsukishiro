@@ -208,7 +208,7 @@ class WebContractTests(unittest.TestCase):
         script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
         css = (ROOT / "web" / "styles.css").read_text(encoding="utf-8")
 
-        self.assertIn('MEMORY 4.0', html)
+        self.assertIn('MEMORY 4.1 · QUALITY GATE', html)
         self.assertIn('id="memory-v4-goal-form"', html)
         self.assertIn('id="memory-v4-task-form"', html)
         self.assertIn('id="memory-v4-goal-list"', html)
@@ -242,6 +242,8 @@ class WebContractTests(unittest.TestCase):
         self.assertIn('restoreMemoryV4Snapshot', script)
         self.assertIn('Почему вспомнила', script)
         self.assertIn('memory_v4_used', script)
+        self.assertIn('INSTRUCTION RISK', script)
+        self.assertIn('freshness_review', script)
 
         self.assertIn('.sayuri-memory-v4-metrics', css)
         self.assertIn('.memory-v4-source-row', css)
@@ -249,6 +251,8 @@ class WebContractTests(unittest.TestCase):
         self.assertIn('.memory-v4-row.preference.archived', css)
         self.assertIn('.sayuri-memory-recall-reason', css)
         self.assertIn('SAYURI UI 0.21 — Memory 4.0', css)
+        self.assertIn('SAYURI UI 0.22 — Memory 4.1 Quality Gate', css)
+        self.assertIn('.memory-v4-instruction-risk', css)
 
     def test_sayuri_safe_actions_require_confirmation_in_ui(self):
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")

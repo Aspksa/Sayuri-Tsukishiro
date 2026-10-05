@@ -219,3 +219,19 @@
 - Добавлены регрессионные тесты privacy firewall, read-only recall, causal semantics, повторного failure и HTTP/Web contract.
 - Приёмка: атомарный release commit `0.1.45` от текущего `main` обязан пройти полный workflow Versions и финальный CI на `main`.
 
+## MEM-007 — Memory 4.1 Quality Gate
+
+- Статус: `implemented; final atomic CI pending`.
+- База: `0.1.45 Memory 4.0 Hardening`.
+- Generic feedback «Полезно / Не помогло» изменяет только retrieval utility реально использованной памяти и больше не меняет factual Source Trust.
+- Добавлен локальный instruction-risk classifier. High-risk memory остаётся доступной локально, но получает quarantine/local-only и не попадает в Cloud.ru.
+- Instruction-risk firewall применяется также к Memory 3.0, Experience и другим memory-derived context blocks.
+- Recall диверсифицируется: почти одинаковые записи штрафуются, чтобы не заполнять контекст дубликатами.
+- Важные volatile memories с низкой freshness и важные записи с низким source trust автоматически создают idempotent Question Memory на перепроверку.
+- Cloud memory context ограничен отдельными char budgets; длинные записи безопасно сокращаются.
+- Recall audit/use-count/feedback привязываются только к memory IDs, которые реально вошли в окончательный Cloud-context после budget selection.
+- Обслуживание переиспользует уже рассчитанный `memory_v4_state`, не пересчитывая вторично до 5000 записей.
+- Quality maintenance запускается opportunistically не чаще одного раза в 24 часа; не создаёт snapshot и не обращается к Cloud.ru.
+- Личный кабинет показывает Quarantine и количество записей к перепроверке.
+- Добавлены regression tests для quarantine, adjacent-layer firewall, diversified recall, stale review queue и context budget attribution.
+- Приёмка: один атомарный release commit `0.1.46` от `main 0.1.45`, полный зелёный workflow Versions, merge через PR и зелёный финальный CI на `main`.

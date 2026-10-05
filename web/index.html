@@ -532,21 +532,23 @@
 
           <article class="sayuri-account-card sayuri-wide-card sayuri-memory-v4-card">
             <div class="section-head">
-              <div><p class="eyebrow">MEMORY 4.0</p><h3>Цели, доверие и объяснимое вспоминание</h3></div>
+              <div><p class="eyebrow">MEMORY 4.1 · QUALITY GATE</p><h3>Цели, доверие и качественное вспоминание</h3></div>
               <div class="sayuri-memory-v4-actions">
                 <button class="secondary-button" id="sayuri-memory-v4-refresh" type="button">Обновить</button>
                 <button class="secondary-button" id="sayuri-memory-v4-integrity" type="button">Проверить целостность</button>
                 <button class="secondary-button" id="sayuri-memory-v4-snapshot" type="button">Создать снимок</button>
-                <button class="primary-button" id="sayuri-memory-v4-maintain" type="button">Обслужить Memory 4.0</button>
+                <button class="primary-button" id="sayuri-memory-v4-maintain" type="button">Обслужить Memory 4.1</button>
               </div>
             </div>
-            <p class="sayuri-card-copy">Memory 4.0 связывает воспоминания с целями и задачами, оценивает доверие и свежесть источников, запоминает причины ошибок и показывает, почему конкретная память была выбрана для ответа.</p>
+            <p class="sayuri-card-copy">Memory 4.1 связывает воспоминания с целями и задачами, оценивает свежесть и полезность, отсекает instruction-risk из Cloud-контекста, разнообразит recall и ставит важные устаревшие факты в очередь перепроверки.</p>
 
             <div class="sayuri-memory-v4-metrics">
               <article><span>Hot</span><strong id="memory-v4-hot">0</strong></article>
               <article><span>Warm</span><strong id="memory-v4-warm">0</strong></article>
               <article><span>Cold</span><strong id="memory-v4-cold">0</strong></article>
               <article><span>Защищено</span><strong id="memory-v4-protected">0</strong></article>
+              <article><span>Quarantine</span><strong id="memory-v4-quarantined">0</strong></article>
+              <article><span>К перепроверке</span><strong id="memory-v4-verification">0</strong></article>
               <article><span>Активные цели</span><strong id="memory-v4-goals">0</strong></article>
               <article><span>Открытые задачи</span><strong id="memory-v4-tasks">0</strong></article>
               <article><span>Заблокировано</span><strong id="memory-v4-blocked">0</strong></article>
@@ -657,7 +659,7 @@
             </div>
 
             <div class="sayuri-memory-v4-message" id="sayuri-memory-v4-message" aria-live="polite"></div>
-            <p class="sayuri-security-note">Секреты и чувствительные идентификаторы остаются локальными и исключаются из Cloud-контекста. Restore никогда не выполняется автоматически: требуется выбрать снимок и вручную ввести <code>RESTORE MEMORY</code>.</p>
+            <p class="sayuri-security-note">Секреты, чувствительные идентификаторы и high-risk instruction content остаются локальными и исключаются из Cloud-контекста. Оценка «Полезно / Не помогло» меняет utility recall, но не объявляет источник истинным или ложным. Restore никогда не выполняется автоматически: требуется выбрать снимок и вручную ввести <code>RESTORE MEMORY</code>.</p>
           </article>
 
           <article class="sayuri-account-card sayuri-wide-card sayuri-experience-card">

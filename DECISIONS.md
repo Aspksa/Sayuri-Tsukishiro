@@ -446,3 +446,33 @@
 - Timeout, network error, provider error, неверный ключ или другой сбой до AI-ответа не должны обучать utility/frequency памяти.
 - `response_id` связывается только с уже committed recall ID.
 
+## D-048 — полезность ответа не является доказательством истинности источника
+
+- Дата: 2026-10-06.
+- Статус: принято.
+- Эта запись уточняет и заменяет часть D-041 о калибровке Source Trust через обычный feedback ответа.
+- «Полезно / Не помогло» оценивает качество конкретного AI-ответа и retrieval utility использованных memories.
+- Такой feedback не доказывает, что исходный документ/OCR/manual source истинный или ложный, поэтому больше не меняет Source Trust.
+- Source Trust меняется только отдельным explicit validation/manual override или будущим проверяемым evidence-процессом.
+- Utility и Source Trust остаются двумя независимыми сигналами.
+
+## D-049 — instruction-like memory остаётся данными и может быть quarantined
+
+- Дата: 2026-10-06.
+- Статус: принято.
+- Текст памяти никогда не является системной инструкцией для Sayuri.
+- High-risk конструкции вида «игнорируй предыдущие инструкции», запросы раскрыть system prompt и аналогичные directives маркируются `instruction_risk=high`.
+- High-risk memory доступна локальному пользователю и аудиту, но получает `cloud_allowed=false` и не передаётся DeepSeek-V4-Flash автоматически.
+- Тот же firewall применяется к производным Memory 3.0 / Experience context blocks, чтобы quarantine нельзя было обойти соседним контуром памяти.
+- Medium-risk упоминание prompt-injection может оставаться видимым как данные, но явно маркируется в Explainable Recall.
+
+## D-050 — AI-context памяти ограничен бюджетом и диверсифицируется до учёта usage
+
+- Дата: 2026-10-06.
+- Статус: принято.
+- Несколько почти одинаковых memories не должны занимать весь AI-context; после relevance-ranking применяется diversity penalty.
+- Прямой memory recall и вспомогательные Goal/Task/Failure/Question blocks имеют отдельные локальные char budgets.
+- Слишком длинная запись сокращается до контролируемого excerpt; оригинал в БД не меняется.
+- Prepared recall формируется заново после budget selection и содержит только IDs фактически отправленных модели memories.
+- Use-count, recall-count и последующий utility feedback применяются только к этим IDs и только после успешного Cloud.ru ответа согласно D-047.
+- Важный volatile факт с сильно упавшей freshness не удаляется и не считается ложным: Memory Quality Gate создаёт Question Memory на перепроверку.

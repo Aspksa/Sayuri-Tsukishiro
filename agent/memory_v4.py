@@ -24,7 +24,10 @@ class MemorySystemV4:
     """Memory 4.0: goals/tasks, source trust, utility, causal/failure memory and explainable recall."""
 
     ENGINE_ID = "memory-v4"
+    QUALITY_GATE_ID = "memory-v4.1-quality"
     MAX_SCAN = 5000
+    CLOUD_RECALL_CHAR_BUDGET = 9000
+    CLOUD_AUX_CHAR_BUDGET = 7000
     TIERS = {"hot", "warm", "cold"}
     TASK_STATUSES = {"planned", "in_progress", "blocked", "done", "cancelled"}
     GOAL_STATUSES = {"active", "paused", "achieved", "cancelled"}
@@ -63,6 +66,23 @@ class MemorySystemV4:
     _GOAL_MARKERS = (
         "цель проекта", "главная цель", "наша цель", "хочу чтобы", "нужно добиться",
         "целевое состояние", "goal:",
+    )
+    _INSTRUCTION_RISK_HIGH = (
+        re.compile(r"\bignore\s+(?:all\s+|previous\s+|prior\s+)?(?:instructions?|rules?|system)\b", re.IGNORECASE),
+        re.compile(r"\bdo\s+not\s+follow\s+(?:the\s+)?(?:instructions?|rules?)\b", re.IGNORECASE),
+        re.compile(r"\b(?:reveal|show|print|leak)\s+(?:the\s+)?(?:system\s+prompt|developer\s+message)\b", re.IGNORECASE),
+        re.compile(r"\bигнорируй\s+(?:все\s+|предыдущие\s+|системные\s+)?(?:инструкц|правил)", re.IGNORECASE),
+        re.compile(r"\bне\s+следуй\s+(?:предыдущим\s+|системным\s+)?(?:инструкц|правил)", re.IGNORECASE),
+        re.compile(r"\b(?:покажи|раскрой|выведи|сообщи)\s+(?:системн(?:ый|ую)\s+)?(?:промпт|инструкц|developer)", re.IGNORECASE),
+        re.compile(r"\b(?:system|developer)\s*:\s*(?:ignore|override|forget)\b", re.IGNORECASE),
+    )
+    _INSTRUCTION_RISK_MEDIUM = (
+        re.compile(r"\bprompt\s*injection\b", re.IGNORECASE),
+        re.compile(r"\bjailbreak\b", re.IGNORECASE),
+        re.compile(r"\bsystem\s+prompt\b", re.IGNORECASE),
+        re.compile(r"\bdeveloper\s+message\b", re.IGNORECASE),
+        re.compile(r"\bпромпт[- ]?инъекц", re.IGNORECASE),
+        re.compile(r"\bсистемн(?:ый|ого|ому|ым|ом)\s+промпт", re.IGNORECASE),
     )
 
     def __init__(
@@ -147,6 +167,8 @@ class MemorySystemV4:
                     tier TEXT NOT NULL,
                     sensitivity TEXT NOT NULL,
                     cloud_allowed INTEGER NOT NULL,
+                    instruction_risk TEXT NOT NULL DEFAULT 'none',
+                    instruction_risk_score REAL NOT NULL DEFAULT 0.0,
                     recall_count INTEGER NOT NULL DEFAULT 0,
                     helpful_count INTEGER NOT NULL DEFAULT 0,
                     unhelpful_count INTEGER NOT NULL DEFAULT 0,
@@ -155,6 +177,18 @@ class MemorySystemV4:
                 )
                 """
             )
+            state_columns = {
+                row["name"]
+                for row in db.execute("PRAGMA table_info(memory_v4_state)").fetchall()
+            }
+            if "instruction_risk" not in state_columns:
+                db.execute(
+                    "ALTER TABLE memory_v4_state ADD COLUMN instruction_risk TEXT NOT NULL DEFAULT 'none'"
+                )
+            if "instruction_risk_score" not in state_columns:
+                db.execute(
+                    "ALTER TABLE memory_v4_state ADD COLUMN instruction_risk_score REAL NOT NULL DEFAULT 0.0"
+                )
             db.execute(
                 "CREATE INDEX IF NOT EXISTS idx_memory_v4_tier ON memory_v4_state(tier, evaluated_at DESC)"
             )
@@ -393,6 +427,15 @@ class MemorySystemV4:
         return "normal", True
 
     @classmethod
+    def classify_instruction_risk(cls, text: str) -> tuple[str, float]:
+        value = text or ""
+        if any(pattern.search(value) for pattern in cls._INSTRUCTION_RISK_HIGH):
+            return "high", 0.95
+        if any(pattern.search(value) for pattern in cls._INSTRUCTION_RISK_MEDIUM):
+            return "medium", 0.55
+        return "none", 0.0
+
+    @classmethod
     def freshness_policy(cls, entry: dict[str, Any]) -> tuple[str, float]:
         text = cls._normalize(str(entry.get("content") or ""))
         kind = str(entry.get("kind") or "note")
@@ -540,7 +583,10 @@ class MemorySystemV4:
         source_profile = self._source_profile(source_key, self._source_base(entry))
         freshness_class, half_life = self.freshness_policy(entry)
         freshness = self._freshness_score(entry, half_life)
-        sensitivity, cloud_allowed = self.classify_sensitivity(str(entry.get("content") or ""))
+        content_text = str(entry.get("content") or "")
+        sensitivity, cloud_allowed = self.classify_sensitivity(content_text)
+        instruction_risk, instruction_risk_score = self.classify_instruction_risk(content_text)
+        cloud_allowed = cloud_allowed and instruction_risk != "high"
 
         with self._connect() as db:
             existing = db.execute(
@@ -564,9 +610,10 @@ class MemorySystemV4:
                 INSERT INTO memory_v4_state(
                     memory_id, source_key, source_trust, freshness_class,
                     freshness_score, utility_score, tier, sensitivity,
-                    cloud_allowed, recall_count, helpful_count, unhelpful_count,
+                    cloud_allowed, instruction_risk, instruction_risk_score,
+                    recall_count, helpful_count, unhelpful_count,
                     last_recalled_at, evaluated_at
-                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(memory_id) DO UPDATE SET
                     source_key=excluded.source_key,
                     source_trust=excluded.source_trust,
@@ -576,6 +623,8 @@ class MemorySystemV4:
                     tier=excluded.tier,
                     sensitivity=excluded.sensitivity,
                     cloud_allowed=excluded.cloud_allowed,
+                    instruction_risk=excluded.instruction_risk,
+                    instruction_risk_score=excluded.instruction_risk_score,
                     evaluated_at=excluded.evaluated_at
                 """,
                 (
@@ -588,6 +637,8 @@ class MemorySystemV4:
                     tier,
                     sensitivity,
                     1 if cloud_allowed else 0,
+                    instruction_risk,
+                    instruction_risk_score,
                     recalls,
                     helpful,
                     unhelpful,
@@ -604,6 +655,8 @@ class MemorySystemV4:
             "utility_score": round(utility, 4),
             "tier": tier,
             "sensitivity": sensitivity,
+            "instruction_risk": instruction_risk,
+            "instruction_risk_score": round(instruction_risk_score, 4),
             "cloud_allowed": cloud_allowed,
             "recall_count": recalls,
             "helpful_count": helpful,
@@ -614,12 +667,14 @@ class MemorySystemV4:
 
     def refresh_memory_states(self) -> dict[str, Any]:
         entries = self.memory.scan_active(limit=self.MAX_SCAN)
-        counts = {"hot": 0, "warm": 0, "cold": 0, "protected": 0}
+        counts = {"hot": 0, "warm": 0, "cold": 0, "protected": 0, "quarantined": 0}
         for entry in entries:
             state = self.evaluate_entry(entry)
             counts[state["tier"]] += 1
             if not state["cloud_allowed"]:
                 counts["protected"] += 1
+            if state["instruction_risk"] == "high":
+                counts["quarantined"] += 1
         return {"evaluated": len(entries), **counts}
 
     def state_for(self, memory_id: str) -> dict[str, Any] | None:
@@ -642,6 +697,10 @@ class MemorySystemV4:
         reasons.append(f"слой {state['tier']}")
         if state["sensitivity"] != "normal":
             reasons.append("защищённая локальная память")
+        if state["instruction_risk"] == "high":
+            reasons.append("instruction-risk: только локально")
+        elif state["instruction_risk"] == "medium":
+            reasons.append("instruction-risk: требует осторожности")
         return {
             "memory_id": entry["id"],
             "final_score": round(final_score, 4),
@@ -651,6 +710,8 @@ class MemorySystemV4:
             "utility": state["utility_score"],
             "tier": state["tier"],
             "sensitivity": state["sensitivity"],
+            "instruction_risk": state["instruction_risk"],
+            "instruction_risk_score": state["instruction_risk_score"],
             "cloud_allowed": state["cloud_allowed"],
             "why": reasons,
         }
@@ -708,7 +769,10 @@ class MemorySystemV4:
             ),
             reverse=True,
         )
-        selected = ranked[: min(max(int(limit), 1), 30)]
+        selected = self._select_diverse_recall(
+            ranked,
+            min(max(int(limit), 1), 30),
+        )
         selected_ids = [entry["id"] for _, entry, _ in selected]
         explanations = [explanation for _, _, explanation in selected]
         prepared_recall = {
@@ -731,6 +795,53 @@ class MemorySystemV4:
             "prepared_recall": prepared_recall,
         })
         return result
+
+    def _select_diverse_recall(
+        self,
+        ranked: list[tuple[float, dict[str, Any], dict[str, Any]]],
+        limit: int,
+    ) -> list[tuple[float, dict[str, Any], dict[str, Any]]]:
+        if not ranked or limit <= 0:
+            return []
+        pool = list(ranked)
+        selected: list[tuple[float, dict[str, Any], dict[str, Any]]] = []
+        while pool and len(selected) < limit:
+            best_index = 0
+            best_selection = float("-inf")
+            best_redundancy = 0.0
+            for index, item in enumerate(pool):
+                score, entry, _ = item
+                redundancy = 0.0
+                same_source = 0
+                for _, chosen, _ in selected:
+                    similarity = float(
+                        self.semantic.score(
+                            str(entry.get("content") or ""),
+                            str(chosen.get("content") or ""),
+                            importance=3,
+                            confidence=0.8,
+                        )["score"]
+                    )
+                    redundancy = max(redundancy, similarity)
+                    if entry.get("v4", {}).get("source_key") == chosen.get("v4", {}).get("source_key"):
+                        same_source += 1
+                source_penalty = min(same_source * 0.025, 0.075)
+                selection_score = score * 0.82 - redundancy * 0.18 - source_penalty
+                if selection_score > best_selection:
+                    best_index = index
+                    best_selection = selection_score
+                    best_redundancy = redundancy
+
+            chosen = pool.pop(best_index)
+            explanation = chosen[2]
+            explanation["selection_score"] = round(best_selection, 4)
+            explanation["redundancy_penalty"] = round(best_redundancy, 4)
+            if best_redundancy >= 0.45:
+                explanation["why"].append(
+                    f"diversity: похожесть с уже выбранной памятью {round(best_redundancy * 100)}%"
+                )
+            selected.append(chosen)
+        return selected
 
     def commit_prepared_recall(self, query: str, prepared: Any) -> str | None:
         if not isinstance(prepared, dict):
@@ -868,7 +979,9 @@ class MemorySystemV4:
                 """,
                 (normalized, self._now(), response_id),
             )
-        self.note_source_outcome(memory_ids, normalized)
+        # Response usefulness measures retrieval utility, not factual truth of the
+        # underlying source. Source Trust changes only through explicit validation
+        # or a manual override, never from a generic thumbs-up/down.
         for memory_id in memory_ids:
             entry = self.memory.get(memory_id)
             if entry:
@@ -877,7 +990,11 @@ class MemorySystemV4:
             "recall_feedback",
             "response",
             response_id,
-            {"rating": normalized, "memory_count": len(memory_ids)},
+            {
+                "rating": normalized,
+                "memory_count": len(memory_ids),
+                "source_trust_changed": False,
+            },
         )
         return {"updated": len(memory_ids), "rating": normalized}
 
@@ -2026,48 +2143,219 @@ class MemorySystemV4:
             meta = db.execute(
                 "SELECT value FROM memory_v4_meta WHERE key='bootstrap_version'"
             ).fetchone()
-        if meta and meta["value"] == "4.0":
+        version = str(meta["value"]) if meta else None
+
+        if version == "4.1":
             return {
                 "entries": len(entries),
                 "ingested": 0,
-                "states": self.refresh_memory_states(),
                 "already_bootstrapped": True,
+            }
+
+        if version == "4.0":
+            states = self.refresh_memory_states()
+            verification = self.refresh_verification_questions()
+            completed = self._now()
+            with self._connect() as db:
+                db.execute(
+                    """
+                    INSERT INTO memory_v4_meta(key, value, updated_at)
+                    VALUES('bootstrap_version', '4.1', ?)
+                    ON CONFLICT(key) DO UPDATE SET
+                        value='4.1',
+                        updated_at=excluded.updated_at
+                    """,
+                    (completed,),
+                )
+                db.execute(
+                    """
+                    INSERT INTO memory_v4_meta(key, value, updated_at)
+                    VALUES('last_quality_maintenance', ?, ?)
+                    ON CONFLICT(key) DO UPDATE SET
+                        value=excluded.value,
+                        updated_at=excluded.updated_at
+                    """,
+                    (completed, completed),
+                )
+            self._audit(
+                "memory_quality_upgrade",
+                "system",
+                None,
+                {
+                    "from": "4.0",
+                    "to": "4.1",
+                    "entries": len(entries),
+                    "states": states,
+                    "verification": verification,
+                },
+            )
+            return {
+                "entries": len(entries),
+                "ingested": 0,
+                "states": states,
+                "verification": verification,
+                "already_bootstrapped": False,
+                "upgraded_from": "4.0",
             }
 
         ingested = 0
         for entry in entries:
             self.ingest_memory(entry)
             ingested += 1
-        now = self._now()
+        states = self.refresh_memory_states()
+        verification = self.refresh_verification_questions()
+        completed = self._now()
         with self._connect() as db:
             db.execute(
                 """
                 INSERT INTO memory_v4_meta(key, value, updated_at)
-                VALUES('bootstrap_version', '4.0', ?)
-                ON CONFLICT(key) DO UPDATE SET value='4.0', updated_at=excluded.updated_at
+                VALUES('bootstrap_version', '4.1', ?)
+                ON CONFLICT(key) DO UPDATE SET
+                    value='4.1',
+                    updated_at=excluded.updated_at
                 """,
-                (now,),
+                (completed,),
+            )
+            db.execute(
+                """
+                INSERT INTO memory_v4_meta(key, value, updated_at)
+                VALUES('last_quality_maintenance', ?, ?)
+                ON CONFLICT(key) DO UPDATE SET
+                    value=excluded.value,
+                    updated_at=excluded.updated_at
+                """,
+                (completed, completed),
             )
         self._audit(
             "memory_v4_bootstrap",
             "system",
             None,
-            {"entries": len(entries), "ingested": ingested},
+            {
+                "version": "4.1",
+                "entries": len(entries),
+                "ingested": ingested,
+            },
         )
         return {
             "entries": len(entries),
             "ingested": ingested,
-            "states": self.refresh_memory_states(),
+            "states": states,
+            "verification": verification,
             "already_bootstrapped": False,
+        }
+
+
+    def refresh_verification_questions(self) -> dict[str, Any]:
+        opened = 0
+        checked = 0
+        with self._connect() as db:
+            rows = db.execute(
+                """
+                SELECT m.id, m.scope, m.content, m.importance,
+                       s.freshness_class, s.freshness_score, s.source_trust
+                FROM memory_entries AS m
+                JOIN memory_v4_state AS s ON s.memory_id = m.id
+                WHERE m.active = 1
+                ORDER BY m.importance DESC, m.updated_at DESC
+                LIMIT ?
+                """,
+                (self.MAX_SCAN,),
+            ).fetchall()
+
+        for row in rows:
+            checked += 1
+            importance = int(row["importance"] or 1)
+            reason = None
+            if (
+                importance >= 4
+                and row["freshness_class"] == "volatile"
+                and float(row["freshness_score"]) < 0.45
+            ):
+                reason = "freshness_review"
+            elif importance >= 4 and float(row["source_trust"]) < 0.45:
+                reason = "source_trust_review"
+            if reason is None:
+                continue
+
+            question_text = (
+                f"Проверить актуальность важной памяти: "
+                f"«{str(row['content'] or '')[:500]}»"
+            )
+            fingerprint = self._fingerprint(str(row["scope"] or "project"), question_text)
+            with self._connect() as db:
+                existed = db.execute(
+                    "SELECT 1 FROM memory_questions WHERE fingerprint = ?",
+                    (fingerprint,),
+                ).fetchone() is not None
+            self.open_question(
+                question_text,
+                scope=str(row["scope"] or "project"),
+                reason=reason,
+                related_ids=[str(row["id"])],
+                source="memory_quality_gate",
+            )
+            if not existed:
+                opened += 1
+        return {"checked": checked, "opened": opened}
+
+
+    def maybe_maintain(self, *, interval_hours: int = 24) -> dict[str, Any]:
+        interval_hours = min(max(int(interval_hours), 1), 168)
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT value FROM memory_v4_meta WHERE key='last_quality_maintenance'"
+            ).fetchone()
+        last = self._parse_time(row["value"]) if row else None
+        now = self._now_dt()
+        if last and now - last < timedelta(hours=interval_hours):
+            return {
+                "ran": False,
+                "last_maintenance": last.isoformat(),
+                "next_after": (last + timedelta(hours=interval_hours)).isoformat(),
+            }
+
+        states = self.refresh_memory_states()
+        verification = self.refresh_verification_questions()
+        integrity = self.integrity_check(audit=False)
+        completed = self._now()
+        with self._connect() as db:
+            db.execute(
+                """
+                INSERT INTO memory_v4_meta(key, value, updated_at)
+                VALUES('last_quality_maintenance', ?, ?)
+                ON CONFLICT(key) DO UPDATE SET
+                    value=excluded.value,
+                    updated_at=excluded.updated_at
+                """,
+                (completed, completed),
+            )
+        self._audit(
+            "memory_quality_maintenance",
+            "system",
+            None,
+            {
+                "states": states,
+                "verification": verification,
+                "integrity": integrity["status"],
+            },
+        )
+        return {
+            "ran": True,
+            "last_maintenance": completed,
+            "states": states,
+            "verification": verification,
+            "integrity": integrity,
         }
 
     def maintenance(self, *, create_snapshot: bool = False) -> dict[str, Any]:
         snapshot = self.create_snapshot("memory_v4_maintenance") if create_snapshot else None
         states = self.refresh_memory_states()
+        verification = self.refresh_verification_questions()
         integrity = self.integrity_check(audit=True)
         return {
             "status": "готово",
             "states": states,
+            "verification": verification,
             "integrity": integrity,
             "snapshot": snapshot,
             "stats": self.stats(),
@@ -2083,6 +2371,16 @@ class MemorySystemV4:
             }
             protected = db.execute(
                 "SELECT COUNT(*) FROM memory_v4_state WHERE cloud_allowed=0"
+            ).fetchone()[0]
+            quarantined = db.execute(
+                "SELECT COUNT(*) FROM memory_v4_state WHERE instruction_risk='high'"
+            ).fetchone()[0]
+            verification_due = db.execute(
+                """
+                SELECT COUNT(*) FROM memory_questions
+                WHERE status='open'
+                  AND reason IN ('freshness_review','source_trust_review')
+                """
             ).fetchone()[0]
             goals = db.execute(
                 "SELECT COUNT(*) FROM memory_goals WHERE status='active'"
@@ -2115,12 +2413,15 @@ class MemorySystemV4:
                 "SELECT COUNT(*) FROM memory_audit_log"
             ).fetchone()[0]
         return {
-            "version": "4.0",
+            "version": "4.1",
             "engine": self.ENGINE_ID,
+            "quality_gate": self.QUALITY_GATE_ID,
             "hot": tiers.get("hot", 0),
             "warm": tiers.get("warm", 0),
             "cold": tiers.get("cold", 0),
             "protected": protected,
+            "quarantined": quarantined,
+            "verification_due": verification_due,
             "active_goals": goals,
             "open_tasks": tasks,
             "blocked_tasks": blocked,
@@ -2165,7 +2466,9 @@ class MemorySystemV4:
         )
         if not text:
             return True
-        return cls.classify_sensitivity(text)[1]
+        sensitive_allowed = cls.classify_sensitivity(text)[1]
+        instruction_risk, _ = cls.classify_instruction_risk(text)
+        return sensitive_allowed and instruction_risk != "high"
 
     def _memory_cloud_allowed(self, memory_id: str | None) -> bool:
         if not memory_id:
@@ -2269,13 +2572,169 @@ class MemorySystemV4:
             "avoid": safe_items("avoid"),
         }
 
+    @staticmethod
+    def _compact_text(value: Any, limit: int) -> tuple[str | None, bool]:
+        if value is None:
+            return None, False
+        text = str(value)
+        if len(text) <= limit:
+            return text, False
+        return text[: max(limit - 1, 1)].rstrip() + "…", True
+
+    def _budget_recalled_memories(
+        self,
+        recalled: dict[str, Any],
+        *,
+        char_budget: int | None = None,
+    ) -> tuple[dict[str, list[dict[str, Any]]], dict[str, Any], dict[str, Any]]:
+        budget = max(int(char_budget or self.CLOUD_RECALL_CHAR_BUDGET), 1000)
+        candidates: list[tuple[float, str, dict[str, Any], dict[str, Any]]] = []
+        for scope in ("personal", "project"):
+            for item in recalled.get(scope, []):
+                if not isinstance(item, dict):
+                    continue
+                compact_content, truncated = self._compact_text(item.get("content"), 2400)
+                compact = {
+                    "memory_id": item.get("id"),
+                    "kind": item.get("kind"),
+                    "content": compact_content or "",
+                    "importance": item.get("importance"),
+                    "relevance": item.get("relevance"),
+                    "why": list(item.get("recall_explanation", {}).get("why") or [])[:6],
+                    "tier": item.get("v4", {}).get("tier"),
+                    "content_truncated": truncated,
+                }
+                candidates.append(
+                    (
+                        float(item.get("relevance") or 0.0),
+                        scope,
+                        compact,
+                        item,
+                    )
+                )
+        candidates.sort(key=lambda row: row[0], reverse=True)
+
+        selected: list[tuple[str, dict[str, Any], dict[str, Any]]] = []
+        used = 2
+        for _, scope, compact, original in candidates:
+            encoded = json.dumps(compact, ensure_ascii=False, separators=(",", ":"))
+            cost = len(encoded) + 1
+            if selected and used + cost > budget:
+                continue
+            if not selected and cost > budget:
+                compact = dict(compact)
+                compact_content, _ = self._compact_text(compact.get("content"), 700)
+                compact["content"] = compact_content or ""
+                compact["content_truncated"] = True
+                compact["why"] = compact["why"][:3]
+                encoded = json.dumps(compact, ensure_ascii=False, separators=(",", ":"))
+                cost = len(encoded) + 1
+            if used + cost > budget:
+                continue
+            selected.append((scope, compact, original))
+            used += cost
+
+        result = {"personal": [], "project": []}
+        selected_ids: list[str] = []
+        explanations: list[dict[str, Any]] = []
+        for scope, compact, original in selected:
+            result[scope].append(compact)
+            memory_id = original.get("id")
+            if isinstance(memory_id, str) and memory_id:
+                selected_ids.append(memory_id)
+            explanation = original.get("recall_explanation")
+            if isinstance(explanation, dict):
+                explanations.append(explanation)
+
+        original_prepared = recalled.get("prepared_recall")
+        prepared = {
+            "selected_ids": selected_ids,
+            "explanations": explanations,
+            "scopes": (
+                list(original_prepared.get("scopes", []))
+                if isinstance(original_prepared, dict)
+                else ["personal", "project"]
+            ),
+            "for_cloud": True,
+        }
+        meta = {
+            "char_budget": budget,
+            "used_chars": used,
+            "candidate_count": len(candidates),
+            "selected_count": len(selected),
+            "dropped_count": max(0, len(candidates) - len(selected)),
+        }
+        return result, prepared, meta
+
+    def _budget_aux_context(
+        self,
+        *,
+        goals: list[dict[str, Any]],
+        tasks: list[dict[str, Any]],
+        failures: list[dict[str, Any]],
+        questions: list[dict[str, Any]],
+    ) -> tuple[dict[str, list[dict[str, Any]]], dict[str, Any]]:
+        sections = {
+            "tasks": tasks,
+            "goals": goals,
+            "failures_to_avoid": failures,
+            "questions": questions,
+        }
+        limits = {
+            "tasks": {"title": 700, "next_action": 900, "blocked_reason": 700},
+            "goals": {"title": 700},
+            "failures_to_avoid": {"strategy": 300, "symptom": 900, "prevention": 900},
+            "questions": {"question": 900, "reason": 300},
+        }
+        output = {name: [] for name in sections}
+        budget = self.CLOUD_AUX_CHAR_BUDGET
+        used = 2
+        positions = {name: 0 for name in sections}
+        order = ("tasks", "goals", "failures_to_avoid", "questions")
+
+        while True:
+            progressed = False
+            for name in order:
+                items = sections[name]
+                index = positions[name]
+                if index >= len(items):
+                    continue
+                positions[name] += 1
+                item = dict(items[index])
+                for field, max_chars in limits[name].items():
+                    if field in item:
+                        compact, truncated = self._compact_text(item.get(field), max_chars)
+                        item[field] = compact
+                        if truncated:
+                            item[f"{field}_truncated"] = True
+                encoded = json.dumps(item, ensure_ascii=False, separators=(",", ":"))
+                cost = len(encoded) + 1
+                if used + cost > budget:
+                    continue
+                output[name].append(item)
+                used += cost
+                progressed = True
+            if not progressed:
+                break
+
+        total_candidates = sum(len(items) for items in sections.values())
+        total_selected = sum(len(items) for items in output.values())
+        return output, {
+            "char_budget": budget,
+            "used_chars": used,
+            "candidate_count": total_candidates,
+            "selected_count": total_selected,
+            "dropped_count": max(0, total_candidates - total_selected),
+        }
+
     def context(self, query: str, *, record_usage: bool = True) -> dict[str, Any]:
         recalled = self.recall(
             query,
             limit=10,
             for_cloud=True,
-            record_usage=record_usage,
+            record_usage=False,
         )
+        budgeted_memory, prepared_recall, recall_budget = self._budget_recalled_memories(recalled)
 
         active_goals = [
             item
@@ -2313,65 +2772,64 @@ class MemorySystemV4:
             for item in self.questions(status="open", limit=30)
             if self._cloud_text_allowed(item.get("question"), item.get("reason"))
         ][:5]
+        compact_goals = [
+            {
+                "id": item["id"],
+                "title": item["title"],
+                "priority": item["priority"],
+            }
+            for item in active_goals
+        ]
+        compact_tasks = [
+            {
+                "id": item["id"],
+                "title": item["title"],
+                "status": item["status"],
+                "priority": item["priority"],
+                "next_action": item["next_action"],
+                "blocked_reason": item["blocked_reason"],
+            }
+            for item in open_tasks
+        ]
+        compact_failures = [
+            {
+                "strategy": item["strategy"],
+                "symptom": item["symptom"],
+                "prevention": item["prevention"],
+                "occurrences": item["occurrences"],
+            }
+            for item in failures
+        ]
+        compact_questions = [
+            {
+                "question": item["question"],
+                "reason": item["reason"],
+            }
+            for item in questions
+        ]
+        aux_context, aux_budget = self._budget_aux_context(
+            goals=compact_goals,
+            tasks=compact_tasks,
+            failures=compact_failures,
+            questions=compact_questions,
+        )
+        recall_id = (
+            self.commit_prepared_recall(query, prepared_recall)
+            if record_usage
+            else None
+        )
         return {
             "engine": self.ENGINE_ID,
-            "recall_id": recalled["recall_id"],
-            "_prepared_recall": recalled.get("prepared_recall"),
-            "personal": [
-                {
-                    "kind": item["kind"],
-                    "content": item["content"],
-                    "importance": item["importance"],
-                    "relevance": item["relevance"],
-                    "why": item["recall_explanation"]["why"],
-                    "tier": item["v4"]["tier"],
-                }
-                for item in recalled.get("personal", [])
-            ],
-            "project": [
-                {
-                    "kind": item["kind"],
-                    "content": item["content"],
-                    "importance": item["importance"],
-                    "relevance": item["relevance"],
-                    "why": item["recall_explanation"]["why"],
-                    "tier": item["v4"]["tier"],
-                }
-                for item in recalled.get("project", [])
-            ],
-            "goals": [
-                {
-                    "id": item["id"],
-                    "title": item["title"],
-                    "priority": item["priority"],
-                }
-                for item in active_goals
-            ],
-            "tasks": [
-                {
-                    "id": item["id"],
-                    "title": item["title"],
-                    "status": item["status"],
-                    "priority": item["priority"],
-                    "next_action": item["next_action"],
-                    "blocked_reason": item["blocked_reason"],
-                }
-                for item in open_tasks
-            ],
-            "failures_to_avoid": [
-                {
-                    "strategy": item["strategy"],
-                    "symptom": item["symptom"],
-                    "prevention": item["prevention"],
-                    "occurrences": item["occurrences"],
-                }
-                for item in failures
-            ],
-            "questions": [
-                {
-                    "question": item["question"],
-                    "reason": item["reason"],
-                }
-                for item in questions
-            ],
+            "recall_id": recall_id,
+            "_prepared_recall": prepared_recall,
+            "context_budget": {
+                "recall": recall_budget,
+                "aux": aux_budget,
+            },
+            "personal": budgeted_memory["personal"],
+            "project": budgeted_memory["project"],
+            "goals": aux_context["goals"],
+            "tasks": aux_context["tasks"],
+            "failures_to_avoid": aux_context["failures_to_avoid"],
+            "questions": aux_context["questions"],
         }
