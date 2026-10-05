@@ -231,6 +231,7 @@
 - Cloud memory context ограничен отдельными char budgets; длинные записи безопасно сокращаются.
 - Recall audit/use-count/feedback привязываются только к memory IDs, которые реально вошли в окончательный Cloud-context после budget selection.
 - Обслуживание переиспользует уже рассчитанный `memory_v4_state`, не пересчитывая вторично до 5000 записей.
+- Quality maintenance запускается opportunistically не чаще одного раза в 24 часа; не создаёт snapshot и не обращается к Cloud.ru.
 - Личный кабинет показывает Quarantine и количество записей к перепроверке.
 - Добавлены regression tests для quarantine, adjacent-layer firewall, diversified recall, stale review queue и context budget attribution.
 - Приёмка: один атомарный release commit `0.1.46` от `main 0.1.45`, полный зелёный workflow Versions, merge через PR и зелёный финальный CI на `main`.
