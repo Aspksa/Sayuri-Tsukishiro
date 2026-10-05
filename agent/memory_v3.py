@@ -1099,14 +1099,29 @@ class MemorySystemV3:
                 source_ids = self._decode(row["source_memory_ids_json"], [])
                 if memory_id not in source_ids:
                     continue
-                db.execute(
-                    """
-                    UPDATE knowledge_items
-                    SET status = ?, valid_to = ?, updated_at = ?
-                    WHERE id = ?
-                    """,
-                    (status, now, now, row["id"]),
-                )
+                remaining = [
+                    source_id
+                    for source_id in source_ids
+                    if source_id != memory_id and self.memory.get(source_id) is not None
+                ]
+                if remaining:
+                    db.execute(
+                        """
+                        UPDATE knowledge_items
+                        SET source_memory_ids_json = ?, updated_at = ?
+                        WHERE id = ?
+                        """,
+                        (self._json(remaining), now, row["id"]),
+                    )
+                else:
+                    db.execute(
+                        """
+                        UPDATE knowledge_items
+                        SET status = ?, valid_to = ?, updated_at = ?
+                        WHERE id = ?
+                        """,
+                        (status, now, now, row["id"]),
+                    )
                 changed += 1
         return changed
 
