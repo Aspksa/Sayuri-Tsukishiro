@@ -691,7 +691,12 @@ class MemorySystemV3:
                 node_type="memory",
                 node_key=entry_id,
                 label=content[:180] or entry_id,
-                metadata={"scope": scope, "kind": kind, "importance": entry.get("importance")},
+                metadata={
+                    "scope": scope,
+                    "kind": kind,
+                    "importance": entry.get("importance"),
+                    "active": bool(entry.get("active", True)),
+                },
             )
             if scope == "personal":
                 owner = self._ensure_node(
@@ -1244,12 +1249,16 @@ class MemorySystemV3:
             return conflict
 
         if resolution == "prefer_new":
+            losing = self.memory.get(conflict["old_memory_id"], include_inactive=True)
             self.memory.delete(conflict["old_memory_id"])
-            self._close_knowledge_for_memory(conflict["old_memory_id"])
+            if losing:
+                self.archive_memory(losing)
             selected = self.memory.get(conflict["new_memory_id"], include_inactive=True)
         elif resolution == "prefer_old":
+            losing = self.memory.get(conflict["new_memory_id"], include_inactive=True)
             self.memory.delete(conflict["new_memory_id"])
-            self._close_knowledge_for_memory(conflict["new_memory_id"])
+            if losing:
+                self.archive_memory(losing)
             selected = self.memory.get(conflict["old_memory_id"], include_inactive=True)
         else:
             selected = None
@@ -1504,10 +1513,34 @@ class MemorySystemV3:
         if not memory_id:
             raise MemorySystemError("У архивируемой памяти нет ID.")
         knowledge_updated = self._close_knowledge_for_memory(memory_id, status="archived")
+        archived_at = self._now()
+        with self._connect() as db:
+            row = db.execute(
+                """
+                SELECT id, metadata_json
+                FROM memory_graph_nodes
+                WHERE node_type = 'memory' AND node_key = ?
+                """,
+                (memory_id,),
+            ).fetchone()
+            if row is not None:
+                metadata = self._decode(row["metadata_json"], {})
+                if not isinstance(metadata, dict):
+                    metadata = {}
+                metadata.update({"active": False, "archived_at": archived_at})
+                db.execute(
+                    """
+                    UPDATE memory_graph_nodes
+                    SET metadata_json = ?, updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (self._json(metadata), archived_at, row["id"]),
+                )
         self.record_memory_removed(entry)
         return {
             "memory_id": memory_id,
             "knowledge_updated": knowledge_updated,
+            "archived_at": archived_at,
         }
 
     def record_memory_removed(self, entry: dict[str, Any]) -> None:
