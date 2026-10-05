@@ -25,6 +25,7 @@ SECURITY_HEADERS = {
 }
 CLIENT_DISCONNECT_ERRORS = (BrokenPipeError, ConnectionResetError, ConnectionAbortedError)
 MAX_JSON_BODY = 64 * 1024
+MAX_AVATAR_UPLOAD = 8 * 1024 * 1024
 
 
 class SayuriHTTPServer(ThreadingHTTPServer):
@@ -233,6 +234,33 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
             if parsed.path == "/api/sayuri/profile":
                 self._json(self.server.core.sayuri_profile())
                 return
+            if parsed.path == "/api/sayuri/memory":
+                raw_limit = query.get("limit", ["100"])[0]
+                try:
+                    limit = int(raw_limit)
+                except ValueError:
+                    limit = 100
+                scope = query.get("scope", [""])[0].strip() or None
+                search = query.get("q", [""])[0]
+                self._json(self.server.core.sayuri_memory(scope=scope, query=search, limit=limit))
+                return
+            if parsed.path == "/api/sayuri/avatars":
+                self._json(self.server.core.sayuri_avatars())
+                return
+            if parsed.path.startswith("/api/sayuri/avatar/"):
+                slot = parsed.path[len("/api/sayuri/avatar/"):].strip("/")
+                if not slot:
+                    raise FileNotFoundError("Аватар не найден.")
+                item = self.server.core.get_sayuri_avatar(slot)
+                self._send_inline_file({
+                    "path": item["path"],
+                    "content_type": item["content_type"],
+                    "size_bytes": item["size_bytes"],
+                    "sha256": item["sha256"],
+                    "name": item["filename"],
+                    "id": slot,
+                })
+                return
 
             if parsed.path == "/api/disk":
                 self._json(
@@ -412,6 +440,52 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
                         history=payload.get("history"),
                         context=payload.get("context"),
                     )
+                )
+                return
+
+            if parsed.path == "/api/sayuri/memory":
+                payload = self._read_json()
+                scope = payload.get("scope")
+                kind = payload.get("kind")
+                memory_content = payload.get("content")
+                importance = payload.get("importance", 3)
+                if not isinstance(scope, str) or not isinstance(kind, str) or not isinstance(memory_content, str):
+                    raise BadRequestError("Для памяти нужны строковые поля scope, kind и content.")
+                self._json(
+                    self.server.core.remember_sayuri(
+                        scope=scope,
+                        kind=kind,
+                        content=memory_content,
+                        importance=importance,
+                    ),
+                    HTTPStatus.CREATED,
+                )
+                return
+
+            if parsed.path == "/api/sayuri/avatar/upload":
+                slot = query.get("slot", [""])[0].strip()
+                raw_length = self.headers.get("Content-Length", "")
+                try:
+                    size_bytes = int(raw_length)
+                except ValueError as exc:
+                    raise BadRequestError("Для аватара требуется корректный Content-Length.") from exc
+                if size_bytes <= 0:
+                    raise BadRequestError("Файл аватара пустой.")
+                if size_bytes > MAX_AVATAR_UPLOAD:
+                    raise BadRequestError("Аватар не должен превышать 8 МБ.")
+                encoded_name = self.headers.get("X-Sayuri-Filename", "")
+                filename = unquote(encoded_name).strip() or "avatar"
+                data = self.rfile.read(size_bytes)
+                if len(data) != size_bytes:
+                    raise BadRequestError("Файл аватара передан не полностью.")
+                self._json(
+                    self.server.core.save_sayuri_avatar(
+                        slot=slot,
+                        filename=filename,
+                        content_type=self.headers.get("Content-Type"),
+                        data=data,
+                    ),
+                    HTTPStatus.CREATED,
                 )
                 return
 
@@ -599,6 +673,18 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
         request_id = uuid.uuid4().hex[:12]
         try:
             parsed = urlparse(self.path)
+            if parsed.path.startswith("/api/sayuri/memory/"):
+                entry_id = parsed.path[len("/api/sayuri/memory/"):].strip("/")
+                if not entry_id:
+                    raise BadRequestError("Не указана запись памяти.")
+                self._json(self.server.core.forget_sayuri(entry_id))
+                return
+            if parsed.path.startswith("/api/sayuri/avatar/"):
+                slot = parsed.path[len("/api/sayuri/avatar/"):].strip("/")
+                if not slot:
+                    raise BadRequestError("Не указан слот аватара.")
+                self._json(self.server.core.reset_sayuri_avatar(slot))
+                return
             if parsed.path.startswith("/api/disk/files/"):
                 file_id = parsed.path[len("/api/disk/files/"):].strip("/")
                 result = self.server.core.disk.trash([{"kind": "file", "id": file_id}])
