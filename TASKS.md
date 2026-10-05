@@ -206,8 +206,9 @@
 
 ## MEM-006 — Memory 4.0 Hardening
 
-- Статус: `implemented; final atomic CI pending`.
+- Статус: `implemented`; релиз считается проверенным только после зелёного atomic/main CI.
 - Локальный поиск/просмотр больше не считается обучающим recall и не меняет utility/use counters.
+- AI recall переведён на двухфазную схему prepare → successful Cloud response → commit; сбой провайдера не обучает память.
 - Privacy firewall `cloud_allowed=false` распространён на все memory-derived Cloud-context слои: Memory 3.0, Experience, Goals, Tasks, Failures и Questions.
 - Protected memory остаётся доступной локально, но не может попасть в Cloud.ru обходным путём через производный контекст.
 - Последующий success после failure хранится как correlation-only `followed_by_success`, а не как доказанное исправление.
