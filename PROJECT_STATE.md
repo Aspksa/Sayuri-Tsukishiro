@@ -675,3 +675,48 @@ Preflight теперь отдельно выводит `диск_sayuri`, что
   - автоматически включается существующий PNG screencap transport.
 - Нативный scrcpy 60 FPS остаётся независимым резервным high-performance режимом.
 - Embedded audio в этой контрольной версии ещё не заявлен.
+
+
+## PHONE-004C — Embedded Audio + Bidirectional Clipboard
+
+- Дата: 2026-10-05.
+- Исходная ревизия: `88c33baf1a7e23083cef7a68298f6c4df945eca7`.
+- Целевая версия: проект `0.1.29`, Ядро `0.1.23`, Телефон Sayuri `0.6.0`, Web UI `0.9.0`.
+- Основа: официальный standalone protocol scrcpy `4.1`; protocol adapter жёстко version-pinned.
+- Добавлен `phone/control.py`:
+  - GET_CLIPBOARD = 8;
+  - SET_CLIPBOARD = 9;
+  - UTF-8 clipboard до protocol limit;
+  - ACK sequence;
+  - строгий разбор device message clipboard/ack/UHID.
+- Добавлен `phone/audio.py`:
+  - Opus codec id `0x6f707573`;
+  - собственный loopback transport `sayuri-opus-v1`;
+  - magic `SYA1`;
+  - отдельные config/media records;
+  - проверка `OpusHead`;
+  - лимит audio packet 2 MiB.
+- PhoneService:
+  - `read_clipboard()`;
+  - `write_clipboard(..., paste=true|false)`;
+  - `opus_stream()`;
+  - отдельный active-audio registry;
+  - audio/clipboard capabilities отражаются в health.
+- API:
+  - `GET /api/phone/clipboard?serial=...`;
+  - `POST /api/phone/clipboard`;
+  - `GET /api/phone/audio?serial=...`.
+- UI:
+  - `ПК→Тел` — читает clipboard браузера, записывает Unicode в Android clipboard и выполняет paste;
+  - `Тел→ПК` — читает реальный Android clipboard и записывает его в clipboard компьютера;
+  - строка ввода теперь вставляет Unicode через Android clipboard, а не ограниченный `adb input text`;
+  - `Звук: выкл/вкл` — отдельный пользовательский переключатель;
+  - embedded audio использует WebCodecs `AudioDecoder` + Opus + Web Audio;
+  - video и audio независимы: отказ audio не останавливает H.264;
+  - запуск нативного scrcpy 60 FPS выключает embedded audio, чтобы не было двойного воспроизведения;
+  - смена устройства/отключение/сворачивание/закрытие окна очищают audio session.
+- Explicit limitation:
+  - физические одиночные символы клавиатуры в browser-capture всё ещё используют быстрый существующий input path;
+  - полный Unicode гарантирован через clipboard/text bar и через native scrcpy UHID;
+  - browser AudioDecoder зависит от поддержки Chromium/WebCodecs; при отсутствии audio отключается отдельно.
+- Добавлены binary protocol tests, API tests и web-contract tests.

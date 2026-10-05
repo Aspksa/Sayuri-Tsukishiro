@@ -28,6 +28,14 @@ const phoneState = {
   h264Height: 0,
   h264Frames: 0,
   h264StartedAt: 0,
+  audioAvailable: false,
+  audioEnabled: false,
+  audioAbort: null,
+  audioDecoder: null,
+  audioContext: null,
+  audioGeneration: 0,
+  audioNextTime: 0,
+  audioPackets: 0,
   videoMode: 'png',
   pointer: null,
   viewActive: false,
@@ -1557,6 +1565,7 @@ function clearPhoneFrameImage() {
 
 function handlePhoneDisconnected(message = 'Телефон отключён.') {
   stopPhoneVideo();
+  stopPhoneAudio();
   phoneState.selectedSerial = null;
   phoneState.selectedDevice = null;
   phoneState.pointer = null;
@@ -1629,7 +1638,7 @@ function readPhoneStreamExact(readerState, size) {
   return (async () => {
     while (readerState.length < size) {
       const {value, done} = await readerState.reader.read();
-      if (done) throw new Error('H.264 поток завершился.');
+      if (done) throw new Error('Поток телефона завершился.');
       if (!value?.length) continue;
       readerState.chunks.push(value);
       readerState.length += value.length;
@@ -1779,6 +1788,237 @@ async function consumePhoneH264Stream(response, generation) {
       timestamp: pts,
       data: payload
     }));
+  }
+}
+
+function stopPhoneAudio({keepPreference = false} = {}) {
+  phoneState.audioGeneration += 1;
+  if (phoneState.audioAbort) {
+    phoneState.audioAbort.abort();
+    phoneState.audioAbort = null;
+  }
+  if (phoneState.audioDecoder) {
+    try {
+      phoneState.audioDecoder.close();
+    } catch {}
+    phoneState.audioDecoder = null;
+  }
+  if (phoneState.audioContext) {
+    const context = phoneState.audioContext;
+    phoneState.audioContext = null;
+    context.close().catch(() => {});
+  }
+  phoneState.audioNextTime = 0;
+  phoneState.audioPackets = 0;
+  if (!keepPreference) phoneState.audioEnabled = false;
+  const button = byId('phone-audio');
+  if (button) {
+    button.classList.remove('active');
+    button.textContent = 'Звук: выкл';
+  }
+}
+
+function canUsePhoneAudio() {
+  return Boolean(
+    phoneState.audioAvailable
+    && typeof window.AudioDecoder === 'function'
+    && typeof window.EncodedAudioChunk === 'function'
+    && (window.AudioContext || window.webkitAudioContext)
+    && window.ReadableStream
+  );
+}
+
+function parsePhoneOpusHead(payload) {
+  if (payload.length < 19) throw new Error('Некорректный OpusHead.');
+  const signature = String.fromCharCode(...payload.subarray(0, 8));
+  if (signature !== 'OpusHead') throw new Error('OpusHead не найден.');
+  const channels = payload[9];
+  const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+  const sampleRate = view.getUint32(12, true) || 48000;
+  if (!channels || channels > 8) throw new Error('Некорректное число Opus-каналов.');
+  return {channels, sampleRate};
+}
+
+function playPhoneAudioData(audioData, generation) {
+  try {
+    if (
+      generation !== phoneState.audioGeneration
+      || !phoneState.audioEnabled
+      || !phoneState.audioContext
+    ) return;
+
+    const context = phoneState.audioContext;
+    const channels = audioData.numberOfChannels;
+    const frames = audioData.numberOfFrames;
+    const buffer = context.createBuffer(channels, frames, audioData.sampleRate);
+
+    for (let channel = 0; channel < channels; channel += 1) {
+      audioData.copyTo(buffer.getChannelData(channel), {
+        planeIndex: channel,
+        format: 'f32-planar'
+      });
+    }
+
+    const source = context.createBufferSource();
+    source.buffer = buffer;
+    source.connect(context.destination);
+
+    const now = context.currentTime;
+    if (
+      !phoneState.audioNextTime
+      || phoneState.audioNextTime < now - 0.05
+      || phoneState.audioNextTime > now + 0.30
+    ) {
+      phoneState.audioNextTime = now + 0.035;
+    }
+    source.start(phoneState.audioNextTime);
+    phoneState.audioNextTime += buffer.duration;
+  } finally {
+    audioData.close();
+  }
+}
+
+function configurePhoneAudioDecoder(opusHead, generation) {
+  if (phoneState.audioDecoder) return phoneState.audioDecoder;
+  const {channels, sampleRate} = parsePhoneOpusHead(opusHead);
+
+  const decoder = new AudioDecoder({
+    output(audioData) {
+      playPhoneAudioData(audioData, generation);
+    },
+    error(error) {
+      if (generation !== phoneState.audioGeneration) return;
+      stopPhoneAudio();
+      byId('phone-frame-status').textContent =
+        `Видео работает · звук отключён: ${error?.message || String(error)}`;
+    }
+  });
+
+  decoder.configure({
+    codec: 'opus',
+    sampleRate,
+    numberOfChannels: channels,
+    description: opusHead
+  });
+  phoneState.audioDecoder = decoder;
+  return decoder;
+}
+
+async function consumePhoneOpusStream(response, generation) {
+  if (!response.body) throw new Error('Браузер не поддерживает streaming audio fetch.');
+  const readerState = {
+    reader: response.body.getReader(),
+    chunks: [],
+    length: 0
+  };
+
+  const magic = await readPhoneStreamExact(readerState, 4);
+  if (String.fromCharCode(...magic) !== 'SYA1') {
+    throw new Error('Неизвестный аудиопротокол Sayuri.');
+  }
+
+  while (
+    generation === phoneState.audioGeneration
+    && phoneState.audioEnabled
+    && phoneStreamActive()
+  ) {
+    const typeBytes = await readPhoneStreamExact(readerState, 1);
+    const type = typeBytes[0];
+
+    if (type === 1) {
+      const lengthBytes = await readPhoneStreamExact(readerState, 4);
+      const size = phoneReadUint32(lengthBytes, 0);
+      if (!size || size > 64 * 1024) throw new Error('Некорректный Opus config.');
+      const opusHead = await readPhoneStreamExact(readerState, size);
+      configurePhoneAudioDecoder(opusHead, generation);
+      continue;
+    }
+
+    if (type !== 2) throw new Error(`Неизвестная запись Opus: ${type}`);
+    const header = await readPhoneStreamExact(readerState, 12);
+    const pts = phoneReadUint64(header, 0);
+    const size = phoneReadUint32(header, 8);
+    if (!size || size > 2 * 1024 * 1024) throw new Error('Некорректный размер Opus пакета.');
+    const payload = await readPhoneStreamExact(readerState, size);
+
+    if (!phoneState.audioDecoder) {
+      throw new Error('Opus media получен до конфигурации.');
+    }
+    if (phoneState.audioDecoder.decodeQueueSize > 10) continue;
+    phoneState.audioDecoder.decode(new EncodedAudioChunk({
+      type: 'key',
+      timestamp: pts,
+      data: payload
+    }));
+    phoneState.audioPackets += 1;
+  }
+}
+
+async function startPhoneAudio() {
+  if (!phoneState.selectedSerial || !phoneStreamActive()) return;
+  if (!canUsePhoneAudio()) {
+    throw new Error('Этот браузер не поддерживает WebCodecs AudioDecoder/Opus.');
+  }
+
+  stopPhoneAudio({keepPreference: true});
+  phoneState.audioEnabled = true;
+  const generation = phoneState.audioGeneration;
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  const context = new AudioContextClass({latencyHint: 'interactive'});
+  phoneState.audioContext = context;
+  await context.resume();
+
+  const controller = new AbortController();
+  phoneState.audioAbort = controller;
+  const button = byId('phone-audio');
+  button.classList.add('active');
+  button.textContent = 'Звук: вкл';
+
+  try {
+    const response = await fetch(
+      `/api/phone/audio?serial=${encodeURIComponent(phoneState.selectedSerial)}`,
+      {cache: 'no-store', signal: controller.signal}
+    );
+    if (!response.ok) {
+      let message = `HTTP ${response.status}`;
+      let code = null;
+      try {
+        const data = await response.json();
+        message = data?.error?.message || message;
+        code = data?.error?.code || null;
+      } catch {}
+      if (response.status === 409 || code === 'SAYURI-PHONE-409') {
+        handlePhoneDisconnected(message);
+        return;
+      }
+      throw new Error(message);
+    }
+    await consumePhoneOpusStream(response, generation);
+    if (
+      generation === phoneState.audioGeneration
+      && phoneState.audioEnabled
+      && phoneStreamActive()
+    ) {
+      throw new Error('Аудиопоток завершился.');
+    }
+  } catch (error) {
+    if (controller.signal.aborted || generation !== phoneState.audioGeneration) return;
+    stopPhoneAudio();
+    throw error;
+  }
+}
+
+async function togglePhoneAudio() {
+  if (!phoneState.selectedSerial) return;
+  if (phoneState.audioEnabled) {
+    stopPhoneAudio();
+    byId('phone-frame-status').textContent = 'Звук телефона выключен';
+    return;
+  }
+  try {
+    await startPhoneAudio();
+  } catch (error) {
+    showPhoneError(error);
   }
 }
 
@@ -1951,11 +2191,12 @@ function updatePhoneFloatingState() {
   const nativeButton = byId('phone-open-native');
   const keyButtons = document.querySelectorAll('[data-phone-key]');
   const proControls = document.querySelectorAll(
-    '#phone-quality-profile, #phone-capture, #phone-record, #phone-paste, #phone-file, #phone-apps'
+    '#phone-quality-profile, #phone-capture, #phone-record, #phone-audio, #phone-paste, #phone-copy, #phone-file, #phone-apps'
   );
 
   if (!device) {
     stopPhoneVideo();
+    stopPhoneAudio();
     phoneState.selectedSerial = null;
     phoneState.selectedDevice = null;
     byId('phone-selected-device').textContent = '—';
@@ -1981,6 +2222,7 @@ function updatePhoneFloatingState() {
     `${device.connection === 'wifi' ? 'Wi-Fi' : 'USB'} · ${device.serial}`;
   nativeButton.disabled = false;
   proControls.forEach((control) => { control.disabled = false; });
+  byId('phone-audio').disabled = !phoneState.audioAvailable;
 
   const nativeOpen = phoneState.nativeSessions.has(device.serial);
   nativeButton.textContent = nativeOpen ? 'СТОП 60 FPS' : '60 FPS';
@@ -1993,6 +2235,7 @@ function updatePhoneFloatingState() {
 
   if (nativeOpen) {
     stopPhoneVideo();
+    stopPhoneAudio();
     byId('phone-frame-status').textContent = 'Пауза встроенного экрана: открыт scrcpy 60 FPS';
     byId('phone-live-badge').textContent = '60 FPS';
     byId('phone-live-badge').classList.remove('live');
@@ -2008,6 +2251,7 @@ function updatePhoneFloatingState() {
 function selectPhone(device) {
   if (!device?.authorized) return;
   const changed = phoneState.selectedSerial !== device.serial;
+  if (changed && phoneState.audioEnabled) stopPhoneAudio();
   stopPhoneReconnectLoop();
   phoneState.selectedSerial = device.serial;
   phoneState.selectedDevice = device;
@@ -2025,6 +2269,10 @@ function renderPhone(data) {
   phoneState.nativeSessions = sessions;
   phoneState.recordingSessions = new Set(data.recording_sessions || []);
   phoneState.h264Available = Boolean(data.capabilities?.embedded_h264_stream);
+  phoneState.audioAvailable = Boolean(data.capabilities?.embedded_audio);
+  if (!phoneState.audioAvailable && phoneState.audioEnabled) {
+    stopPhoneAudio();
+  }
 
   byId('phone-runtime-state').textContent = runtime.ready ? 'ГОТОВ' : 'НЕ УСТАНОВЛЕН';
   byId('phone-runtime-detail').textContent = runtime.ready
@@ -2241,7 +2489,10 @@ function queuePhoneText(character) {
 async function toggleNativePhoneWindow() {
   if (!phoneState.selectedSerial) return;
   const nativeOpen = phoneState.nativeSessions.has(phoneState.selectedSerial);
-  if (!nativeOpen) stopPhoneVideo();
+  if (!nativeOpen) {
+    stopPhoneVideo();
+    stopPhoneAudio();
+  }
   try {
     const result = await postJson(
       nativeOpen ? '/api/phone/control/stop' : '/api/phone/control/start',
@@ -2348,6 +2599,7 @@ function closePhoneFloat() {
   byId('phone-float').classList.add('hidden');
   byId('phone-float-launcher').classList.remove('hidden');
   stopPhoneVideo();
+  stopPhoneAudio();
   if (!phoneState.viewActive) stopPhoneReconnectLoop();
 }
 
@@ -2359,6 +2611,7 @@ function togglePhoneFloatMinimize() {
   byId('phone-float-minimize').title = phoneState.floatingMinimized ? 'Развернуть' : 'Свернуть';
   if (phoneState.floatingMinimized) {
     stopPhoneVideo();
+    stopPhoneAudio();
   } else {
     clampPhoneFloat();
     fitPhoneImage();
@@ -2525,6 +2778,26 @@ async function togglePhoneRecording() {
   }
 }
 
+async function setPhoneClipboard(text, {paste = false} = {}) {
+  if (!phoneState.selectedSerial) return;
+  return postJson('/api/phone/clipboard', {
+    serial: phoneState.selectedSerial,
+    text,
+    paste
+  });
+}
+
+async function getPhoneClipboard() {
+  if (!phoneState.selectedSerial) return null;
+  const response = await fetch(
+    `/api/phone/clipboard?serial=${encodeURIComponent(phoneState.selectedSerial)}`,
+    {cache: 'no-store'}
+  );
+  const data = await response.json();
+  if (!response.ok) throw new Error(data?.error?.message || `HTTP ${response.status}`);
+  return data;
+}
+
 async function pasteComputerClipboardToPhone() {
   if (!phoneState.selectedSerial) return;
   try {
@@ -2532,9 +2805,27 @@ async function pasteComputerClipboardToPhone() {
       throw new Error('Браузер не разрешает чтение буфера обмена.');
     }
     const text = await navigator.clipboard.readText();
-    if (!text) throw new Error('Буфер обмена пуст.');
-    await sendPhoneText(text.slice(0, 250));
-    byId('phone-frame-status').textContent = 'Текст из буфера ПК отправлен в телефон';
+    if (!text) throw new Error('Буфер обмена ПК пуст.');
+    const result = await setPhoneClipboard(text, {paste: true});
+    byId('phone-frame-status').textContent =
+      `ПК→Тел · вставлено символов: ${result.characters ?? text.length}`;
+  } catch (error) {
+    showPhoneError(error);
+  }
+}
+
+async function copyPhoneClipboardToComputer() {
+  if (!phoneState.selectedSerial) return;
+  try {
+    const result = await getPhoneClipboard();
+    const text = result?.text ?? '';
+    if (!navigator.clipboard?.writeText) {
+      byId('phone-text-input').value = text;
+      throw new Error('Браузер не разрешает запись в буфер ПК; текст помещён в строку ввода.');
+    }
+    await navigator.clipboard.writeText(text);
+    byId('phone-frame-status').textContent =
+      `Тел→ПК · скопировано символов: ${result.characters ?? text.length}`;
   } catch (error) {
     showPhoneError(error);
   }
@@ -2798,7 +3089,9 @@ byId('phone-quality-profile').addEventListener('change', (event) => {
 });
 byId('phone-capture').addEventListener('click', capturePhoneToDisk);
 byId('phone-record').addEventListener('click', togglePhoneRecording);
+byId('phone-audio').addEventListener('click', togglePhoneAudio);
 byId('phone-paste').addEventListener('click', pasteComputerClipboardToPhone);
+byId('phone-copy').addEventListener('click', copyPhoneClipboardToComputer);
 byId('phone-file').addEventListener('click', () => byId('phone-file-picker').click());
 byId('phone-file-picker').addEventListener('change', async (event) => {
   const files = Array.from(event.target.files || []);
@@ -2824,8 +3117,9 @@ byId('phone-text-form').addEventListener('submit', async (event) => {
   const text = input.value;
   if (!text.trim()) return;
   try {
-    await sendPhoneText(text);
+    await setPhoneClipboard(text, {paste: true});
     input.value = '';
+    byId('phone-frame-status').textContent = 'Unicode-текст вставлен через Android clipboard';
   } catch (error) {
     showPhoneError(error);
   }

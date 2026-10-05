@@ -3414,3 +3414,17 @@ button.disk-name:hover { text-decoration: underline; }
   background: #e8f1ff;
   color: #245f9f;
 }
+
+
+/* Телефон Sayuri 0.6 — clipboard/audio state */
+.phone-pro-tools button.active {
+  border-color: #476b57;
+  background: #e9f7ee;
+  color: #245c39;
+}
+#phone-audio.active::before {
+  content: "●";
+  margin-right: 5px;
+  font-size: 7px;
+  vertical-align: 1px;
+}

@@ -653,3 +653,97 @@ the active H.264 fetch is aborted, VideoDecoder is closed and the backend reques
 - quality profile is allow-listed;
 - H.264 server args are generated internally;
 - browser cannot choose server command or ADB destination.
+
+
+## Телефон Sayuri 0.6 — Audio & Clipboard
+
+### Clipboard protocol
+
+Version pin: `scrcpy 4.1`.
+
+Client → device:
+```text
+GET_CLIPBOARD
+  type: u8 = 8
+  copy_key: u8
+
+SET_CLIPBOARD
+  type: u8 = 9
+  sequence: u64be
+  paste: u8
+  length: u32be
+  utf8: bytes
+```
+
+Device → client:
+```text
+CLIPBOARD
+  type: u8 = 0
+  length: u32be
+  utf8: bytes
+
+ACK_CLIPBOARD
+  type: u8 = 1
+  sequence: u64be
+```
+
+Sayuri запускает control-only standalone server:
+`video=false audio=false control=true clipboard_autosync=false`.
+
+### Audio protocol
+
+scrcpy 4.1 audio-only standalone server:
+```text
+video=false
+audio=true
+control=false
+audio_codec=opus
+audio_bit_rate=128000
+```
+
+Browser bridge `sayuri-opus-v1`:
+```text
+SYA1
+0x01 + size:u32be + OpusHead
+0x02 + pts:u64be + size:u32be + Opus packet
+```
+
+Limits:
+- config <= 64 KiB;
+- media packet <= 2 MiB;
+- one embedded audio stream per serial.
+
+Browser:
+- `AudioDecoder(codec=opus)`;
+- decoded `AudioData` → Web Audio `AudioBuffer`;
+- small low-latency scheduling window;
+- user gesture required to start audio;
+- no automatic audio startup.
+
+### API
+
+```text
+GET  /api/phone/clipboard?serial=...
+POST /api/phone/clipboard
+GET  /api/phone/audio?serial=...
+```
+
+Clipboard POST:
+```json
+{
+  "serial": "RZCX70CW78W",
+  "text": "Привет 🦊",
+  "paste": true
+}
+```
+
+Audio response:
+- Content-Type: `application/x-sayuri-opus`
+- `X-Sayuri-Audio-Protocol: sayuri-opus-v1`
+
+### Failure isolation
+
+- H.264 failure → PNG fallback;
+- audio failure → audio off only;
+- clipboard failure → clipboard action error only;
+- disconnect → all device-bound streams cleaned.

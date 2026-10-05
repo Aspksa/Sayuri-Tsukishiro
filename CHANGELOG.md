@@ -2,6 +2,21 @@
 
 ## Невыпущенные изменения
 
+### 0.1.29 — 2026-10-05 — Телефон Sayuri 0.6 Audio & Clipboard
+
+- Телефон Sayuri повышен до `0.6.0`, Web UI до `0.9.0`.
+- Добавлен version-pinned scrcpy 4.1 clipboard protocol adapter.
+- Добавлен двусторонний Unicode clipboard ПК↔Android.
+- ПК→Тел может сразу выполнить Android paste.
+- Строка ввода использует Android clipboard и поддерживает Unicode/эмодзи.
+- Добавлен version-pinned Opus media adapter `sayuri-opus-v1`.
+- Добавлен отдельный embedded audio stream и WebCodecs AudioDecoder/Web Audio playback.
+- Звук включается только явным действием пользователя.
+- Audio failure не ломает H.264 video/control.
+- Audio очищается при смене устройства, disconnect, minimize/close и переходе в native scrcpy.
+- Добавлены binary protocol/API/web regression tests.
+
+
 ### 0.1.28 — 2026-10-05 — Телефон Sayuri 0.5 H.264 WebCodecs
 
 - Телефон Sayuri повышен до `0.5.0`, Web UI до `0.8.0`.

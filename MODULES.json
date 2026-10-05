@@ -22,13 +22,13 @@
     {
       "id": "sayuri-phone",
       "display_name": "Телефон Sayuri",
-      "description": "Телефон Sayuri: плавающее Android-окно, H.264/WebCodecs с PNG fallback, мышь/клавиатура, USB/Wi-Fi ADB, scrcpy 4.1, файлы, снимки, запись и запуск приложений.",
+      "description": "Плавающее Android-окно: H.264/WebCodecs, встроенный Opus-звук, двусторонний Unicode clipboard, мышь/клавиатура, USB/Wi-Fi ADB, scrcpy 4.1, файлы, снимки, запись и запуск приложений.",
       "path": "phone"
     },
     {
       "id": "web-ui",
       "display_name": "Веб-интерфейс",
-      "description": "Локальная оболочка Sayuri с плавающим Телефон Sayuri, WebCodecs H.264, Диском, ДНК и системными настройками.",
+      "description": "Локальная оболочка Sayuri с плавающим Телефон Sayuri, H.264/Opus WebCodecs, двусторонним clipboard, Диском, ДНК и системными настройками.",
       "path": "web"
     },
     {

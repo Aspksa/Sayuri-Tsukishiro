@@ -201,3 +201,20 @@
   - двусторонний Android clipboard;
   - browser UHID control protocol.
 - Следующий шаг: PHONE-004C — embedded audio + clipboard/control bridge; затем Android Companion.
+
+
+## PHONE-004C — Embedded Audio + Clipboard Sync
+- Статус: `implemented; CI pending`.
+- Реализовано:
+  - двусторонний Unicode clipboard через scrcpy 4.1 control protocol;
+  - clipboard ACK;
+  - ПК→Тел с автоматическим paste;
+  - Тел→ПК;
+  - Unicode-вставка из строки ввода;
+  - независимый Opus stream;
+  - WebCodecs AudioDecoder;
+  - Web Audio playback;
+  - явная кнопка включения/выключения звука;
+  - cleanup при disconnect/device switch/minimize/close/native scrcpy;
+  - binary protocol tests.
+- Следующий этап после проверки: PHONE-005 — Sayuri Companion для уведомлений, устойчивого обмена файлами/событиями и глубокой Android-интеграции без зависимости от Developer Options для каждого сценария.

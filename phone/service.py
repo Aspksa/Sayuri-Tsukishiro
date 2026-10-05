@@ -12,10 +12,17 @@ import threading
 import time
 import uuid
 
+from .audio import AUDIO_BRIDGE_VERSION, iter_opus_bridge_records
+from .control import (
+    MAX_CLIPBOARD_BYTES,
+    encode_get_clipboard,
+    encode_set_clipboard,
+    recv_device_message,
+)
 from .h264 import iter_h264_bridge_records
 
 
-PHONE_BACKEND_VERSION = "0.5.0"
+PHONE_BACKEND_VERSION = "0.6.0"
 SCRCPY_VERSION = "4.1"
 COMMAND_TIMEOUT_SECONDS = 20
 FRAME_TIMEOUT_SECONDS = 8
@@ -64,6 +71,7 @@ class PhoneService:
         self._recordings: dict[str, dict[str, Any]] = {}
         self._frame_cache: dict[str, dict[str, Any]] = {}
         self._h264_streams: set[str] = set()
+        self._audio_streams: set[str] = set()
         self._lock = threading.RLock()
         self._frame_lock = threading.Lock()
 
@@ -271,6 +279,7 @@ class PhoneService:
                 if state["process"].poll() is None
             ),
             "h264_stream_sessions": sorted(self._h264_streams),
+            "audio_stream_sessions": sorted(self._audio_streams),
             "quality_profiles": QUALITY_PROFILES,
             "capabilities": {
                 "usb": True,
@@ -288,7 +297,11 @@ class PhoneService:
                 "embedded_h264_protocol": "sayuri-h264-v1",
                 "embedded_control": adb is not None,
                 "embedded_frame_interval_ms": int(FRAME_CACHE_SECONDS * 1000),
-                "embedded_audio": False,
+                "embedded_audio": adb is not None and self._resolve_scrcpy_server() is not None,
+                "embedded_audio_protocol": AUDIO_BRIDGE_VERSION,
+                "clipboard_read": adb is not None and self._resolve_scrcpy_server() is not None,
+                "clipboard_write": adb is not None and self._resolve_scrcpy_server() is not None,
+                "clipboard_max_bytes": MAX_CLIPBOARD_BYTES,
                 "keyboard_input": True,
                 "mouse_wheel": True,
                 "floating_window": True,
@@ -664,6 +677,236 @@ class PhoneService:
                 last_error = exc
                 time.sleep(0.08)
         raise OSError("Не удалось подключиться к локальному H.264 каналу scrcpy.") from last_error
+
+    def _open_direct_scrcpy_channel(
+        self,
+        device_serial: str,
+        *,
+        server_args: list[str],
+        purpose: str,
+    ) -> tuple[Path, int, subprocess.Popen, socket.socket]:
+        adb = self._resolve_adb()
+        server_file = self._resolve_scrcpy_server()
+        if adb is None:
+            raise OSError("ADB runtime не установлен.")
+        if server_file is None:
+            raise OSError("scrcpy-server 4.1 не найден в локальном runtime.")
+
+        scid = secrets.randbelow(0x7FFFFFFE) + 1
+        socket_name = f"scrcpy_{scid:08x}"
+        remote_server = "/data/local/tmp/sayuri-scrcpy-server-4.1.jar"
+
+        push = self._run(
+            [str(adb), "-s", device_serial, "push", str(server_file), remote_server],
+            timeout=30,
+        )
+        if push.returncode != 0:
+            raise OSError(
+                (push.stderr or push.stdout or "Не удалось передать scrcpy-server на телефон.").strip()
+            )
+
+        forward = self._run(
+            [
+                str(adb), "-s", device_serial,
+                "forward", "tcp:0", f"localabstract:{socket_name}",
+            ],
+            timeout=COMMAND_TIMEOUT_SECONDS,
+        )
+        if forward.returncode != 0:
+            raise OSError(
+                (forward.stderr or forward.stdout or "Не удалось создать локальный ADB tunnel.").strip()
+            )
+        port = self._recv_forward_port(forward)
+
+        command = [
+            str(adb), "-s", device_serial, "shell",
+            f"CLASSPATH={remote_server}",
+            "app_process", "/", "com.genymobile.scrcpy.Server", SCRCPY_VERSION,
+            f"scid={scid:08x}",
+            "log_level=warn",
+            "tunnel_forward=true",
+            "cleanup=false",
+            "send_device_meta=false",
+            "send_dummy_byte=false",
+            *server_args,
+        ]
+        process = subprocess.Popen(
+            command,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=self._creationflags(),
+        )
+        try:
+            connection = self._connect_local_video(port, process)
+        except Exception:
+            try:
+                process.terminate()
+            except OSError:
+                pass
+            try:
+                self._run(
+                    [str(adb), "-s", device_serial, "forward", "--remove", f"tcp:{port}"],
+                    timeout=5,
+                )
+            except OSError:
+                pass
+            raise OSError(f"Не удалось открыть локальный {purpose} канал scrcpy.")
+        return adb, port, process, connection
+
+    def _close_direct_scrcpy_channel(
+        self,
+        adb: Path,
+        device_serial: str,
+        port: int,
+        process: subprocess.Popen,
+        connection: socket.socket,
+    ) -> None:
+        try:
+            connection.close()
+        except OSError:
+            pass
+        try:
+            process.wait(timeout=1.0)
+        except subprocess.TimeoutExpired:
+            try:
+                process.terminate()
+                process.wait(timeout=1.0)
+            except (OSError, subprocess.TimeoutExpired):
+                try:
+                    process.kill()
+                except OSError:
+                    pass
+        try:
+            self._run(
+                [str(adb), "-s", device_serial, "forward", "--remove", f"tcp:{port}"],
+                timeout=5,
+            )
+        except OSError:
+            pass
+
+    def read_clipboard(self, serial: Any = None) -> dict[str, Any]:
+        device = self._select_authorized_device(serial)
+        device_serial = device["serial"]
+        adb, port, process, connection = self._open_direct_scrcpy_channel(
+            device_serial,
+            purpose="clipboard",
+            server_args=[
+                "video=false",
+                "audio=false",
+                "control=true",
+                "clipboard_autosync=false",
+            ],
+        )
+        try:
+            connection.sendall(encode_get_clipboard())
+            message = recv_device_message(connection)
+            if message.get("type") != "clipboard":
+                raise OSError("scrcpy не вернул clipboard устройства.")
+            text = str(message.get("text") or "")
+            return {
+                "status": "буфер получен",
+                "serial": device_serial,
+                "text": text,
+                "characters": len(text),
+                "bytes": len(text.encode("utf-8")),
+            }
+        finally:
+            self._close_direct_scrcpy_channel(
+                adb, device_serial, port, process, connection
+            )
+
+    def write_clipboard(
+        self,
+        serial: Any,
+        text: Any,
+        *,
+        paste: bool = False,
+    ) -> dict[str, Any]:
+        if not isinstance(text, str):
+            raise ValueError("Clipboard должен быть строкой.")
+        raw = text.encode("utf-8")
+        if len(raw) > MAX_CLIPBOARD_BYTES:
+            raise ValueError(
+                f"Clipboard превышает лимит {MAX_CLIPBOARD_BYTES} байт."
+            )
+
+        device = self._select_authorized_device(serial)
+        device_serial = device["serial"]
+        adb, port, process, connection = self._open_direct_scrcpy_channel(
+            device_serial,
+            purpose="clipboard",
+            server_args=[
+                "video=false",
+                "audio=false",
+                "control=true",
+                "clipboard_autosync=false",
+            ],
+        )
+        sequence = secrets.randbelow(0x7FFFFFFE) + 1
+        try:
+            connection.sendall(
+                encode_set_clipboard(
+                    text,
+                    paste=bool(paste),
+                    sequence=sequence,
+                )
+            )
+            message = recv_device_message(connection)
+            if (
+                message.get("type") != "ack_clipboard"
+                or int(message.get("sequence") or 0) != sequence
+            ):
+                raise OSError("scrcpy не подтвердил запись clipboard.")
+            return {
+                "status": "буфер телефона обновлён",
+                "serial": device_serial,
+                "characters": len(text),
+                "bytes": len(raw),
+                "paste": bool(paste),
+            }
+        finally:
+            self._close_direct_scrcpy_channel(
+                adb, device_serial, port, process, connection
+            )
+
+    def opus_stream(self, serial: Any = None) -> Iterator[bytes]:
+        device = self._select_authorized_device(serial)
+        device_serial = device["serial"]
+
+        with self._lock:
+            if device_serial in self._audio_streams:
+                raise ValueError("Аудиопоток для этого телефона уже открыт.")
+            self._audio_streams.add(device_serial)
+
+        adb: Path | None = None
+        port: int | None = None
+        process: subprocess.Popen | None = None
+        connection: socket.socket | None = None
+        try:
+            adb, port, process, connection = self._open_direct_scrcpy_channel(
+                device_serial,
+                purpose="Opus audio",
+                server_args=[
+                    "video=false",
+                    "audio=true",
+                    "control=false",
+                    "audio_codec=opus",
+                    "audio_bit_rate=128000",
+                ],
+            )
+            yield from iter_opus_bridge_records(connection)
+        finally:
+            if (
+                adb is not None
+                and port is not None
+                and process is not None
+                and connection is not None
+            ):
+                self._close_direct_scrcpy_channel(
+                    adb, device_serial, port, process, connection
+                )
+            with self._lock:
+                self._audio_streams.discard(device_serial)
 
     def h264_stream(
         self,

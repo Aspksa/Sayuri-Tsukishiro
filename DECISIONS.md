@@ -326,3 +326,21 @@
   - H.264 control socket не используется: существующий allow-listed ADB input остаётся отдельным контуром;
   - отказ media bridge не должен ломать управление, PNG fallback или нативный scrcpy.
 - Причина разделения: upstream scrcpy protocol прямо объявлен internal и может меняться между версиями.
+
+
+## D-023 — PHONE-004C: clipboard и audio являются независимыми version-pinned каналами
+
+- Дата: 2026-10-05.
+- Статус: принято.
+- Источник: продолжение требования пользователя о полноценной клавиатуре ПК, хорошем изображении, звуке и интеграции.
+- Решение:
+  - использовать только официальный scrcpy-server 4.1 и задокументированный upstream framing;
+  - не использовать сторонний web-scrcpy;
+  - clipboard реализовать через отдельный control-only server session;
+  - audio реализовать через отдельный audio-only Opus server session;
+  - video H.264, audio Opus и ADB input остаются независимыми failure domains;
+  - clipboard payload ограничивается protocol maximum и UTF-8;
+  - SET_CLIPBOARD требует matching ACK sequence;
+  - audio никогда не стартует автоматически без пользовательского клика;
+  - браузерный AudioDecoder является optional capability;
+  - запуск native scrcpy должен останавливать embedded audio, чтобы исключить двойной звук.

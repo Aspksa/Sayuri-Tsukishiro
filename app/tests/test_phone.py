@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import struct
 from io import BytesIO
 from pathlib import Path
 import subprocess
@@ -16,6 +17,25 @@ from app.core import SayuriCore
 from app.logging_setup import configure_logging
 from app.server import create_server
 from phone import PhoneService
+
+
+class FakePhoneSocket:
+    def __init__(self, incoming: bytes = b"") -> None:
+        self.incoming = bytearray(incoming)
+        self.sent = bytearray()
+
+    def recv(self, size: int) -> bytes:
+        if not self.incoming:
+            return b""
+        data = bytes(self.incoming[:size])
+        del self.incoming[:size]
+        return data
+
+    def sendall(self, data: bytes) -> None:
+        self.sent.extend(data)
+
+    def close(self) -> None:
+        pass
 
 
 class PhoneServiceTests(unittest.TestCase):
@@ -368,6 +388,46 @@ R58M123ABC device product:a56xeea model:SM_A556E device:a56x transport_id:1
                 service.launch_app("R58M123ABC", "org.example.safe;rm")
 
 
+    def test_clipboard_roundtrip_uses_scrcpy_control_protocol(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            service = PhoneService(Path(tmp))
+            text = "Буфер 🦊"
+            raw = text.encode("utf-8")
+            read_socket = FakePhoneSocket(bytes([0]) + struct.pack(">I", len(raw)) + raw)
+            process = MagicMock()
+            with patch.object(service, "_select_authorized_device", return_value={"serial": "R58M123ABC", "authorized": True}), patch.object(
+                service, "_open_direct_scrcpy_channel", return_value=(Path("adb.exe"), 12345, process, read_socket)
+            ), patch.object(service, "_close_direct_scrcpy_channel"):
+                result = service.read_clipboard("R58M123ABC")
+            self.assertEqual(result["text"], text)
+            self.assertEqual(bytes(read_socket.sent), bytes([8, 0]))
+
+            write_socket = FakePhoneSocket(bytes([1]) + struct.pack(">Q", 42))
+            with patch.object(service, "_select_authorized_device", return_value={"serial": "R58M123ABC", "authorized": True}), patch.object(
+                service, "_open_direct_scrcpy_channel", return_value=(Path("adb.exe"), 12346, process, write_socket)
+            ), patch.object(service, "_close_direct_scrcpy_channel"), patch("phone.service.secrets.randbelow", return_value=41):
+                written = service.write_clipboard("R58M123ABC", "Привет 🌙", paste=True)
+            self.assertTrue(written["paste"])
+            self.assertEqual(write_socket.sent[0], 9)
+            self.assertEqual(struct.unpack(">Q", write_socket.sent[1:9])[0], 42)
+            self.assertEqual(write_socket.sent[9], 1)
+
+    def test_opus_stream_cleans_session(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            service = PhoneService(Path(tmp))
+            opus_head = b"OpusHead" + bytes([1, 2]) + (312).to_bytes(2, "little") + (48000).to_bytes(4, "little") + b"\x00\x00\x00"
+            media = b"opus"
+            incoming = struct.pack(">I", 0x6F707573) + struct.pack(">QI", 1 << 62, len(opus_head)) + opus_head + struct.pack(">QI", 1234, len(media)) + media
+            sock = FakePhoneSocket(incoming)
+            process = MagicMock()
+            with patch.object(service, "_select_authorized_device", return_value={"serial": "R58M123ABC", "authorized": True}), patch.object(
+                service, "_open_direct_scrcpy_channel", return_value=(Path("adb.exe"), 12345, process, sock)
+            ), patch.object(service, "_close_direct_scrcpy_channel"):
+                records = list(service.opus_stream("R58M123ABC"))
+            self.assertEqual(records[0], b"SYA1")
+            self.assertNotIn("R58M123ABC", service._audio_streams)
+
+
 class PhoneApiTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -620,6 +680,66 @@ class PhoneApiTests(unittest.TestCase):
             {"serial": "R58M123ABC", "package": "org.example.safe"},
         )
         self.assertEqual(launched["status"], "приложение открыто")
+
+
+    def test_clipboard_and_audio_routes(self):
+        self.core.phone.read_clipboard = MagicMock(
+            return_value={
+                "status": "буфер получен",
+                "serial": "R58M123ABC",
+                "text": "Привет 🦊",
+                "characters": 8,
+                "bytes": 17,
+            }
+        )
+        with urllib.request.urlopen(
+            self.base + "/api/phone/clipboard?serial=R58M123ABC",
+            timeout=3,
+        ) as response:
+            clipboard = json.loads(response.read().decode("utf-8"))
+        self.assertEqual(clipboard["text"], "Привет 🦊")
+
+        self.core.phone.write_clipboard = MagicMock(
+            return_value={
+                "status": "буфер телефона обновлён",
+                "serial": "R58M123ABC",
+                "characters": 6,
+                "bytes": 6,
+                "paste": True,
+            }
+        )
+        updated = self.post_json(
+            "/api/phone/clipboard",
+            {"serial": "R58M123ABC", "text": "Sayuri", "paste": True},
+        )
+        self.assertEqual(updated["status"], "буфер телефона обновлён")
+        self.core.phone.write_clipboard.assert_called_once_with(
+            "R58M123ABC",
+            "Sayuri",
+            paste=True,
+        )
+
+        opus_head = b"OpusHead" + bytes([1, 2]) + (312).to_bytes(2, "little") + (48000).to_bytes(4, "little") + b"\x00\x00\x00"
+        self.core.phone.opus_stream = MagicMock(
+            return_value=iter([
+                b"SYA1",
+                bytes([1]) + struct.pack(">I", len(opus_head)) + opus_head,
+            ])
+        )
+        with urllib.request.urlopen(
+            self.base + "/api/phone/audio?serial=R58M123ABC",
+            timeout=3,
+        ) as response:
+            body = response.read()
+            self.assertEqual(
+                response.headers.get_content_type(),
+                "application/x-sayuri-opus",
+            )
+            self.assertEqual(
+                response.headers["X-Sayuri-Audio-Protocol"],
+                "sayuri-opus-v1",
+            )
+        self.assertTrue(body.startswith(b"SYA1"))
 
 
 if __name__ == "__main__":

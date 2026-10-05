@@ -198,6 +198,47 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
             if callable(close):
                 close()
 
+    def _send_phone_audio_stream(self, iterator) -> None:
+        started = False
+        try:
+            first = next(iterator)
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "application/x-sayuri-opus")
+            self.send_header("Connection", "close")
+            self.send_header("X-Sayuri-Audio-Protocol", "sayuri-opus-v1")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Referrer-Policy", "no-referrer")
+            self.send_header("Cache-Control", "no-store, no-transform")
+            self.end_headers()
+            self.close_connection = True
+            started = True
+            self.wfile.write(first)
+            self.wfile.flush()
+            for chunk in iterator:
+                self.wfile.write(chunk)
+                self.wfile.flush()
+        except StopIteration:
+            if not started:
+                raise OSError("Opus поток завершился до передачи данных.")
+        except CLIENT_DISCONNECT_ERRORS as exc:
+            self.server.logger.info(
+                "HTTP | Opus поток закрыт клиентом | путь=%s | %s",
+                self.path,
+                exc.__class__.__name__,
+            )
+        except (OSError, ValueError) as exc:
+            if not started:
+                raise
+            self.server.logger.warning(
+                "Телефон Sayuri | Opus поток завершён | путь=%s | %s",
+                self.path,
+                exc,
+            )
+        finally:
+            close = getattr(iterator, "close", None)
+            if callable(close):
+                close()
+
     def _send_inline_file(self, item: dict) -> None:
         path = item["path"]
         headers = {
@@ -280,6 +321,35 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
                 self._json({
                     "apps": self.server.core.phone.list_apps(serial),
                 })
+                return
+            if parsed.path == "/api/phone/clipboard":
+                serial = query.get("serial", [None])[0]
+                try:
+                    self._json(self.server.core.phone.read_clipboard(serial))
+                except ConnectionError as exc:
+                    self._error(
+                        SayuriError(
+                            "SAYURI-PHONE-409",
+                            str(exc),
+                            HTTPStatus.CONFLICT,
+                        ),
+                        request_id,
+                    )
+                return
+            if parsed.path == "/api/phone/audio":
+                serial = query.get("serial", [None])[0]
+                try:
+                    iterator = self.server.core.phone.opus_stream(serial)
+                    self._send_phone_audio_stream(iterator)
+                except ConnectionError as exc:
+                    self._error(
+                        SayuriError(
+                            "SAYURI-PHONE-409",
+                            str(exc),
+                            HTTPStatus.CONFLICT,
+                        ),
+                        request_id,
+                    )
                 return
             if parsed.path == "/api/phone/stream":
                 serial = query.get("serial", [None])[0]
@@ -559,6 +629,17 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
                     self.server.core.phone.type_text(
                         payload.get("serial"),
                         payload.get("text"),
+                    )
+                )
+                return
+
+            if parsed.path == "/api/phone/clipboard":
+                payload = self._read_json()
+                self._json(
+                    self.server.core.phone.write_clipboard(
+                        payload.get("serial"),
+                        payload.get("text"),
+                        paste=bool(payload.get("paste", False)),
                     )
                 )
                 return
