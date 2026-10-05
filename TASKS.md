@@ -172,7 +172,7 @@
 
 ## MEM-004 — Memory 3.0
 
-- Статус: `implemented; final CI pending`.
+- Статус: `implemented`.
 - Working Memory с TTL 24 часа.
 - Episodic Memory для значимых событий вместо копирования всего чата.
 - Knowledge Memory с confidence, source IDs и temporal validity.
