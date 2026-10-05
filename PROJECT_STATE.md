@@ -145,29 +145,21 @@ API обратной связи принимает:
 - документы и память передаются модели только как недоверенные данные;
 - API-ключ не попадает в GitHub.
 
-## Проверки
+## Проверки и критерий релиза
 
-На промежуточной ветке после функциональных изменений уже подтверждены:
+Функциональные проверки рабочего дерева подтверждают:
 
-- Python core/tests — success;
-- Semantic Memory tests — success;
-- Experience Learning tests — success;
-- Memory Intelligence calibration tests — success;
-- Server/API tests — success;
-- Web contract tests — success;
-- JavaScript syntax — success;
-- preflight — success;
-- Windows launcher — success.
+- Python core/tests;
+- Semantic Memory tests;
+- Experience Learning tests;
+- Memory Intelligence calibration tests;
+- Server/API tests;
+- Web contract tests;
+- JavaScript syntax;
+- preflight;
+- Windows launcher.
 
-Промежуточные коммиты ожидаемо не проходят `versioning.py check --each-commit`, потому что версия будет валидироваться на итоговом атомарном commit `0.1.42`.
-
-## Осталось до завершения 0.1.42
-
-1. зафиксировать документацию задачи и решений;
-2. собрать текущее дерево в один атомарный commit от `0.1.41`;
-3. проверить полный workflow Versions именно на атомарном commit;
-4. объединить результат в `main`;
-5. повторно проверить финальный CI на `main`.
+Из-за истории промежуточных GitHub API-коммитов рабочая ветка сама по себе не является release-веткой. Канонический релиз `0.1.42` публикуется только как один атомарный commit от `0.1.41`, для которого полный workflow `Versions` обязан завершиться успешно, включая `versioning.py check --each-commit`.
 
 ## Следующий этап после 0.1.42
 
