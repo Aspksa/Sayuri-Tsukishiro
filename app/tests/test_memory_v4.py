@@ -221,6 +221,39 @@ class MemoryV4Tests(unittest.TestCase):
             self.assertEqual(selected[1][1]["id"], "c")
             self.assertIn("selection_score", selected[1][2])
 
+    def test_cloud_context_budget_only_attributes_memories_actually_sent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            memory, semantic, v3, v4 = self._build(Path(tmp))
+            for index in range(8):
+                entry = memory.add(
+                    scope="project",
+                    kind="note",
+                    content=(
+                        f"Контекстный бюджет память номер {index}. "
+                        + "важная архитектурная деталь " * 220
+                    ),
+                    importance=4,
+                    confidence=0.9,
+                    source="manual",
+                )
+                v4.ingest_memory(entry)
+
+            context = v4.context(
+                "контекстный бюджет важная архитектурная деталь",
+                record_usage=False,
+            )
+
+            budget = context["context_budget"]["recall"]
+            sent = context["personal"] + context["project"]
+            prepared = context["_prepared_recall"]
+
+            self.assertLessEqual(budget["used_chars"], budget["char_budget"])
+            self.assertEqual(budget["selected_count"], len(sent))
+            self.assertEqual(len(prepared["selected_ids"]), len(sent))
+            self.assertEqual(len(v4.recall_audit()), 0)
+            self.assertTrue(any(item.get("content_truncated") for item in sent))
+            self.assertTrue(all(len(item["content"]) <= 2400 for item in sent))
+
     def test_goal_task_and_decision_memory_are_structured_and_graph_linked(self):
         with tempfile.TemporaryDirectory() as tmp:
             memory, semantic, v3, v4 = self._build(Path(tmp))
