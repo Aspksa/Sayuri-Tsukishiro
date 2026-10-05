@@ -54,6 +54,24 @@ class WebContractTests(unittest.TestCase):
         self.assertIn("loadViewerDna", script)
         self.assertIn("ДНК документа", script)
 
+    def test_dna_upload_starts_analysis_and_surfaces_retryable_errors(self):
+        html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+        css = (ROOT / "web" / "styles.css").read_text(encoding="utf-8")
+
+        self.assertIn('id="dna-load-state"', html)
+        self.assertIn('id="dna-load-retry"', html)
+        self.assertIn("DNA_AUTO_EXTENSIONS", script)
+        self.assertIn("shouldAutoAnalyzeDna", script)
+        self.assertIn("analyzeUploadedDna", script)
+        self.assertIn("Файл загружен · ожидает ДНК", script)
+        self.assertIn("Строю ДНК", script)
+        self.assertIn("setDnaLoadState('error'", script)
+        self.assertIn("dna-load-retry", script)
+        self.assertIn(".dna-load-state.error", css)
+        self.assertIn(".upload-item.dna-error", css)
+        self.assertIn("SAYURI UI 0.17 — DNA Upload & Analysis Reliability", css)
+
     def test_css_has_tiles_dna_and_low_noise_details(self):
         css = (ROOT / "web" / "styles.css").read_text(encoding="utf-8")
         self.assertIn("#view-disk", css)
