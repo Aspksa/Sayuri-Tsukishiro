@@ -140,7 +140,7 @@ if os.name == "nt":
         kernel32 = ctypes.windll.kernel32
         ok = crypt32.CryptProtectData(
             ctypes.byref(in_blob),
-            "Sayuri Cloud.ru API key",
+            ctypes.c_wchar_p("Sayuri Cloud.ru API key"),
             None,
             None,
             None,
