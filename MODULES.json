@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "modules": [
-    {"id": "sayuri-core", "path": "app"},
-    {"id": "web-ui", "path": "web"},
-    {"id": "dev-tools", "path": "scripts"}
+    {"id": "sayuri-core", "display_name": "Ядро Саюри", "path": "app"},
+    {"id": "web-ui", "display_name": "Веб-интерфейс", "path": "web"},
+    {"id": "dev-tools", "display_name": "Инструменты разработки", "path": "scripts"}
   ]
 }

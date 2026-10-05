@@ -22,8 +22,8 @@ class SayuriCore:
         if not record_event:
             return
         self.database.record_event(
-            "core.start",
-            "Sayuri Core initialized",
+            "Запуск",
+            "Ядро готово",
             details={"project_version": self.project_version()},
         )
 
@@ -35,13 +35,15 @@ class SayuriCore:
         versions: dict[str, str] = {}
         for module in registry.get("modules", []):
             path = self.settings.root / module["path"] / "VERSION"
-            versions[module["id"]] = path.read_text(encoding="utf-8").strip()
+            name = module.get("display_name") or module["id"]
+            versions[name] = path.read_text(encoding="utf-8").strip()
         return versions
 
     def health(self, *, port: int | None = None) -> dict[str, Any]:
         return {
-            "status": "ready",
-            "name": "Sayuri Tsukishiro",
+            "status": "готово",
+            "status_code": "ready",
+            "name": "Саюри Цукисиро",
             "project_version": self.project_version(),
             "modules": self.module_versions(),
             "database": self.database.health(),

@@ -23,6 +23,7 @@ SECURITY_HEADERS = {
         "img-src 'self' data:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'"
     ),
 }
+CLIENT_DISCONNECT_ERRORS = (BrokenPipeError, ConnectionResetError, ConnectionAbortedError)
 
 
 class SayuriHTTPServer(ThreadingHTTPServer):
@@ -39,7 +40,16 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
     server: SayuriHTTPServer
 
     def log_message(self, format: str, *args) -> None:  # noqa: A002
-        self.server.logger.info("http | %s | " + format, self.client_address[0], *args)
+        self.server.logger.info("HTTP | %s | " + format, self.client_address[0], *args)
+
+    def finish(self) -> None:
+        try:
+            super().finish()
+        except CLIENT_DISCONNECT_ERRORS as exc:
+            self.server.logger.info(
+                "HTTP | клиент закрыл соединение при завершении запроса | %s",
+                exc.__class__.__name__,
+            )
 
     def _headers(self, status: int, content_type: str, length: int) -> None:
         self.send_response(status)
@@ -49,25 +59,50 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
             self.send_header(key, value)
         self.end_headers()
 
-    def _json(self, payload: dict, status: int = 200) -> None:
+    def _send(self, body: bytes, content_type: str, status: int = 200) -> bool:
+        try:
+            self._headers(status, content_type, len(body))
+            if body:
+                self.wfile.write(body)
+            return True
+        except CLIENT_DISCONNECT_ERRORS as exc:
+            self.server.logger.info(
+                "HTTP | клиент закрыл соединение | путь=%s | %s",
+                self.path,
+                exc.__class__.__name__,
+            )
+            return False
+
+    def _json(self, payload: dict, status: int = 200) -> bool:
         body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-        self._headers(status, "application/json; charset=utf-8", len(body))
-        self.wfile.write(body)
+        return self._send(body, "application/json; charset=utf-8", status)
 
     def _error(self, error: Exception, request_id: str) -> None:
         if isinstance(error, SayuriError):
             code, status, message = error.code, error.status, error.message
-        else:
-            code, status, message = "SAYURI-CORE-500", 500, "Internal server error"
-        self.server.logger.error("%s | request_id=%s | %s", code, request_id, traceback.format_exc())
-        try:
-            self.server.core.database.record_error(
+            self.server.logger.warning(
+                "%s | запрос=%s | путь=%s | %s",
                 code,
-                str(error),
-                {"request_id": request_id, "path": self.path},
+                request_id,
+                self.path,
+                message,
             )
-        except Exception:
-            self.server.logger.exception("Failed to persist error event")
+        else:
+            code, status, message = "SAYURI-CORE-500", 500, "Внутренняя ошибка сервера"
+            self.server.logger.error(
+                "%s | запрос=%s | %s",
+                code,
+                request_id,
+                traceback.format_exc(),
+            )
+            try:
+                self.server.core.database.record_error(
+                    code,
+                    str(error),
+                    {"request_id": request_id, "path": self.path},
+                )
+            except Exception:
+                self.server.logger.exception("Не удалось записать ошибку в базу данных")
         self._json({"error": {"code": code, "message": message, "request_id": request_id}}, status)
 
     def do_GET(self) -> None:
@@ -86,7 +121,16 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
                     limit = 20
                 self._json({"events": self.server.core.database.recent_events(limit)})
                 return
+            if parsed.path == "/favicon.ico":
+                self._send(b"", "image/x-icon", HTTPStatus.NO_CONTENT)
+                return
             self._serve_static(parsed.path)
+        except CLIENT_DISCONNECT_ERRORS as exc:
+            self.server.logger.info(
+                "HTTP | клиент закрыл соединение | путь=%s | %s",
+                self.path,
+                exc.__class__.__name__,
+            )
         except Exception as exc:
             self._error(exc, request_id)
 
@@ -95,13 +139,12 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
         base = self.server.core.settings.web_dir.resolve()
         candidate = (base / relative).resolve()
         if not candidate.is_relative_to(base) or not candidate.is_file():
-            raise StaticFileError(f"Static file not found: {url_path}")
+            raise StaticFileError(f"Файл не найден: {url_path}")
         body = candidate.read_bytes()
         content_type = mimetypes.guess_type(candidate.name)[0] or "application/octet-stream"
-        if content_type.startswith("text/") or content_type in {"application/javascript", "application/json"}:
+        if content_type.startswith("text/") or content_type in {"application/javascript", "application/json", "image/svg+xml"}:
             content_type += "; charset=utf-8"
-        self._headers(HTTPStatus.OK, content_type, len(body))
-        self.wfile.write(body)
+        self._send(body, content_type, HTTPStatus.OK)
 
 
 def create_server(core: SayuriCore, logger: logging.Logger) -> SayuriHTTPServer:
@@ -114,4 +157,7 @@ def create_server(core: SayuriCore, logger: logging.Logger) -> SayuriHTTPServer:
             last_error = exc
             if exc.errno not in {None, 48, 98, 10048}:
                 raise
-    raise OSError(f"No free local port in range {start}-{start + core.settings.port_scan_limit - 1}") from last_error
+    raise OSError(
+        f"Нет свободного локального порта в диапазоне "
+        f"{start}-{start + core.settings.port_scan_limit - 1}"
+    ) from last_error

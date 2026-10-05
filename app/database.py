@@ -80,8 +80,26 @@ class Database:
                     """,
                     (str(SCHEMA_VERSION),),
                 )
+                self._translate_legacy_events(db)
         except sqlite3.Error as exc:
-            raise DatabaseError(f"SQLite initialization failed: {exc}") from exc
+            raise DatabaseError(f"Не удалось инициализировать SQLite: {exc}") from exc
+
+    @staticmethod
+    def _translate_legacy_events(db: sqlite3.Connection) -> None:
+        translations = (
+            ("Запуск", "Ядро готово", "core.start", "Sayuri Core initialized"),
+            ("Сайт", "Сервер готов", "web.ready", "Local web server ready"),
+            ("Остановка", "Ядро остановлено", "core.stop", "Sayuri Core stopped"),
+        )
+        for new_type, new_message, old_type, old_message in translations:
+            db.execute(
+                """
+                UPDATE system_events
+                SET event_type = ?, message = ?
+                WHERE event_type = ? AND message = ?
+                """,
+                (new_type, new_message, old_type, old_message),
+            )
 
     @staticmethod
     def _now() -> str:
@@ -131,8 +149,9 @@ class Database:
             events = db.execute("SELECT COUNT(*) AS count FROM system_events").fetchone()["count"]
             errors = db.execute("SELECT COUNT(*) AS count FROM error_events").fetchone()["count"]
         return {
-            "status": "ready",
-            "engine": "sqlite3",
+            "status": "готово",
+            "status_code": "ready",
+            "engine": "SQLite",
             "schema_version": int(schema["value"]) if schema else 0,
             "events": events,
             "errors": errors,

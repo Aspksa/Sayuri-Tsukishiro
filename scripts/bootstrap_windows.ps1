@@ -40,7 +40,7 @@ function Get-RuntimeSpec {
             }
         }
         default {
-            throw "SAYURI-BOOT-001: Unsupported Windows architecture: $arch. Supported: AMD64, ARM64."
+            throw "SAYURI-BOOT-001: Неподдерживаемая архитектура Windows: $arch. Поддерживаются AMD64 и ARM64."
         }
     }
 }
@@ -58,25 +58,25 @@ function Test-PortablePython {
 function Install-PortablePython {
     $spec = Get-RuntimeSpec
     $archive = Join-Path $Downloads ("python-{0}-{1}.zip" -f $PythonVersion, $spec.Arch)
-    Write-LauncherLog "Installing portable Python $PythonVersion ($($spec.Arch)) into project runtime."
+    Write-LauncherLog "Установка переносимого Python $PythonVersion ($($spec.Arch))."
 
     if (Test-Path -LiteralPath $archive) {
         $cachedHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant()
         if ($cachedHash -ne $spec.Sha256) {
-            Write-LauncherLog "Cached runtime hash mismatch; removing archive." 'WARN'
+            Write-LauncherLog "Контрольная сумма сохранённого runtime не совпала; архив будет удалён." 'WARN'
             Remove-Item -Force -LiteralPath $archive
         }
     }
 
     if (-not (Test-Path -LiteralPath $archive)) {
-        Write-LauncherLog "Downloading Python runtime from python.org."
+        Write-LauncherLog "Загрузка Python с python.org."
         Invoke-WebRequest -UseBasicParsing -Uri $spec.Url -OutFile $archive
     }
 
     $actualHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant()
     if ($actualHash -ne $spec.Sha256) {
         Remove-Item -Force -LiteralPath $archive -ErrorAction SilentlyContinue
-        throw "SAYURI-BOOT-002: Python runtime SHA256 mismatch. Expected $($spec.Sha256), got $actualHash."
+        throw "SAYURI-BOOT-002: SHA256 Python не совпал. Ожидалось $($spec.Sha256), получено $actualHash."
     }
 
     if (Test-Path -LiteralPath $PythonRoot) {
@@ -87,7 +87,7 @@ function Install-PortablePython {
 
     $pth = Get-ChildItem -LiteralPath $PythonRoot -Filter 'python*._pth' | Select-Object -First 1
     if (-not $pth) {
-        throw 'SAYURI-BOOT-003: Embedded Python _pth file was not found after extraction.'
+        throw 'SAYURI-BOOT-003: После распаковки Python не найден файл python*._pth.'
     }
     $lines = Get-Content -LiteralPath $pth.FullName
     if ($lines -notcontains '..\..') {
@@ -96,33 +96,33 @@ function Install-PortablePython {
     }
 
     if (-not (Test-PortablePython)) {
-        throw "SAYURI-BOOT-004: Portable Python $PythonVersion failed its runtime check."
+        throw "SAYURI-BOOT-004: Переносимый Python $PythonVersion не прошёл проверку."
     }
-    Write-LauncherLog "Portable Python installation verified."
+    Write-LauncherLog "Переносимый Python установлен и проверен."
 }
 
 try {
-    Write-LauncherLog "Launcher started. Root=$Root"
+    Write-LauncherLog "Запуск. Корень проекта: $Root"
     if (-not (Test-PortablePython)) {
         Install-PortablePython
     }
     else {
-        Write-LauncherLog "Portable Python $PythonVersion already ready."
+        Write-LauncherLog "Переносимый Python $PythonVersion готов."
     }
 
     $python = Join-Path $PythonRoot 'python.exe'
     Push-Location $Root
     try {
-        Write-LauncherLog 'Running preflight checks.'
+        Write-LauncherLog 'Проверка системы перед запуском.'
         & $python -m app.preflight
         if ($LASTEXITCODE -ne 0) {
-            throw "SAYURI-PREFLIGHT-001: Preflight exited with code $LASTEXITCODE."
+            throw "SAYURI-PREFLIGHT-001: Предварительная проверка завершилась с кодом $LASTEXITCODE."
         }
 
-        Write-LauncherLog 'Starting Sayuri local server. Browser will open automatically after health check.'
+        Write-LauncherLog 'Запуск локального сервера Саюри. Браузер откроется после проверки готовности.'
         & $python -m app.main
         $exitCode = $LASTEXITCODE
-        Write-LauncherLog "Sayuri process finished with code $exitCode."
+        Write-LauncherLog "Процесс Саюри завершён с кодом $exitCode."
         exit $exitCode
     }
     finally {

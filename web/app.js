@@ -7,8 +7,15 @@ function setStatus(kind, text) {
 }
 
 function formatTime(value) {
-  try { return new Date(value).toLocaleTimeString('ru-RU', {hour: '2-digit', minute: '2-digit', second: '2-digit'}); }
-  catch { return value; }
+  try {
+    return new Date(value).toLocaleTimeString('ru-RU', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    });
+  } catch {
+    return value;
+  }
 }
 
 function renderModules(modules) {
@@ -28,7 +35,7 @@ function renderModules(modules) {
     const title = document.createElement('strong');
     title.textContent = name;
     const code = document.createElement('code');
-    code.textContent = `v${version}`;
+    code.textContent = `версия ${version}`;
     row.append(title, code);
     container.append(row);
   }
@@ -51,10 +58,8 @@ function renderEvents(events) {
     time.textContent = formatTime(event.created_at);
     const body = document.createElement('div');
     const title = document.createElement('strong');
-    title.textContent = event.event_type;
-    const message = document.createElement('p');
-    message.textContent = event.message;
-    body.append(title, message);
+    title.textContent = `${event.event_type}: ${event.message}`;
+    body.append(title);
     row.append(time, body);
     container.append(row);
   }
@@ -67,12 +72,12 @@ async function loadHealth() {
   setStatus('ready', 'Система готова');
   byId('project-version').textContent = data.project_version;
   byId('runtime-version').textContent = `Python ${data.runtime.python}`;
-  byId('core-state').textContent = 'READY';
+  byId('core-state').textContent = 'ГОТОВО';
   byId('db-state').textContent = data.database.status.toUpperCase();
-  byId('db-detail').textContent = `SQLite schema ${data.database.schema_version}`;
-  byId('server-state').textContent = `${data.server.port}`;
-  byId('server-detail').textContent = `${data.server.host} · local only`;
-  byId('event-count').textContent = data.database.events;
+  byId('db-detail').textContent = `SQLite · схема ${data.database.schema_version}`;
+  byId('server-state').textContent = String(data.server.port);
+  byId('server-detail').textContent = `${data.server.host} · только локально`;
+  byId('event-count').textContent = String(data.database.events);
   byId('updated-at').textContent = `Обновлено ${formatTime(data.time_utc)}`;
   renderModules(data.modules);
 }
@@ -88,8 +93,8 @@ async function refresh() {
   try {
     await Promise.all([loadHealth(), loadEvents()]);
   } catch (error) {
-    setStatus('error', 'Ошибка связи с ядром');
-    byId('updated-at').textContent = String(error);
+    setStatus('error', 'Нет связи с ядром');
+    byId('updated-at').textContent = `Ошибка: ${String(error)}`;
   }
 }
 

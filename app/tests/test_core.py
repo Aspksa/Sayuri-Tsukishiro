@@ -10,12 +10,15 @@ from app.core import SayuriCore
 
 
 class CoreTests(unittest.TestCase):
-    def test_health_reads_versions_and_database(self):
+    def test_health_reads_russian_module_names_and_database(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / "VERSION").write_text("9.8.7\n", encoding="utf-8")
             (root / "MODULES.json").write_text(
-                json.dumps({"schema_version": 1, "modules": [{"id": "core", "path": "module"}]}),
+                json.dumps({
+                    "schema_version": 1,
+                    "modules": [{"id": "core", "display_name": "Ядро", "path": "module"}],
+                }, ensure_ascii=False),
                 encoding="utf-8",
             )
             (root / "module").mkdir()
@@ -25,9 +28,11 @@ class CoreTests(unittest.TestCase):
             core.initialize()
             health = core.health(port=8765)
             self.assertEqual(health["project_version"], "9.8.7")
-            self.assertEqual(health["modules"]["core"], "1.2.3")
+            self.assertEqual(health["modules"]["Ядро"], "1.2.3")
+            self.assertEqual(health["status"], "готово")
+            self.assertEqual(health["status_code"], "ready")
             self.assertTrue(health["server"]["loopback_only"])
-            self.assertEqual(health["database"]["status"], "ready")
+            self.assertEqual(health["database"]["status"], "готово")
 
 
 if __name__ == "__main__":

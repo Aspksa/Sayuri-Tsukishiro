@@ -2,10 +2,10 @@
 setlocal EnableExtensions
 chcp 65001 >nul
 cd /d "%~dp0"
-title Sayuri Tsukishiro
+title Саюри Цукисиро
 
 echo.
-echo  Sayuri Tsukishiro - local launcher
+echo  Саюри Цукисиро - локальный запуск
 echo  ---------------------------------
 echo.
 
@@ -14,8 +14,8 @@ set "EXIT_CODE=%ERRORLEVEL%"
 
 if not "%EXIT_CODE%"=="0" (
   echo.
-  echo [SAYURI] Launch failed with exit code %EXIT_CODE%.
-  echo [SAYURI] Check logs\launcher.log and ERRORS.md.
+  echo [САЮРИ] Запуск завершился с ошибкой, код %EXIT_CODE%.
+  echo [САЮРИ] Проверьте logs\launcher.log и ERRORS.md.
   echo.
   pause
 )

@@ -14,17 +14,20 @@ def main() -> int:
         core = SayuriCore(settings)
         core.initialize(record_event=False)
         report = {
-            "status": "ok",
-            "project_version": core.project_version(),
-            "modules": core.module_versions(),
+            "состояние": "готово",
+            "версия_проекта": core.project_version(),
+            "модули": core.module_versions(),
             "python": platform.python_version(),
             "sqlite": sqlite3.sqlite_version,
-            "database": core.database.health(),
+            "база_данных": core.database.health(),
         }
         print(json.dumps(report, ensure_ascii=False, indent=2))
         return 0
     except Exception as exc:
-        print(json.dumps({"status": "error", "code": "SAYURI-PREFLIGHT-001", "message": str(exc)}, ensure_ascii=False))
+        print(json.dumps(
+            {"состояние": "ошибка", "код": "SAYURI-PREFLIGHT-001", "сообщение": str(exc)},
+            ensure_ascii=False,
+        ))
         return 1
 
 

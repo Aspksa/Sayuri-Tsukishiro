@@ -4,7 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
-  <title>Sayuri Tsukishiro</title>
+  <title>Саюри Цукисиро</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
@@ -13,7 +14,7 @@
       <div class="brand">
         <div class="sigil" aria-hidden="true">月</div>
         <div>
-          <p class="eyebrow">SAYURI TSUKISHIRO</p>
+          <p class="eyebrow">САЮРИ ЦУКИСИРО</p>
           <h1>Локальное ядро Саюри</h1>
         </div>
       </div>
@@ -22,9 +23,9 @@
 
     <section class="hero">
       <div>
-        <p class="eyebrow">CORE · DATABASE · WEB</p>
+        <p class="eyebrow">ЯДРО · БАЗА ДАННЫХ · ВЕБ</p>
         <h2>Основа системы запущена и работает локально.</h2>
-        <p class="lead">Первая рабочая версия отделяет ядро, SQLite-хранилище, веб-интерфейс и переносимый Windows-запуск. Следующие модули можно наращивать поверх этой базы без переделки старта.</p>
+        <p class="lead">Ядро, SQLite-хранилище, веб-интерфейс и переносимый Windows-запуск работают как единая локальная основа. Следующие модули можно добавлять без переделки запуска.</p>
       </div>
       <div class="version-box">
         <span>Версия проекта</span>
@@ -34,7 +35,7 @@
     </section>
 
     <section class="grid metrics" aria-label="Состояние системы">
-      <article class="card"><span>Ядро</span><strong id="core-state">—</strong><small>Sayuri Core</small></article>
+      <article class="card"><span>Ядро</span><strong id="core-state">—</strong><small>Ядро Саюри</small></article>
       <article class="card"><span>База данных</span><strong id="db-state">—</strong><small id="db-detail">SQLite</small></article>
       <article class="card"><span>Сервер</span><strong id="server-state">—</strong><small id="server-detail">127.0.0.1</small></article>
       <article class="card"><span>События</span><strong id="event-count">—</strong><small>журнал ядра</small></article>
@@ -42,17 +43,17 @@
 
     <section class="content-grid">
       <article class="panel">
-        <div class="panel-head"><div><p class="eyebrow">ARCHITECTURE</p><h3>Модули</h3></div></div>
+        <div class="panel-head"><div><p class="eyebrow">АРХИТЕКТУРА</p><h3>Модули</h3></div></div>
         <div id="modules" class="module-list"><p class="muted">Загрузка…</p></div>
       </article>
       <article class="panel">
-        <div class="panel-head"><div><p class="eyebrow">EVENT STREAM</p><h3>Последние события</h3></div><button id="refresh" type="button">Обновить</button></div>
+        <div class="panel-head"><div><p class="eyebrow">СОБЫТИЯ</p><h3>Последние события</h3></div><button id="refresh" type="button">Обновить</button></div>
         <div id="events" class="event-list"><p class="muted">Загрузка…</p></div>
       </article>
     </section>
 
     <footer>
-      <span>Sayuri Tsukishiro · local-first foundation</span>
+      <span>Саюри Цукисиро · локальная основа</span>
       <span id="updated-at">—</span>
     </footer>
   </main>

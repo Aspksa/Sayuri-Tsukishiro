@@ -18,7 +18,8 @@ def wait_until_ready(url: str, timeout: float = 5.0) -> bool:
     while time.monotonic() < deadline:
         try:
             with urllib.request.urlopen(url + "/api/health", timeout=0.5) as response:
-                return response.status == 200
+                body = response.read()
+                return response.status == 200 and bool(body)
         except Exception:
             time.sleep(0.1)
     return False
@@ -27,14 +28,14 @@ def wait_until_ready(url: str, timeout: float = 5.0) -> bool:
 def open_browser_when_ready(url: str, logger) -> None:
     if wait_until_ready(url):
         opened = webbrowser.open(url, new=2)
-        logger.info("browser | url=%s | opened=%s", url, opened)
+        logger.info("Браузер | адрес=%s | открыт=%s", url, "да" if opened else "нет")
     else:
-        logger.error("SAYURI-WEB-003 | health endpoint did not become ready | url=%s", url)
+        logger.error("SAYURI-WEB-003 | локальный сервер не прошёл проверку готовности | адрес=%s", url)
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Start Sayuri Tsukishiro local web application")
-    parser.add_argument("--no-browser", action="store_true", help="Do not open the default browser")
+    parser = argparse.ArgumentParser(description="Запуск локального приложения Sayuri Tsukishiro")
+    parser.add_argument("--no-browser", action="store_true", help="Не открывать браузер автоматически")
     args = parser.parse_args(argv)
 
     try:
@@ -48,11 +49,11 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     url = f"http://{settings.host}:{server.server_port}"
-    core.database.record_event("web.ready", "Local web server ready", details={"url": url})
-    logger.info("Sayuri Tsukishiro %s", core.project_version())
-    logger.info("Local URL: %s", url)
-    logger.info("Database: %s", settings.database_path)
-    logger.info("Logs: %s", settings.logs_dir / "sayuri.log")
+    core.database.record_event("Сайт", "Сервер готов", details={"url": url})
+    logger.info("Саюри Цукисиро %s", core.project_version())
+    logger.info("Адрес сайта: %s", url)
+    logger.info("База данных: %s", settings.database_path)
+    logger.info("Журнал: %s", settings.logs_dir / "sayuri.log")
 
     if not args.no_browser:
         threading.Thread(target=open_browser_when_ready, args=(url, logger), daemon=True).start()
@@ -60,13 +61,13 @@ def main(argv: list[str] | None = None) -> int:
     try:
         server.serve_forever(poll_interval=0.25)
     except KeyboardInterrupt:
-        logger.info("Shutdown requested by user")
+        logger.info("Остановка по запросу пользователя")
     finally:
         server.server_close()
         try:
-            core.database.record_event("core.stop", "Sayuri Core stopped")
+            core.database.record_event("Остановка", "Ядро остановлено")
         except Exception:
-            logger.exception("Failed to record shutdown event")
+            logger.exception("Не удалось записать событие остановки")
     return 0
 
 

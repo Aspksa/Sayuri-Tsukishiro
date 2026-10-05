@@ -13,9 +13,9 @@ def _env_port(name: str, default: int) -> int:
     try:
         value = int(raw)
     except ValueError as exc:
-        raise ValueError(f"{name} must be an integer, got {raw!r}") from exc
+        raise ValueError(f"{name}: требуется целое число, получено {raw!r}") from exc
     if not 1024 <= value <= 65535:
-        raise ValueError(f"{name} must be between 1024 and 65535")
+        raise ValueError(f"{name}: допустимый диапазон портов 1024–65535")
     return value
 
 
@@ -30,7 +30,7 @@ class Settings:
     def from_env(cls) -> "Settings":
         host = os.getenv("SAYURI_HOST", "127.0.0.1").strip()
         if host != "127.0.0.1":
-            raise ValueError("SAYURI_HOST must be 127.0.0.1 in v0.1.x")
+            raise ValueError("SAYURI_HOST в версии 0.1.x должен быть 127.0.0.1")
         return cls(
             root=ROOT,
             host=host,
