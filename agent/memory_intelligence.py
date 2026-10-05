@@ -207,6 +207,24 @@ class MemoryIntelligence:
                 })
                 break
 
+        technical_fact_patterns = (
+            (r"^версия проекта\s*[:—-]\s*.+$", 0.99, "явно оформленный технический факт"),
+            (r"^репозиторий проекта\s*[:—-]\s*.+$", 0.99, "явно оформленный технический факт"),
+            (r"^основная ветка\s*[:—-]\s*.+$", 0.98, "явно оформленный технический факт"),
+            (r"^модель проекта\s*[:—-]\s*.+$", 0.97, "явно оформленный технический факт"),
+        )
+        for pattern, confidence, reason in technical_fact_patterns:
+            if re.search(pattern, compact, flags=re.IGNORECASE):
+                candidates.append({
+                    "scope": "project",
+                    "kind": "fact",
+                    "content": compact,
+                    "confidence": confidence,
+                    "importance": 4,
+                    "reason": reason,
+                })
+                break
+
         project_patterns = (
             (r"\b(?:решили|решаем|фиксируем|зафиксировали)\b", "decision", 0.91, 5, "похоже на проектное решение"),
             (r"\b(?:будем использовать|используем только|оставляем только|переходим на)\b", "decision", 0.90, 5, "похоже на архитектурное решение"),
