@@ -793,3 +793,16 @@ Dashboard endpoint не запускает тяжёлую maintenance и ост�
 - полный versioning check на атомарном release commit.
 
 Graph extraction дополнительно создаёт company nodes для консервативно распознанных ООО/АО/ПАО/ИП и event nodes для эпизодической памяти. Это локальные детерминированные сущности, без LLM entity extraction.
+
+### Idempotency episodic
+
+`episodic_memory.fingerprint` имеет частичный UNIQUE index. Для chat feedback используется `chat_feedback:{response_id}`, для Safe Action — `action:{action_id}`, для review candidate — `memory_candidate:{candidate_id}`. Retry обновляет существующий эпизод вместо создания дубля.
+
+### Archive propagation
+
+Ручное удаление memory выполняется как soft archive исходной записи. Memory 3.0 затем:
+- удаляет архивированный source ID из knowledge, если есть другие активные источники;
+- иначе переводит knowledge в `archived` и ставит `valid_to`;
+- сохраняет timeline события.
+
+AI-context открытого конфликта содержит ограниченные old/new значения и отдельный точный `open_conflicts` count.
