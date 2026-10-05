@@ -55,8 +55,11 @@ def main(argv: list[str] | None = None) -> int:
     logger.info("База данных: %s", settings.database_path)
     logger.info("Журнал: %s", settings.logs_dir / "sayuri.log")
 
-    if not args.no_browser:
+    auto_open = bool(core.setting_value("browser.auto_open"))
+    if not args.no_browser and auto_open:
         threading.Thread(target=open_browser_when_ready, args=(url, logger), daemon=True).start()
+    elif not auto_open:
+        logger.info("Браузер | автоматическое открытие отключено в настройках")
 
     try:
         server.serve_forever(poll_interval=0.25)

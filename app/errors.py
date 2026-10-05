@@ -21,3 +21,8 @@ class DatabaseError(SayuriError):
 class StaticFileError(SayuriError):
     def __init__(self, message: str):
         super().__init__("SAYURI-WEB-002", message, 404)
+
+
+class BadRequestError(SayuriError):
+    def __init__(self, message: str):
+        super().__init__("SAYURI-API-400", message, 400)

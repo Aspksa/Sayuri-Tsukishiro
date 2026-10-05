@@ -1,8 +1,29 @@
 {
   "schema_version": 1,
   "modules": [
-    {"id": "sayuri-core", "display_name": "Ядро Саюри", "path": "app"},
-    {"id": "web-ui", "display_name": "Веб-интерфейс", "path": "web"},
-    {"id": "dev-tools", "display_name": "Инструменты разработки", "path": "scripts"}
+    {
+      "id": "sayuri-core",
+      "display_name": "Ядро Саюри",
+      "description": "Системное ядро, SQLite, конфигурация, API и диагностика.",
+      "path": "app"
+    },
+    {
+      "id": "agent-core",
+      "display_name": "Агентное ядро",
+      "description": "Контракт будущего AI-исполнения, памяти, контекста и инструментов.",
+      "path": "agent"
+    },
+    {
+      "id": "web-ui",
+      "display_name": "Веб-интерфейс",
+      "description": "Локальная оболочка, левое меню, главная и системные настройки.",
+      "path": "web"
+    },
+    {
+      "id": "dev-tools",
+      "display_name": "Инструменты разработки",
+      "description": "Версионирование, тесты и переносимый Windows-запуск.",
+      "path": "scripts"
+    }
   ]
 }

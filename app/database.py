@@ -10,7 +10,7 @@ from typing import Any, Iterator
 from .errors import DatabaseError
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 class Database:
@@ -75,6 +75,15 @@ class Database:
                 )
                 db.execute(
                     """
+                    CREATE TABLE IF NOT EXISTS system_settings (
+                        key TEXT PRIMARY KEY,
+                        value_json TEXT NOT NULL,
+                        updated_at TEXT NOT NULL
+                    )
+                    """
+                )
+                db.execute(
+                    """
                     INSERT INTO schema_meta(key, value) VALUES('schema_version', ?)
                     ON CONFLICT(key) DO UPDATE SET value = excluded.value
                     """,
@@ -104,6 +113,41 @@ class Database:
     @staticmethod
     def _now() -> str:
         return datetime.now(timezone.utc).isoformat()
+
+    def ensure_settings(self, defaults: dict[str, Any]) -> None:
+        now = self._now()
+        with self.session() as db:
+            for key, value in defaults.items():
+                db.execute(
+                    """
+                    INSERT INTO system_settings(key, value_json, updated_at)
+                    VALUES(?, ?, ?)
+                    ON CONFLICT(key) DO NOTHING
+                    """,
+                    (key, json.dumps(value, ensure_ascii=False), now),
+                )
+
+    def read_settings(self) -> dict[str, Any]:
+        with self.session() as db:
+            rows = db.execute(
+                "SELECT key, value_json FROM system_settings ORDER BY key"
+            ).fetchall()
+        return {row["key"]: json.loads(row["value_json"]) for row in rows}
+
+    def write_settings(self, changes: dict[str, Any]) -> None:
+        now = self._now()
+        with self.session() as db:
+            for key, value in changes.items():
+                db.execute(
+                    """
+                    INSERT INTO system_settings(key, value_json, updated_at)
+                    VALUES(?, ?, ?)
+                    ON CONFLICT(key) DO UPDATE SET
+                        value_json = excluded.value_json,
+                        updated_at = excluded.updated_at
+                    """,
+                    (key, json.dumps(value, ensure_ascii=False), now),
+                )
 
     def record_event(
         self,
@@ -148,6 +192,7 @@ class Database:
             ).fetchone()
             events = db.execute("SELECT COUNT(*) AS count FROM system_events").fetchone()["count"]
             errors = db.execute("SELECT COUNT(*) AS count FROM error_events").fetchone()["count"]
+            settings = db.execute("SELECT COUNT(*) AS count FROM system_settings").fetchone()["count"]
         return {
             "status": "готово",
             "status_code": "ready",
@@ -155,5 +200,7 @@ class Database:
             "schema_version": int(schema["value"]) if schema else 0,
             "events": events,
             "errors": errors,
+            "settings": settings,
+            "size_bytes": self.path.stat().st_size if self.path.exists() else 0,
             "path": str(self.path),
         }

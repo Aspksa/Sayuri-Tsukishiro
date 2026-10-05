@@ -9,54 +9,159 @@
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-  <main class="shell">
-    <header class="topbar">
-      <div class="brand">
+  <div class="app-layout">
+    <aside class="sidebar">
+      <div class="sidebar-brand">
         <div class="sigil" aria-hidden="true">月</div>
         <div>
-          <p class="eyebrow">САЮРИ ЦУКИСИРО</p>
-          <h1>Локальное ядро Саюри</h1>
+          <strong>Саюри</strong>
+          <span>Цукисиро</span>
         </div>
       </div>
-      <div class="status-pill" id="status-pill"><span></span><strong>Проверка…</strong></div>
-    </header>
 
-    <section class="hero">
-      <div>
-        <p class="eyebrow">ЯДРО · БАЗА ДАННЫХ · ВЕБ</p>
-        <h2>Основа системы запущена и работает локально.</h2>
-        <p class="lead">Ядро, SQLite-хранилище, веб-интерфейс и переносимый Windows-запуск работают как единая локальная основа. Следующие модули можно добавлять без переделки запуска.</p>
+      <nav class="main-nav" aria-label="Главное меню">
+        <button class="nav-item active" type="button" data-view="home">
+          <span class="nav-icon">⌂</span>
+          <span>Главная</span>
+        </button>
+        <button class="nav-item" type="button" data-view="settings">
+          <span class="nav-icon">⚙</span>
+          <span>Настройки</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-bottom">
+        <div class="mini-status"><span class="dot"></span><span>Локальная система</span></div>
+        <small id="sidebar-version">версия —</small>
       </div>
-      <div class="version-box">
-        <span>Версия проекта</span>
-        <strong id="project-version">—</strong>
-        <small id="runtime-version">Python —</small>
-      </div>
-    </section>
+    </aside>
 
-    <section class="grid metrics" aria-label="Состояние системы">
-      <article class="card"><span>Ядро</span><strong id="core-state">—</strong><small>Ядро Саюри</small></article>
-      <article class="card"><span>База данных</span><strong id="db-state">—</strong><small id="db-detail">SQLite</small></article>
-      <article class="card"><span>Сервер</span><strong id="server-state">—</strong><small id="server-detail">127.0.0.1</small></article>
-      <article class="card"><span>События</span><strong id="event-count">—</strong><small>журнал ядра</small></article>
-    </section>
+    <main class="workspace">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow" id="page-eyebrow">СИСТЕМА</p>
+          <h1 id="page-title">Главная</h1>
+        </div>
+        <div class="status-pill" id="status-pill"><span></span><strong>Проверка…</strong></div>
+      </header>
 
-    <section class="content-grid">
-      <article class="panel">
-        <div class="panel-head"><div><p class="eyebrow">АРХИТЕКТУРА</p><h3>Модули</h3></div></div>
-        <div id="modules" class="module-list"><p class="muted">Загрузка…</p></div>
-      </article>
-      <article class="panel">
-        <div class="panel-head"><div><p class="eyebrow">СОБЫТИЯ</p><h3>Последние события</h3></div><button id="refresh" type="button">Обновить</button></div>
-        <div id="events" class="event-list"><p class="muted">Загрузка…</p></div>
-      </article>
-    </section>
+      <section class="view active" id="view-home">
+        <section class="hero">
+          <div>
+            <p class="eyebrow">SAYURI CORE · CORE-002</p>
+            <h2>Локальная основа Саюри работает.</h2>
+            <p class="lead">Ядро, база данных, веб-интерфейс и системный контур готовы. Настройки и техническая информация теперь собраны в отдельном разделе слева.</p>
+          </div>
+          <div class="version-box">
+            <span>Версия проекта</span>
+            <strong id="project-version">—</strong>
+            <small id="runtime-version">Python —</small>
+          </div>
+        </section>
 
-    <footer>
-      <span>Саюри Цукисиро · локальная основа</span>
-      <span id="updated-at">—</span>
-    </footer>
-  </main>
+        <section class="home-grid">
+          <article class="summary-card">
+            <span class="summary-label">Состояние</span>
+            <strong id="home-system-status">—</strong>
+            <small>ядро и база данных</small>
+          </article>
+          <article class="summary-card">
+            <span class="summary-label">Агентное ядро</span>
+            <strong id="home-agent-status">—</strong>
+            <small id="home-agent-detail">контракт</small>
+          </article>
+          <article class="summary-card">
+            <span class="summary-label">Время работы</span>
+            <strong id="home-uptime">—</strong>
+            <small>текущий запуск</small>
+          </article>
+        </section>
+
+        <article class="home-note">
+          <div class="note-mark">02</div>
+          <div>
+            <p class="eyebrow">CORE-002</p>
+            <h3>Системный слой подготовлен для следующего этапа</h3>
+            <p>Настройки типизированы и сохраняются в SQLite. Граница Agent Core отделена от будущего AI-провайдера, памяти и инструментов.</p>
+          </div>
+        </article>
+      </section>
+
+      <section class="view" id="view-settings">
+        <div class="settings-intro">
+          <div>
+            <p class="eyebrow">УПРАВЛЕНИЕ СИСТЕМОЙ</p>
+            <h2>Настройки</h2>
+            <p>Конфигурация, состояние, события и архитектура Саюри в одном месте.</p>
+          </div>
+          <div class="save-state" id="save-state" aria-live="polite"></div>
+        </div>
+
+        <nav class="settings-nav" aria-label="Разделы настроек">
+          <a href="#system-settings">Система</a>
+          <a href="#system-state">Состояние</a>
+          <a href="#system-events">События</a>
+          <a href="#system-architecture">Архитектура</a>
+        </nav>
+
+        <section class="settings-section" id="system-settings">
+          <div class="section-head">
+            <div><p class="eyebrow">КОНФИГУРАЦИЯ</p><h3>Настройки системы</h3></div>
+            <button class="primary-button" id="save-settings" type="button">Сохранить</button>
+          </div>
+          <div class="settings-form" id="settings-form">
+            <p class="muted">Загрузка настроек…</p>
+          </div>
+        </section>
+
+        <section class="settings-section" id="system-state">
+          <div class="section-head">
+            <div><p class="eyebrow">ДИАГНОСТИКА</p><h3>Состояние системы</h3></div>
+            <button class="secondary-button" id="refresh-system" type="button">Обновить</button>
+          </div>
+          <div class="metrics settings-metrics">
+            <article class="metric-card"><span>Ядро</span><strong id="core-state">—</strong><small id="core-detail">—</small></article>
+            <article class="metric-card"><span>База данных</span><strong id="db-state">—</strong><small id="db-detail">—</small></article>
+            <article class="metric-card"><span>Сервер</span><strong id="server-state">—</strong><small id="server-detail">—</small></article>
+            <article class="metric-card"><span>События</span><strong id="event-count">—</strong><small id="event-errors">—</small></article>
+          </div>
+
+          <div class="agent-panel">
+            <div>
+              <p class="eyebrow">AGENT CORE</p>
+              <h4>Агентное ядро</h4>
+              <p id="agent-message">Загрузка…</p>
+            </div>
+            <div class="agent-flags">
+              <span id="agent-provider">AI-провайдер —</span>
+              <span id="agent-memory">Память —</span>
+              <span id="agent-tools">Инструменты —</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="settings-section" id="system-events">
+          <div class="section-head">
+            <div><p class="eyebrow">ЖУРНАЛ</p><h3>Последние события</h3></div>
+          </div>
+          <div id="events" class="event-list"><p class="muted">Загрузка событий…</p></div>
+        </section>
+
+        <section class="settings-section" id="system-architecture">
+          <div class="section-head">
+            <div><p class="eyebrow">АРХИТЕКТУРА</p><h3>Модули системы</h3></div>
+          </div>
+          <div id="architecture" class="architecture-list"><p class="muted">Загрузка архитектуры…</p></div>
+        </section>
+      </section>
+
+      <footer>
+        <span>Саюри Цукисиро · локальная система</span>
+        <span id="updated-at">—</span>
+      </footer>
+    </main>
+  </div>
+
   <script src="/app.js" defer></script>
 </body>
 </html>

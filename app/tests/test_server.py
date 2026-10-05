@@ -21,29 +21,56 @@ class _AbortWriter:
 
 
 class ServerTests(unittest.TestCase):
-    def test_health_static_index_and_favicon(self):
+    def _start_server(self, root: Path):
+        (root / "VERSION").write_text("1.0.0\n", encoding="utf-8")
+        (root / "MODULES.json").write_text(
+            json.dumps({"schema_version": 1, "modules": []}),
+            encoding="utf-8",
+        )
+        (root / "web").mkdir()
+        (root / "web" / "index.html").write_text("<h1>Саюри</h1>", encoding="utf-8")
+        settings = Settings(root=root, host="127.0.0.1", preferred_port=18000, port_scan_limit=100)
+        core = SayuriCore(settings)
+        core.initialize()
+        server = create_server(core, configure_logging(settings.logs_dir))
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        return server, thread
+
+    def test_system_settings_static_index_and_favicon(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            (root / "VERSION").write_text("1.0.0\n", encoding="utf-8")
-            (root / "MODULES.json").write_text(
-                json.dumps({"schema_version": 1, "modules": []}),
-                encoding="utf-8",
-            )
-            (root / "web").mkdir()
-            (root / "web" / "index.html").write_text("<h1>Саюри</h1>", encoding="utf-8")
-            settings = Settings(root=root, host="127.0.0.1", preferred_port=18000, port_scan_limit=100)
-            core = SayuriCore(settings)
-            core.initialize()
-            server = create_server(core, configure_logging(settings.logs_dir))
-            thread = threading.Thread(target=server.serve_forever, daemon=True)
-            thread.start()
+            server, thread = self._start_server(root)
             try:
                 base = f"http://127.0.0.1:{server.server_port}"
-                with urllib.request.urlopen(base + "/api/health", timeout=2) as response:
+                with urllib.request.urlopen(base + "/api/system", timeout=2) as response:
                     payload = json.loads(response.read().decode("utf-8"))
                     self.assertEqual(payload["status"], "готово")
+                    self.assertEqual(payload["agent"]["status_code"], "contract_ready")
+
+                with urllib.request.urlopen(base + "/api/settings", timeout=2) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+                    keys = {item["key"] for item in payload["settings"]}
+                    self.assertIn("ui.refresh_seconds", keys)
+
+                body = json.dumps(
+                    {"settings": {"ui.refresh_seconds": 15, "events.display_limit": 20}}
+                ).encode("utf-8")
+                request = urllib.request.Request(
+                    base + "/api/settings",
+                    data=body,
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(request, timeout=2) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+                    values = {item["key"]: item["value"] for item in payload["settings"]}
+                    self.assertEqual(values["ui.refresh_seconds"], 15)
+                    self.assertEqual(values["events.display_limit"], 20)
+
                 with urllib.request.urlopen(base + "/", timeout=2) as response:
                     self.assertIn("Саюри", response.read().decode("utf-8"))
+
                 try:
                     urllib.request.urlopen(base + "/favicon.ico", timeout=2)
                 except urllib.error.HTTPError as exc:

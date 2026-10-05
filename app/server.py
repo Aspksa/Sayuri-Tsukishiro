@@ -10,7 +10,7 @@ from urllib.parse import parse_qs, urlparse
 import uuid
 
 from .core import SayuriCore
-from .errors import SayuriError, StaticFileError
+from .errors import BadRequestError, SayuriError, StaticFileError
 
 
 SECURITY_HEADERS = {
@@ -24,6 +24,7 @@ SECURITY_HEADERS = {
     ),
 }
 CLIENT_DISCONNECT_ERRORS = (BrokenPipeError, ConnectionResetError, ConnectionAbortedError)
+MAX_JSON_BODY = 64 * 1024
 
 
 class SayuriHTTPServer(ThreadingHTTPServer):
@@ -40,7 +41,8 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
     server: SayuriHTTPServer
 
     def log_message(self, format: str, *args) -> None:  # noqa: A002
-        self.server.logger.info("HTTP | %s | " + format, self.client_address[0], *args)
+        if self.server.core.setting_value("diagnostics.http_requests"):
+            self.server.logger.info("HTTP | %s | " + format, self.client_address[0], *args)
 
     def finish(self) -> None:
         try:
@@ -77,6 +79,25 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
         body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         return self._send(body, "application/json; charset=utf-8", status)
 
+    def _read_json(self) -> dict:
+        raw_length = self.headers.get("Content-Length", "0")
+        try:
+            length = int(raw_length)
+        except ValueError as exc:
+            raise BadRequestError("Некорректный Content-Length.") from exc
+        if length <= 0:
+            raise BadRequestError("Пустое тело запроса.")
+        if length > MAX_JSON_BODY:
+            raise BadRequestError("Тело запроса слишком большое.")
+        raw = self.rfile.read(length)
+        try:
+            payload = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise BadRequestError("Ожидается корректный JSON в UTF-8.") from exc
+        if not isinstance(payload, dict):
+            raise BadRequestError("Корневой JSON должен быть объектом.")
+        return payload
+
     def _error(self, error: Exception, request_id: str) -> None:
         if isinstance(error, SayuriError):
             code, status, message = error.code, error.status, error.message
@@ -112,6 +133,12 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
             if parsed.path == "/api/health":
                 self._json(self.server.core.health(port=self.server.server_port))
                 return
+            if parsed.path == "/api/system":
+                self._json(self.server.core.system_state(port=self.server.server_port))
+                return
+            if parsed.path == "/api/settings":
+                self._json(self.server.core.settings_payload())
+                return
             if parsed.path == "/api/events":
                 query = parse_qs(parsed.query)
                 raw_limit = query.get("limit", ["20"])[0]
@@ -125,6 +152,27 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
                 self._send(b"", "image/x-icon", HTTPStatus.NO_CONTENT)
                 return
             self._serve_static(parsed.path)
+        except CLIENT_DISCONNECT_ERRORS as exc:
+            self.server.logger.info(
+                "HTTP | клиент закрыл соединение | путь=%s | %s",
+                self.path,
+                exc.__class__.__name__,
+            )
+        except Exception as exc:
+            self._error(exc, request_id)
+
+    def do_POST(self) -> None:
+        request_id = uuid.uuid4().hex[:12]
+        try:
+            parsed = urlparse(self.path)
+            if parsed.path != "/api/settings":
+                raise StaticFileError(f"API не найден: {parsed.path}")
+            payload = self._read_json()
+            changes = payload.get("settings")
+            if not isinstance(changes, dict):
+                raise BadRequestError("Поле settings должно быть объектом.")
+            result = self.server.core.update_settings(changes)
+            self._json(result)
         except CLIENT_DISCONNECT_ERRORS as exc:
             self.server.logger.info(
                 "HTTP | клиент закрыл соединение | путь=%s | %s",

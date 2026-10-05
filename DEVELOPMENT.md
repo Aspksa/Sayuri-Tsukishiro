@@ -1,57 +1,42 @@
 # Справочник разработки Sayuri Tsukishiro
 
-Актуальная точка состояния — [PROJECT_STATE.md](PROJECT_STATE.md). Правила версий — [VERSIONING.md](VERSIONING.md).
-
-## Рабочая структура
-
-| Путь | Назначение |
-| --- | --- |
-| `app/` | ядро, конфигурация, SQLite, HTTP-сервер, preflight |
-| `app/tests/` | тесты ядра и HTTP |
-| `web/` | локальный веб-интерфейс |
-| `scripts/` | версионирование и Windows bootstrap |
-| `Sayuri Tsukishiro.bat` | пользовательский запуск Windows |
-| `data/` | SQLite и runtime-данные, не коммитятся |
-| `logs/` | журналы, не коммитятся |
-| `.runtime/` | переносимый Python, не коммитится |
+Актуальная точка — [PROJECT_STATE.md](PROJECT_STATE.md). Правила версий — [VERSIONING.md](VERSIONING.md).
 
 ## Модули
 
-Внутренние ID остаются стабильными для кода:
+| ID | Имя | Путь | Назначение |
+| --- | --- | --- | --- |
+| `sayuri-core` | Ядро Саюри | `app/` | SQLite, настройки, API, сервер, диагностика |
+| `agent-core` | Агентное ядро | `agent/` | контракт AI/Memory/Tool исполнения |
+| `web-ui` | Веб-интерфейс | `web/` | левое меню, главная, настройки |
+| `dev-tools` | Инструменты разработки | `scripts/` | версии, тесты, Windows bootstrap |
 
-- `sayuri-core` → отображается как «Ядро Саюри»;
-- `web-ui` → «Веб-интерфейс»;
-- `dev-tools` → «Инструменты разработки».
+## База данных
 
-Отображаемые имена находятся в `MODULES.json` в поле `display_name`.
+Файл: `data/sayuri.db`. Schema 2 содержит `schema_meta`, `system_events`, `error_events`, `system_settings`.
 
-## Запуск на Windows
+## API CORE-002
 
-Двойной щелчок по:
+- `GET /api/health` — краткое состояние.
+- `GET /api/system` — единое состояние системы и архитектура.
+- `GET /api/settings` — текущие настройки и их спецификации.
+- `POST /api/settings` — сохранение проверенных значений.
+- `GET /api/events?limit=N` — последние события.
 
-`Sayuri Tsukishiro.bat`
+## Agent Core
 
-Корень вычисляется относительно BAT, поэтому проект работает независимо от буквы носителя. Реальный запуск подтверждён пользователем с `D:\Sayuri-Tsukishiro-main`.
+`agent/contract.py` задаёт структуры `AgentRequest`, `AgentResult` и snapshot состояния. В CORE-002 выполнение выключено; AI-провайдер, память и инструменты подключаются позже отдельными слоями.
 
-## Команды разработки
+## Запуск и проверки
+
+На Windows: `Sayuri Tsukishiro.bat`.
 
 ```sh
 python -m unittest discover -s app/tests -v
 python -m unittest discover -s scripts/tests -v
 python -m app.preflight
 python -m app.main --no-browser
-python scripts/versioning.py show
 python scripts/versioning.py check
 ```
 
-## Runtime
-
-- база: `data/sayuri.db`;
-- launcher log: `logs/launcher.log`;
-- core log: `logs/sayuri.log`;
-- начальный адрес: `http://127.0.0.1:8765`;
-- API: `GET /api/health`, `GET /api/events?limit=N`.
-
-## HTTP disconnect
-
-`BrokenPipeError`, `ConnectionResetError`, `ConnectionAbortedError` при записи ответа означают, что локальный клиент уже закрыл соединение. Они обрабатываются отдельно и не должны превращаться в `SAYURI-CORE-500`.
+Windows launcher дополнительно проверяется в GitHub Actions на `windows-latest`.
