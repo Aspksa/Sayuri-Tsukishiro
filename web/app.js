@@ -2035,8 +2035,9 @@ async function resolveMemoryV3Conflict(conflictId, resolution) {
       {resolution}
     );
     renderSayuriMemoryV3(result.dashboard || {});
-    setMemoryV3Message('Противоречие разрешено, временная история сохранена.', 'ready');
-    await Promise.all([loadSayuriMemory(), loadSayuriProfile()]);
+    if (result.memory_v4) renderSayuriMemoryV4(result.memory_v4);
+    setMemoryV3Message('Противоречие разрешено, временная история и вопрос Memory 4.0 обновлены.', 'ready');
+    await Promise.all([loadSayuriMemory(), loadSayuriMemoryV4(), loadSayuriProfile()]);
   } catch (error) {
     setMemoryV3Message(`Ошибка разрешения конфликта: ${error instanceof Error ? error.message : String(error)}`, 'error');
   }
