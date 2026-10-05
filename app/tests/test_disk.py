@@ -8,6 +8,7 @@ import tempfile
 import unittest
 
 from disk import DiskService
+from disk.dna import DocumentDNAAnalyzer
 
 
 class DiskServiceTests(unittest.TestCase):
@@ -189,7 +190,7 @@ class DiskServiceTests(unittest.TestCase):
             listing = service.list_entries("f1")
             self.assertEqual(listing["files"][0]["name"], "старый.txt")
             self.assertFalse(listing["files"][0]["favorite"])
-            self.assertEqual(service.health()["schema_version"], 3)
+            self.assertEqual(service.health()["schema_version"], 4)
 
     def test_office_and_text_previews(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -306,6 +307,183 @@ class DiskServiceTests(unittest.TestCase):
             self.assertFalse(forced["cached"])
             self.assertEqual(forced["molecules"]["total"], dna["molecules"]["total"])
             self.assertEqual(service.health()["dna_analyzer_version"], "0.1.0")
+
+
+    def test_dna_04_normalization_profile_fingerprint_graph_and_feedback(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            service = self.make_service(root)
+            text = (
+                "СЛУЖЕБНАЯ ЗАПИСКА\n"
+                "№ 17-26\n"
+                "Дата: 05.10.2026\n"
+                "ООО «Ромашка» ИНН 1234567890\n"
+                "VIN XTA210930Y1234567\n"
+                "Автомобиль А123ВС25\n"
+                "Итого 125 000 руб.\n"
+                "Просим согласовать работу в выходной день до 06.10.2026.\n"
+            )
+            payload = text.encode("utf-8")
+            item = service.store_stream(
+                name="служебная записка.txt",
+                content_type="text/plain",
+                size_bytes=len(payload),
+                stream=BytesIO(payload),
+            )
+
+            dna = service.document_dna(item["id"])
+            self.assertEqual(dna["analyzer_version"], "0.4.0")
+            self.assertEqual(dna["schema_version"], 2)
+            self.assertEqual(dna["classification"]["document_type"], "Служебная записка")
+            self.assertEqual(dna["profile"]["missing_required"], [])
+            self.assertTrue(dna["fingerprint"]["semantic_sha256"])
+            self.assertTrue(dna["graph_ready"]["ready_for_merge"])
+            self.assertGreater(len(dna["graph_ready"]["edges"]), 0)
+
+            date_fact = next(
+                fact for fact in dna["molecules"]["facts"]
+                if fact["type"] == "date" and fact["role"] == "document_date"
+            )
+            self.assertEqual(date_fact["normalized"]["canonical"], "2026-10-05")
+            self.assertIn(date_fact["quality_gate"], {"accepted", "review"})
+            self.assertIn("confidence_breakdown", date_fact)
+            self.assertIn("evidence_hash", date_fact["source"])
+
+            amount_fact = next(fact for fact in dna["molecules"]["facts"] if fact["type"] == "amount")
+            self.assertEqual(amount_fact["normalized"]["canonical"], "125000.00 RUB")
+
+            plate_fact = next(fact for fact in dna["molecules"]["facts"] if fact["type"] == "vehicle_plate")
+            self.assertEqual(plate_fact["normalized"]["canonical"], "А123ВС25")
+
+            action_fact = next(fact for fact in dna["molecules"]["facts"] if fact["type"] == "action")
+            self.assertEqual(action_fact["role"], "request")
+
+            first_fact_id = date_fact["id"]
+            forced = service.document_dna(item["id"], force=True)
+            forced_date = next(
+                fact for fact in forced["molecules"]["facts"]
+                if fact["type"] == "date" and fact["role"] == "document_date"
+            )
+            self.assertEqual(forced_date["id"], first_fact_id)
+            self.assertEqual(forced["history"]["version"], 2)
+            self.assertEqual(len(service.dna_history(item["id"])), 2)
+
+            service.record_dna_feedback(
+                item["id"],
+                fact_id=amount_fact["id"],
+                action="correct",
+                corrected_value="130 000 руб.",
+                note="Проверено пользователем",
+            )
+            corrected = service.document_dna(item["id"])
+            corrected_amount = next(
+                fact for fact in corrected["molecules"]["facts"]
+                if fact["id"] == amount_fact["id"]
+            )
+            self.assertEqual(corrected_amount["normalized"]["canonical"], "130000.00 RUB")
+            self.assertEqual(corrected_amount["status"], "corrected_by_user")
+            self.assertEqual(corrected["feedback"]["applied"], 1)
+
+    def test_dna_metadata_only_change_reuses_content_without_new_history(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            service = self.make_service(root)
+            payload = "Договор № 10 от 05.10.2026".encode("utf-8")
+            item = service.store_stream(
+                name="договор.txt",
+                content_type="text/plain",
+                size_bytes=len(payload),
+                stream=BytesIO(payload),
+            )
+            first = service.document_dna(item["id"])
+            self.assertEqual(first["history"]["version"], 1)
+
+            service.rename("file", item["id"], "договор длинное новое имя.txt")
+            reused = service.document_dna(item["id"])
+            self.assertTrue(reused["cached"])
+            self.assertTrue(reused["content_reused"])
+            self.assertEqual(reused["identity"]["name"], "договор длинное новое имя.txt")
+            self.assertEqual(len(service.dna_history(item["id"])), 1)
+
+    def test_dna_cross_document_contradiction_and_near_duplicate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            service = self.make_service(root)
+
+            first_text = (
+                "ДОГОВОР № 77\n"
+                "Дата: 05.10.2026\n"
+                "ООО Ромашка ИНН 1234567890\n"
+                "Итого 100 000 руб.\n"
+                "Поставка оборудования для автомобиля А123ВС25.\n"
+            )
+            second_text = (
+                "ДОГОВОР № 77\n"
+                "Дата: 05.10.2026\n"
+                "ООО Ромашка ИНН 1234567890\n"
+                "Итого 120 000 руб.\n"
+                "Поставка оборудования для автомобиля А123ВС25.\n"
+            )
+            one = service.store_stream(
+                name="договор 77 первая редакция.txt",
+                content_type="text/plain",
+                size_bytes=len(first_text.encode("utf-8")),
+                stream=BytesIO(first_text.encode("utf-8")),
+            )
+            two = service.store_stream(
+                name="договор 77 вторая редакция.txt",
+                content_type="text/plain",
+                size_bytes=len(second_text.encode("utf-8")),
+                stream=BytesIO(second_text.encode("utf-8")),
+            )
+
+            service.document_dna(one["id"])
+            dna_two = service.document_dna(two["id"])
+            self.assertTrue(dna_two["cross_document"]["related"])
+            amount_conflicts = [
+                item for item in dna_two["cross_document"]["contradictions"]
+                if item["field"] == "amount"
+            ]
+            self.assertTrue(amount_conflicts)
+            self.assertFalse(dna_two["quality_gate"]["memory_ready"])
+            self.assertIn("cross_document_contradiction", dna_two["quality_gate"]["reasons"])
+
+            refreshed_one = service.document_dna(one["id"])
+            self.assertTrue(refreshed_one["cross_document"]["related"])
+
+    def test_dna_table_arithmetic_engine_detects_wrong_total(self):
+        analyzer = DocumentDNAAnalyzer()
+        dna = analyzer.analyze(
+            item={
+                "id": "table-1",
+                "name": "счёт.xlsx",
+                "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "size_bytes": 100,
+                "sha256": "a" * 64,
+                "category": "tables",
+                "created_at": "2026-10-05T00:00:00+00:00",
+                "updated_at": "2026-10-05T00:00:00+00:00",
+                "duplicate_count": 0,
+            },
+            properties={"path": []},
+            preview={
+                "mode": "table",
+                "rows": [
+                    ["Товар", "Количество", "Цена", "Сумма"],
+                    ["Деталь", "2", "100", "250"],
+                ],
+                "truncated": False,
+            },
+            integrity={
+                "expected_sha256": "a" * 64,
+                "actual_sha256": "a" * 64,
+                "matches": True,
+            },
+        )
+        self.assertEqual(len(dna["arithmetic"]), 1)
+        self.assertFalse(dna["arithmetic"][0]["matches"])
+        self.assertTrue(any(risk["code"] == "arithmetic" for risk in dna["risks"]))
+        self.assertFalse(dna["quality_gate"]["memory_ready"])
 
 
 if __name__ == "__main__":

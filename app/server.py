@@ -258,6 +258,17 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
                     raise FileNotFoundError("Объект не найден.")
                 self._json(self.server.core.disk.properties(parts[3], parts[4]))
                 return
+            if parsed.path.startswith("/api/disk/files/") and parsed.path.endswith("/dna/history"):
+                file_id = parsed.path[len("/api/disk/files/"):-len("/dna/history")].strip("/")
+                if not file_id:
+                    raise FileNotFoundError("Файл не найден.")
+                raw_limit = query.get("limit", ["20"])[0]
+                try:
+                    limit = int(raw_limit)
+                except ValueError:
+                    limit = 20
+                self._json({"history": self.server.core.disk.dna_history(file_id, limit)})
+                return
             if parsed.path.startswith("/api/disk/files/") and parsed.path.endswith("/dna"):
                 file_id = parsed.path[len("/api/disk/files/"):-len("/dna")].strip("/")
                 if not file_id:
@@ -378,6 +389,32 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
                     },
                 )
                 self._json(dna)
+                return
+
+            if parsed.path.startswith("/api/disk/files/") and parsed.path.endswith("/dna/feedback"):
+                file_id = parsed.path[len("/api/disk/files/"):-len("/dna/feedback")].strip("/")
+                if not file_id:
+                    raise FileNotFoundError("Файл не найден.")
+                payload = self._read_json()
+                fact_id = payload.get("fact_id")
+                action = payload.get("action")
+                if not isinstance(fact_id, str) or not fact_id:
+                    raise BadRequestError("Нужно указать fact_id.")
+                if not isinstance(action, str):
+                    raise BadRequestError("Нужно указать действие обратной связи.")
+                result = self.server.core.disk.record_dna_feedback(
+                    file_id,
+                    fact_id=fact_id,
+                    action=action,
+                    corrected_value=payload.get("corrected_value"),
+                    note=payload.get("note"),
+                )
+                self.server.core.database.record_event(
+                    "ДНК документа",
+                    "Сохранена обратная связь по факту",
+                    details={"file_id": file_id, "fact_id": fact_id, "action": action},
+                )
+                self._json(result)
                 return
 
             if parsed.path == "/api/disk/rename":

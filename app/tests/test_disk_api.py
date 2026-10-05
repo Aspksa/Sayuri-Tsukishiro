@@ -153,5 +153,64 @@ class DiskApiTests(unittest.TestCase):
             self.assertEqual(response.read(), payload)
 
 
+    def test_dna_history_and_feedback_api(self):
+        payload = (
+            "СЧЁТ № 9\n"
+            "Дата: 05.10.2026\n"
+            "Итого 10 000 руб.\n"
+        ).encode("utf-8")
+        upload_request = urllib.request.Request(
+            self.base + "/api/disk/upload",
+            data=payload,
+            headers={
+                "Content-Type": "text/plain",
+                "X-Sayuri-Filename": quote("счёт 9.txt"),
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(upload_request, timeout=3) as response:
+            uploaded = json.loads(response.read().decode("utf-8"))["file"]
+
+        with urllib.request.urlopen(
+            self.base + f"/api/disk/files/{uploaded['id']}/dna",
+            timeout=3,
+        ) as response:
+            dna = json.loads(response.read().decode("utf-8"))
+        amount_fact = next(
+            fact for fact in dna["molecules"]["facts"] if fact["type"] == "amount"
+        )
+
+        feedback = self.post_json(
+            f"/api/disk/files/{uploaded['id']}/dna/feedback",
+            {
+                "fact_id": amount_fact["id"],
+                "action": "correct",
+                "corrected_value": "12 500 руб.",
+                "note": "Проверено вручную",
+            },
+        )
+        self.assertEqual(feedback["status"], "сохранено")
+
+        with urllib.request.urlopen(
+            self.base + f"/api/disk/files/{uploaded['id']}/dna",
+            timeout=3,
+        ) as response:
+            corrected = json.loads(response.read().decode("utf-8"))
+        corrected_amount = next(
+            fact for fact in corrected["molecules"]["facts"]
+            if fact["id"] == amount_fact["id"]
+        )
+        self.assertEqual(corrected_amount["normalized"]["canonical"], "12500.00 RUB")
+        self.assertEqual(corrected_amount["status"], "corrected_by_user")
+
+        with urllib.request.urlopen(
+            self.base + f"/api/disk/files/{uploaded['id']}/dna/history?limit=10",
+            timeout=3,
+        ) as response:
+            history = json.loads(response.read().decode("utf-8"))["history"]
+        self.assertEqual(len(history), 1)
+        self.assertEqual(history[0]["version"], 1)
+
+
 if __name__ == "__main__":
     unittest.main()
