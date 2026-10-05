@@ -24,7 +24,10 @@ class MemorySystemV4:
     """Memory 4.0: goals/tasks, source trust, utility, causal/failure memory and explainable recall."""
 
     ENGINE_ID = "memory-v4"
+    QUALITY_GATE_ID = "memory-v4.1-quality"
     MAX_SCAN = 5000
+    CLOUD_RECALL_CHAR_BUDGET = 9000
+    CLOUD_AUX_CHAR_BUDGET = 7000
     TIERS = {"hot", "warm", "cold"}
     TASK_STATUSES = {"planned", "in_progress", "blocked", "done", "cancelled"}
     GOAL_STATUSES = {"active", "paused", "achieved", "cancelled"}
@@ -63,6 +66,23 @@ class MemorySystemV4:
     _GOAL_MARKERS = (
         "цель проекта", "главная цель", "наша цель", "хочу чтобы", "нужно добиться",
         "целевое состояние", "goal:",
+    )
+    _INSTRUCTION_RISK_HIGH = (
+        re.compile(r"\bignore\s+(?:all\s+|previous\s+|prior\s+)?(?:instructions?|rules?|system)\b", re.IGNORECASE),
+        re.compile(r"\bdo\s+not\s+follow\s+(?:the\s+)?(?:instructions?|rules?)\b", re.IGNORECASE),
+        re.compile(r"\b(?:reveal|show|print|leak)\s+(?:the\s+)?(?:system\s+prompt|developer\s+message)\b", re.IGNORECASE),
+        re.compile(r"\bигнорируй\s+(?:все\s+|предыдущие\s+|системные\s+)?(?:инструкц|правил)", re.IGNORECASE),
+        re.compile(r"\bне\s+следуй\s+(?:предыдущим\s+|системным\s+)?(?:инструкц|правил)", re.IGNORECASE),
+        re.compile(r"\b(?:покажи|раскрой|выведи|сообщи)\s+(?:системн(?:ый|ую)\s+)?(?:промпт|инструкц|developer)", re.IGNORECASE),
+        re.compile(r"\b(?:system|developer)\s*:\s*(?:ignore|override|forget)\b", re.IGNORECASE),
+    )
+    _INSTRUCTION_RISK_MEDIUM = (
+        re.compile(r"\bprompt\s*injection\b", re.IGNORECASE),
+        re.compile(r"\bjailbreak\b", re.IGNORECASE),
+        re.compile(r"\bsystem\s+prompt\b", re.IGNORECASE),
+        re.compile(r"\bdeveloper\s+message\b", re.IGNORECASE),
+        re.compile(r"\bпромпт[- ]?инъекц", re.IGNORECASE),
+        re.compile(r"\bсистемн(?:ый|ого|ому|ым|ом)\s+промпт", re.IGNORECASE),
     )
 
     def __init__(
@@ -147,6 +167,8 @@ class MemorySystemV4:
                     tier TEXT NOT NULL,
                     sensitivity TEXT NOT NULL,
                     cloud_allowed INTEGER NOT NULL,
+                    instruction_risk TEXT NOT NULL DEFAULT 'none',
+                    instruction_risk_score REAL NOT NULL DEFAULT 0.0,
                     recall_count INTEGER NOT NULL DEFAULT 0,
                     helpful_count INTEGER NOT NULL DEFAULT 0,
                     unhelpful_count INTEGER NOT NULL DEFAULT 0,
@@ -155,6 +177,18 @@ class MemorySystemV4:
                 )
                 """
             )
+            state_columns = {
+                row["name"]
+                for row in db.execute("PRAGMA table_info(memory_v4_state)").fetchall()
+            }
+            if "instruction_risk" not in state_columns:
+                db.execute(
+                    "ALTER TABLE memory_v4_state ADD COLUMN instruction_risk TEXT NOT NULL DEFAULT 'none'"
+                )
+            if "instruction_risk_score" not in state_columns:
+                db.execute(
+                    "ALTER TABLE memory_v4_state ADD COLUMN instruction_risk_score REAL NOT NULL DEFAULT 0.0"
+                )
             db.execute(
                 "CREATE INDEX IF NOT EXISTS idx_memory_v4_tier ON memory_v4_state(tier, evaluated_at DESC)"
             )
@@ -393,6 +427,15 @@ class MemorySystemV4:
         return "normal", True
 
     @classmethod
+    def classify_instruction_risk(cls, text: str) -> tuple[str, float]:
+        value = text or ""
+        if any(pattern.search(value) for pattern in cls._INSTRUCTION_RISK_HIGH):
+            return "high", 0.95
+        if any(pattern.search(value) for pattern in cls._INSTRUCTION_RISK_MEDIUM):
+            return "medium", 0.55
+        return "none", 0.0
+
+    @classmethod
     def freshness_policy(cls, entry: dict[str, Any]) -> tuple[str, float]:
         text = cls._normalize(str(entry.get("content") or ""))
         kind = str(entry.get("kind") or "note")
@@ -540,7 +583,10 @@ class MemorySystemV4:
         source_profile = self._source_profile(source_key, self._source_base(entry))
         freshness_class, half_life = self.freshness_policy(entry)
         freshness = self._freshness_score(entry, half_life)
-        sensitivity, cloud_allowed = self.classify_sensitivity(str(entry.get("content") or ""))
+        content_text = str(entry.get("content") or "")
+        sensitivity, cloud_allowed = self.classify_sensitivity(content_text)
+        instruction_risk, instruction_risk_score = self.classify_instruction_risk(content_text)
+        cloud_allowed = cloud_allowed and instruction_risk != "high"
 
         with self._connect() as db:
             existing = db.execute(
@@ -564,9 +610,10 @@ class MemorySystemV4:
                 INSERT INTO memory_v4_state(
                     memory_id, source_key, source_trust, freshness_class,
                     freshness_score, utility_score, tier, sensitivity,
-                    cloud_allowed, recall_count, helpful_count, unhelpful_count,
+                    cloud_allowed, instruction_risk, instruction_risk_score,
+                    recall_count, helpful_count, unhelpful_count,
                     last_recalled_at, evaluated_at
-                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(memory_id) DO UPDATE SET
                     source_key=excluded.source_key,
                     source_trust=excluded.source_trust,
@@ -576,6 +623,8 @@ class MemorySystemV4:
                     tier=excluded.tier,
                     sensitivity=excluded.sensitivity,
                     cloud_allowed=excluded.cloud_allowed,
+                    instruction_risk=excluded.instruction_risk,
+                    instruction_risk_score=excluded.instruction_risk_score,
                     evaluated_at=excluded.evaluated_at
                 """,
                 (
@@ -588,6 +637,8 @@ class MemorySystemV4:
                     tier,
                     sensitivity,
                     1 if cloud_allowed else 0,
+                    instruction_risk,
+                    instruction_risk_score,
                     recalls,
                     helpful,
                     unhelpful,
@@ -604,6 +655,8 @@ class MemorySystemV4:
             "utility_score": round(utility, 4),
             "tier": tier,
             "sensitivity": sensitivity,
+            "instruction_risk": instruction_risk,
+            "instruction_risk_score": round(instruction_risk_score, 4),
             "cloud_allowed": cloud_allowed,
             "recall_count": recalls,
             "helpful_count": helpful,
@@ -614,12 +667,14 @@ class MemorySystemV4:
 
     def refresh_memory_states(self) -> dict[str, Any]:
         entries = self.memory.scan_active(limit=self.MAX_SCAN)
-        counts = {"hot": 0, "warm": 0, "cold": 0, "protected": 0}
+        counts = {"hot": 0, "warm": 0, "cold": 0, "protected": 0, "quarantined": 0}
         for entry in entries:
             state = self.evaluate_entry(entry)
             counts[state["tier"]] += 1
             if not state["cloud_allowed"]:
                 counts["protected"] += 1
+            if state["instruction_risk"] == "high":
+                counts["quarantined"] += 1
         return {"evaluated": len(entries), **counts}
 
     def state_for(self, memory_id: str) -> dict[str, Any] | None:
@@ -642,6 +697,10 @@ class MemorySystemV4:
         reasons.append(f"слой {state['tier']}")
         if state["sensitivity"] != "normal":
             reasons.append("защищённая локальная память")
+        if state["instruction_risk"] == "high":
+            reasons.append("instruction-risk: только локально")
+        elif state["instruction_risk"] == "medium":
+            reasons.append("instruction-risk: требует осторожности")
         return {
             "memory_id": entry["id"],
             "final_score": round(final_score, 4),
@@ -651,6 +710,8 @@ class MemorySystemV4:
             "utility": state["utility_score"],
             "tier": state["tier"],
             "sensitivity": state["sensitivity"],
+            "instruction_risk": state["instruction_risk"],
+            "instruction_risk_score": state["instruction_risk_score"],
             "cloud_allowed": state["cloud_allowed"],
             "why": reasons,
         }
@@ -708,7 +769,10 @@ class MemorySystemV4:
             ),
             reverse=True,
         )
-        selected = ranked[: min(max(int(limit), 1), 30)]
+        selected = self._select_diverse_recall(
+            ranked,
+            min(max(int(limit), 1), 30),
+        )
         selected_ids = [entry["id"] for _, entry, _ in selected]
         explanations = [explanation for _, _, explanation in selected]
         prepared_recall = {
@@ -731,6 +795,53 @@ class MemorySystemV4:
             "prepared_recall": prepared_recall,
         })
         return result
+
+    def _select_diverse_recall(
+        self,
+        ranked: list[tuple[float, dict[str, Any], dict[str, Any]]],
+        limit: int,
+    ) -> list[tuple[float, dict[str, Any], dict[str, Any]]]:
+        if not ranked or limit <= 0:
+            return []
+        pool = list(ranked)
+        selected: list[tuple[float, dict[str, Any], dict[str, Any]]] = []
+        while pool and len(selected) < limit:
+            best_index = 0
+            best_selection = float("-inf")
+            best_redundancy = 0.0
+            for index, item in enumerate(pool):
+                score, entry, _ = item
+                redundancy = 0.0
+                same_source = 0
+                for _, chosen, _ in selected:
+                    similarity = float(
+                        self.semantic.score(
+                            str(entry.get("content") or ""),
+                            str(chosen.get("content") or ""),
+                            importance=3,
+                            confidence=0.8,
+                        )["score"]
+                    )
+                    redundancy = max(redundancy, similarity)
+                    if entry.get("v4", {}).get("source_key") == chosen.get("v4", {}).get("source_key"):
+                        same_source += 1
+                source_penalty = min(same_source * 0.025, 0.075)
+                selection_score = score * 0.82 - redundancy * 0.18 - source_penalty
+                if selection_score > best_selection:
+                    best_index = index
+                    best_selection = selection_score
+                    best_redundancy = redundancy
+
+            chosen = pool.pop(best_index)
+            explanation = chosen[2]
+            explanation["selection_score"] = round(best_selection, 4)
+            explanation["redundancy_penalty"] = round(best_redundancy, 4)
+            if best_redundancy >= 0.45:
+                explanation["why"].append(
+                    f"diversity: похожесть с уже выбранной памятью {round(best_redundancy * 100)}%"
+                )
+            selected.append(chosen)
+        return selected
 
     def commit_prepared_recall(self, query: str, prepared: Any) -> str | None:
         if not isinstance(prepared, dict):
@@ -868,7 +979,9 @@ class MemorySystemV4:
                 """,
                 (normalized, self._now(), response_id),
             )
-        self.note_source_outcome(memory_ids, normalized)
+        # Response usefulness measures retrieval utility, not factual truth of the
+        # underlying source. Source Trust changes only through explicit validation
+        # or a manual override, never from a generic thumbs-up/down.
         for memory_id in memory_ids:
             entry = self.memory.get(memory_id)
             if entry:
@@ -877,7 +990,11 @@ class MemorySystemV4:
             "recall_feedback",
             "response",
             response_id,
-            {"rating": normalized, "memory_count": len(memory_ids)},
+            {
+                "rating": normalized,
+                "memory_count": len(memory_ids),
+                "source_trust_changed": False,
+            },
         )
         return {"updated": len(memory_ids), "rating": normalized}
 
@@ -2061,13 +2178,48 @@ class MemorySystemV4:
             "already_bootstrapped": False,
         }
 
+    def refresh_verification_questions(self) -> dict[str, Any]:
+        opened = 0
+        checked = 0
+        for entry in self.memory.scan_active(limit=self.MAX_SCAN):
+            state = self.evaluate_entry(entry)
+            checked += 1
+            importance = int(entry.get("importance") or 1)
+            reason = None
+            if (
+                importance >= 4
+                and state["freshness_class"] == "volatile"
+                and state["freshness_score"] < 0.45
+            ):
+                reason = "freshness_review"
+            elif importance >= 4 and state["source_trust"] < 0.45:
+                reason = "source_trust_review"
+            if reason is None:
+                continue
+            before = {
+                item["fingerprint"]
+                for item in self._questions_raw(status="open", limit=500)
+            }
+            question = self.open_question(
+                f"Проверить актуальность важной памяти: «{str(entry.get('content') or '')[:500]}»",
+                scope=str(entry.get("scope") or "project"),
+                reason=reason,
+                related_ids=[str(entry["id"])],
+                source="memory_quality_gate",
+            )
+            if question.get("fingerprint") not in before:
+                opened += 1
+        return {"checked": checked, "opened": opened}
+
     def maintenance(self, *, create_snapshot: bool = False) -> dict[str, Any]:
         snapshot = self.create_snapshot("memory_v4_maintenance") if create_snapshot else None
         states = self.refresh_memory_states()
+        verification = self.refresh_verification_questions()
         integrity = self.integrity_check(audit=True)
         return {
             "status": "готово",
             "states": states,
+            "verification": verification,
             "integrity": integrity,
             "snapshot": snapshot,
             "stats": self.stats(),
@@ -2083,6 +2235,16 @@ class MemorySystemV4:
             }
             protected = db.execute(
                 "SELECT COUNT(*) FROM memory_v4_state WHERE cloud_allowed=0"
+            ).fetchone()[0]
+            quarantined = db.execute(
+                "SELECT COUNT(*) FROM memory_v4_state WHERE instruction_risk='high'"
+            ).fetchone()[0]
+            verification_due = db.execute(
+                """
+                SELECT COUNT(*) FROM memory_questions
+                WHERE status='open'
+                  AND reason IN ('freshness_review','source_trust_review')
+                """
             ).fetchone()[0]
             goals = db.execute(
                 "SELECT COUNT(*) FROM memory_goals WHERE status='active'"
@@ -2115,12 +2277,15 @@ class MemorySystemV4:
                 "SELECT COUNT(*) FROM memory_audit_log"
             ).fetchone()[0]
         return {
-            "version": "4.0",
+            "version": "4.1",
             "engine": self.ENGINE_ID,
+            "quality_gate": self.QUALITY_GATE_ID,
             "hot": tiers.get("hot", 0),
             "warm": tiers.get("warm", 0),
             "cold": tiers.get("cold", 0),
             "protected": protected,
+            "quarantined": quarantined,
+            "verification_due": verification_due,
             "active_goals": goals,
             "open_tasks": tasks,
             "blocked_tasks": blocked,
@@ -2165,7 +2330,9 @@ class MemorySystemV4:
         )
         if not text:
             return True
-        return cls.classify_sensitivity(text)[1]
+        sensitive_allowed = cls.classify_sensitivity(text)[1]
+        instruction_risk, _ = cls.classify_instruction_risk(text)
+        return sensitive_allowed and instruction_risk != "high"
 
     def _memory_cloud_allowed(self, memory_id: str | None) -> bool:
         if not memory_id:
