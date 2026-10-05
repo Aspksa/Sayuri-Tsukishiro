@@ -178,6 +178,29 @@ class WebContractTests(unittest.TestCase):
         self.assertIn('.sayuri-response-feedback', css)
         self.assertIn('SAYURI UI 0.19 — Semantic Memory & Experience Learning', css)
 
+    def test_memory_v3_dashboard_and_resolver_are_present(self):
+        html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+        css = (ROOT / "web" / "styles.css").read_text(encoding="utf-8")
+
+        self.assertIn('MEMORY 3.0', html)
+        self.assertIn('id="memory-v3-working-list"', html)
+        self.assertIn('id="memory-v3-knowledge-list"', html)
+        self.assertIn('id="memory-v3-timeline"', html)
+        self.assertIn('id="memory-v3-graph"', html)
+        self.assertIn('id="memory-v3-conflicts-list"', html)
+        self.assertIn('id="memory-v3-retention-list"', html)
+        self.assertIn('Contradiction Resolver', html)
+        self.assertIn('Forgetting Engine', html)
+        self.assertIn('/api/sayuri/memory/v3', script)
+        self.assertIn('/maintenance', script)
+        self.assertIn('/resolve', script)
+        self.assertIn('loadSayuriMemoryV3', script)
+        self.assertIn('resolveMemoryV3Conflict', script)
+        self.assertIn('.sayuri-memory-v3-metrics', css)
+        self.assertIn('.memory-v3-conflict', css)
+        self.assertIn('SAYURI UI 0.20 — Memory 3.0', css)
+
     def test_sayuri_safe_actions_require_confirmation_in_ui(self):
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
