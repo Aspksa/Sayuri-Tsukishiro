@@ -144,6 +144,51 @@ class ServerTests(unittest.TestCase):
                     self.assertEqual(len(payload["entries"]), 1)
                     self.assertEqual(payload["entries"][0]["id"], memory_id)
 
+                intelligence_body = json.dumps({
+                    "settings": {
+                        "candidate_generation": True,
+                        "conflict_detection": True,
+                        "context_linking": True,
+                        "auto_save_high_confidence": False,
+                        "auto_save_threshold": 0.98,
+                    }
+                }).encode("utf-8")
+                request = urllib.request.Request(
+                    base + "/api/sayuri/memory/intelligence",
+                    data=intelligence_body,
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(request, timeout=2) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+                    self.assertEqual(payload["settings"]["auto_save_threshold"], 0.98)
+
+                with urllib.request.urlopen(base + "/api/sayuri/memory/intelligence", timeout=2) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+                    self.assertTrue(payload["settings"]["candidate_generation"])
+
+                candidates = server.core.agent.memory_intelligence.analyze_message(
+                    "Я предпочитаю компактный светлый интерфейс",
+                    {"view": "sayuri"},
+                )
+                candidate_id = candidates[0]["id"]
+
+                with urllib.request.urlopen(base + "/api/sayuri/memory/candidates?limit=20", timeout=2) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+                    self.assertTrue(any(item["id"] == candidate_id for item in payload["candidates"]))
+
+                review_body = json.dumps({"decision": "accept"}).encode("utf-8")
+                request = urllib.request.Request(
+                    base + f"/api/sayuri/memory/candidates/{candidate_id}/review",
+                    data=review_body,
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(request, timeout=2) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+                    self.assertEqual(payload["candidate"]["status"], "accepted")
+                    self.assertEqual(payload["stats"]["personal"]["count"], 1)
+
                 png = (
                     b"\x89PNG\r\n\x1a\n"
                     + b"\x00\x00\x00\x0dIHDR"

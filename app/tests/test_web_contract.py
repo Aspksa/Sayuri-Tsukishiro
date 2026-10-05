@@ -143,6 +143,24 @@ class WebContractTests(unittest.TestCase):
         self.assertIn('.sayuri-avatar-slot', css)
         self.assertIn('SAYURI UI 0.15 — Long-term Memory & Avatar Studio', css)
 
+    def test_memory_intelligence_candidate_review_is_present(self):
+        html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+        css = (ROOT / "web" / "styles.css").read_text(encoding="utf-8")
+
+        self.assertIn('MEMORY INTELLIGENCE 2.0', html)
+        self.assertIn('id="memory-intelligence-candidates"', html)
+        self.assertIn('id="memory-intelligence-conflicts"', html)
+        self.assertIn('id="memory-intelligence-context"', html)
+        self.assertIn('id="memory-intelligence-autosave"', html)
+        self.assertIn('id="sayuri-memory-candidates"', html)
+        self.assertIn('/api/sayuri/memory/candidates', script)
+        self.assertIn('/api/sayuri/memory/intelligence', script)
+        self.assertIn('reviewSayuriMemoryCandidate', script)
+        self.assertIn('createMemoryCandidateChatNotice', script)
+        self.assertIn('.sayuri-memory-candidate', css)
+        self.assertIn('SAYURI UI 0.18 — Memory Intelligence 2.0', css)
+
     def test_sayuri_safe_actions_require_confirmation_in_ui(self):
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
