@@ -14,6 +14,7 @@ import urllib.request
 from .actions import ActionError, SayuriActionBroker
 from .avatar import AvatarError, AvatarStore
 from .memory import MemoryError, SayuriMemory
+from .memory_intelligence import MemoryIntelligence, MemoryIntelligenceError
 
 
 CLOUDRU_BASE_URL = "https://foundation-models.api.cloud.ru/v1"
@@ -291,6 +292,7 @@ class SayuriAgent:
         self.memory = SayuriMemory(root / "data" / "sayuri-memory.db")
         self.avatars = AvatarStore(root / "data" / "sayuri-avatars")
         self.actions = SayuriActionBroker(root / "data" / "sayuri-actions.db")
+        self.memory_intelligence = MemoryIntelligence(root / "data" / "sayuri-memory.db", self.memory)
         self.memory.initialize()
 
     def initialize(self) -> None:
@@ -304,7 +306,10 @@ class SayuriAgent:
             "execution_enabled": provider.configured,
             "provider_connected": provider.configured,
             "memory_connected": True,
-            "memory": self.memory.stats(),
+            "memory": {
+                **self.memory.stats(),
+                "intelligence": self.memory_intelligence.stats(),
+            },
             "tools_connected": True,
             "tools": self.actions.tools(),
             "message": (
@@ -321,7 +326,10 @@ class SayuriAgent:
             "display_name": "Саюри Цукисиро",
             "role": "Личная AI-помощница",
             "provider": self.secrets.snapshot().public(),
-            "memory": self.memory.stats(),
+            "memory": {
+                **self.memory.stats(),
+                "intelligence": self.memory_intelligence.stats(),
+            },
             "avatars": self.avatars.public(),
             "actions": {
                 "confirmation_required": True,
@@ -342,6 +350,44 @@ class SayuriAgent:
                 "entries": self.memory.list(scope=scope, query=query, limit=limit),
             }
         except MemoryError as exc:
+            raise AgentRuntimeError(str(exc)) from exc
+
+    def memory_candidates(self, *, status: str | None = None, limit: int = 100) -> dict[str, Any]:
+        try:
+            return {
+                "candidates": self.memory_intelligence.list_candidates(status=status, limit=limit),
+                "intelligence": self.memory_intelligence.stats(),
+            }
+        except MemoryIntelligenceError as exc:
+            raise AgentRuntimeError(str(exc)) from exc
+
+    def review_memory_candidate(self, candidate_id: str, decision: str) -> dict[str, Any]:
+        try:
+            candidate = self.memory_intelligence.review(candidate_id, decision)
+            return {
+                "status": candidate["status"],
+                "candidate": candidate,
+                "stats": self.memory.stats(),
+                "intelligence": self.memory_intelligence.stats(),
+            }
+        except MemoryIntelligenceError as exc:
+            raise AgentRuntimeError(str(exc)) from exc
+
+    def memory_intelligence_settings(self) -> dict[str, Any]:
+        return {
+            "settings": self.memory_intelligence.settings(),
+            "intelligence": self.memory_intelligence.stats(),
+        }
+
+    def update_memory_intelligence_settings(self, changes: dict[str, Any]) -> dict[str, Any]:
+        try:
+            settings = self.memory_intelligence.update_settings(changes)
+            return {
+                "status": "сохранено",
+                "settings": settings,
+                "intelligence": self.memory_intelligence.stats(),
+            }
+        except MemoryIntelligenceError as exc:
             raise AgentRuntimeError(str(exc)) from exc
 
     def remember(
@@ -474,7 +520,8 @@ class SayuriAgent:
         try:
             memory_saved = self.memory.capture_explicit(text)
             memory_context = self.memory.export_context(text, limit=10)
-        except MemoryError as exc:
+            memory_candidates = self.memory_intelligence.analyze_message(text, context)
+        except (MemoryError, MemoryIntelligenceError) as exc:
             raise AgentRuntimeError(str(exc)) from exc
 
         api_key = self.secrets.get()
@@ -491,6 +538,7 @@ class SayuriAgent:
                     "usage": {},
                     "memory_saved": memory_saved,
                     "memory_used": 0,
+                    "memory_candidates": memory_candidates,
                 }
             raise AgentRuntimeError("Cloud.ru не настроен. Откройте Личный кабинет Sayuri и сохраните API-ключ.")
 
@@ -526,4 +574,5 @@ class SayuriAgent:
             "usage": result["usage"],
             "memory_saved": memory_saved,
             "memory_used": memory_used,
+            "memory_candidates": memory_candidates,
         }
