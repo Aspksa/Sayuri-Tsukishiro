@@ -2,6 +2,21 @@
 
 ## Невыпущенные изменения
 
+### 0.1.45 — 2026-10-06 — Memory 4.0 Hardening
+
+- Локальный поиск/просмотр памяти больше не увеличивает `use_count`, `recall_count` и не создаёт обучающий recall-audit.
+- Explainable Recall остаётся доступным в Личном кабинете без искусственного роста utility.
+- Сквозной privacy firewall `cloud_allowed=false` распространён на Memory 3.0, Experience Learning, Goals, Tasks, Failures и Questions перед Cloud.ru.
+- Protected memory не может попасть в AI-context обходным путём через производные слои памяти.
+- Успех после failure больше не считается доказанным исправлением: создаётся `followed_by_success` с низкой confidence и `correlation_only`.
+- Failure Memory закрывается только явным подтверждением пользователя через cause/resolution/prevention.
+- Повтор уже исправленной ошибки переоткрывает failure pattern.
+- Повтор одинакового подтверждения resolution идемпотентен и не увеличивает `resolved_count`.
+- Добавлен `POST /api/sayuri/memory/v4/failures/{id}/resolve` и UI-кнопка «Подтвердить исправление».
+- Добавлены регрессионные тесты privacy firewall, local read-only recall, causal semantics, failure reopen/idempotency, HTTP API и Web contract.
+- Проект: `0.1.45`; Ядро: `0.1.37`; Agent Core: `0.8.1`; Web UI: `0.21.1`.
+
+
 ### 0.1.44 — 2026-10-06 — Memory 4.0
 
 - Добавлен `agent/memory_v4.py` — orchestration layer поверх Memory 3.0.
