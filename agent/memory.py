@@ -58,6 +58,13 @@ class SayuriMemory:
                 )
                 """
             )
+            columns = {row["name"] for row in db.execute("PRAGMA table_info(memory_entries)").fetchall()}
+            if "source_context_json" not in columns:
+                db.execute("ALTER TABLE memory_entries ADD COLUMN source_context_json TEXT")
+            if "confidence" not in columns:
+                db.execute("ALTER TABLE memory_entries ADD COLUMN confidence REAL")
+            if "supersedes_id" not in columns:
+                db.execute("ALTER TABLE memory_entries ADD COLUMN supersedes_id TEXT")
             db.execute(
                 "CREATE INDEX IF NOT EXISTS idx_memory_scope_active ON memory_entries(scope, active, updated_at)"
             )
@@ -109,6 +116,13 @@ class SayuriMemory:
             "updated_at": row["updated_at"],
             "last_used_at": row["last_used_at"],
             "use_count": row["use_count"],
+            "source_context": (
+                json.loads(row["source_context_json"])
+                if "source_context_json" in row.keys() and row["source_context_json"]
+                else None
+            ),
+            "confidence": row["confidence"] if "confidence" in row.keys() else None,
+            "supersedes_id": row["supersedes_id"] if "supersedes_id" in row.keys() else None,
         }
 
     def add(
@@ -119,6 +133,9 @@ class SayuriMemory:
         content: str,
         importance: int = 3,
         source: str = "manual",
+        source_context: dict[str, Any] | None = None,
+        confidence: float | None = None,
+        supersedes_id: str | None = None,
     ) -> dict[str, Any]:
         scope = self._validate_scope(scope)
         kind = self._validate_kind(kind)
@@ -127,6 +144,13 @@ class SayuriMemory:
         source = (source or "manual").strip()[:80] or "manual"
         now = self._now()
         entry_id = uuid.uuid4().hex
+        context_json = (
+            json.dumps(source_context, ensure_ascii=False, separators=(",", ":"))[:16000]
+            if isinstance(source_context, dict)
+            else None
+        )
+        safe_confidence = None if confidence is None else max(0.0, min(float(confidence), 1.0))
+        safe_supersedes = supersedes_id.strip() if isinstance(supersedes_id, str) and supersedes_id.strip() else None
 
         with self._connect() as db:
             existing = db.execute(
@@ -141,10 +165,22 @@ class SayuriMemory:
                     """
                     UPDATE memory_entries
                     SET content = ?, importance = MAX(importance, ?), source = ?,
+                        source_context_json = COALESCE(?, source_context_json),
+                        confidence = COALESCE(?, confidence),
+                        supersedes_id = COALESCE(?, supersedes_id),
                         updated_at = ?, active = 1
                     WHERE id = ?
                     """,
-                    (text, importance, source, now, existing["id"]),
+                    (
+                        text,
+                        importance,
+                        source,
+                        context_json,
+                        safe_confidence,
+                        safe_supersedes,
+                        now,
+                        existing["id"],
+                    ),
                 )
                 row = db.execute("SELECT * FROM memory_entries WHERE id = ?", (existing["id"],)).fetchone()
                 return self._row(row)
@@ -153,11 +189,24 @@ class SayuriMemory:
                 """
                 INSERT INTO memory_entries(
                     id, scope, kind, content, normalized, importance, source,
-                    created_at, updated_at, active
+                    created_at, updated_at, active, source_context_json, confidence, supersedes_id
                 )
-                VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+                VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
                 """,
-                (entry_id, scope, kind, text, normalized, importance, source, now, now),
+                (
+                    entry_id,
+                    scope,
+                    kind,
+                    text,
+                    normalized,
+                    importance,
+                    source,
+                    now,
+                    now,
+                    context_json,
+                    safe_confidence,
+                    safe_supersedes,
+                ),
             )
             row = db.execute("SELECT * FROM memory_entries WHERE id = ?", (entry_id,)).fetchone()
             return self._row(row)
