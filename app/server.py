@@ -246,6 +246,9 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
             if parsed.path == "/api/sayuri/memory/intelligence":
                 self._json(self.server.core.sayuri_memory_intelligence_settings())
                 return
+            if parsed.path == "/api/sayuri/memory/v3":
+                self._json(self.server.core.sayuri_memory_v3())
+                return
             if parsed.path == "/api/sayuri/memory":
                 raw_limit = query.get("limit", ["100"])[0]
                 try:
@@ -529,6 +532,27 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
                 if not isinstance(changes, dict):
                     raise BadRequestError("Поле settings должно быть объектом.")
                 self._json(self.server.core.update_sayuri_memory_intelligence_settings(changes))
+                return
+
+            if parsed.path == "/api/sayuri/memory/v3/maintenance":
+                self._read_json()
+                self._json(self.server.core.maintain_sayuri_memory_v3())
+                return
+
+            if parsed.path.startswith("/api/sayuri/memory/v3/conflicts/") and parsed.path.endswith("/resolve"):
+                conflict_id = parsed.path[len("/api/sayuri/memory/v3/conflicts/"):-len("/resolve")].strip("/")
+                if not conflict_id:
+                    raise BadRequestError("Не указан конфликт памяти.")
+                payload = self._read_json()
+                resolution = payload.get("resolution")
+                if not isinstance(resolution, str):
+                    raise BadRequestError("Поле resolution должно быть строкой.")
+                self._json(
+                    self.server.core.resolve_sayuri_memory_v3_conflict(
+                        conflict_id,
+                        resolution,
+                    )
+                )
                 return
 
             if parsed.path.startswith("/api/sayuri/memory/candidates/") and parsed.path.endswith("/review"):

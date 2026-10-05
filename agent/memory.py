@@ -65,6 +65,10 @@ class SayuriMemory:
                 db.execute("ALTER TABLE memory_entries ADD COLUMN confidence REAL")
             if "supersedes_id" not in columns:
                 db.execute("ALTER TABLE memory_entries ADD COLUMN supersedes_id TEXT")
+            if "retention_score" not in columns:
+                db.execute("ALTER TABLE memory_entries ADD COLUMN retention_score REAL NOT NULL DEFAULT 1.0")
+            if "retention_evaluated_at" not in columns:
+                db.execute("ALTER TABLE memory_entries ADD COLUMN retention_evaluated_at TEXT")
             db.execute(
                 "CREATE INDEX IF NOT EXISTS idx_memory_scope_active ON memory_entries(scope, active, updated_at)"
             )
@@ -116,6 +120,7 @@ class SayuriMemory:
             "updated_at": row["updated_at"],
             "last_used_at": row["last_used_at"],
             "use_count": row["use_count"],
+            "active": bool(row["active"]),
             "source_context": (
                 json.loads(row["source_context_json"])
                 if "source_context_json" in row.keys() and row["source_context_json"]
@@ -123,6 +128,16 @@ class SayuriMemory:
             ),
             "confidence": row["confidence"] if "confidence" in row.keys() else None,
             "supersedes_id": row["supersedes_id"] if "supersedes_id" in row.keys() else None,
+            "retention_score": (
+                float(row["retention_score"])
+                if "retention_score" in row.keys() and row["retention_score"] is not None
+                else 1.0
+            ),
+            "retention_evaluated_at": (
+                row["retention_evaluated_at"]
+                if "retention_evaluated_at" in row.keys()
+                else None
+            ),
         }
 
     def add(
@@ -219,6 +234,41 @@ class SayuriMemory:
             )
             return cursor.rowcount > 0
 
+    def get(self, entry_id: str, *, include_inactive: bool = False) -> dict[str, Any] | None:
+        sql = "SELECT * FROM memory_entries WHERE id = ?"
+        params: tuple[Any, ...] = (entry_id,)
+        if not include_inactive:
+            sql += " AND active = 1"
+        with self._connect() as db:
+            row = db.execute(sql, params).fetchone()
+        return self._row(row) if row is not None else None
+
+    def set_retention(self, entry_id: str, score: float) -> dict[str, Any] | None:
+        safe_score = max(0.0, min(float(score), 1.0))
+        now = self._now()
+        with self._connect() as db:
+            db.execute(
+                """
+                UPDATE memory_entries
+                SET retention_score = ?, retention_evaluated_at = ?
+                WHERE id = ? AND active = 1
+                """,
+                (safe_score, now, entry_id),
+            )
+            row = db.execute(
+                "SELECT * FROM memory_entries WHERE id = ? AND active = 1",
+                (entry_id,),
+            ).fetchone()
+        return self._row(row) if row is not None else None
+
+    def restore(self, entry_id: str) -> bool:
+        with self._connect() as db:
+            cursor = db.execute(
+                "UPDATE memory_entries SET active = 1, updated_at = ? WHERE id = ? AND active = 0",
+                (self._now(), entry_id),
+            )
+            return cursor.rowcount > 0
+
     def list(
         self,
         *,
@@ -246,6 +296,31 @@ class SayuriMemory:
             rows = db.execute(sql, params).fetchall()
         return [self._row(row) for row in rows]
 
+    def scan_active(
+        self,
+        *,
+        scope: str | None = None,
+        limit: int = 5000,
+    ) -> list[dict[str, Any]]:
+        safe_limit = min(max(int(limit), 1), 5000)
+        params: list[Any] = []
+        clauses = ["active = 1"]
+        if scope:
+            clauses.append("scope = ?")
+            params.append(self._validate_scope(scope))
+        params.append(safe_limit)
+        with self._connect() as db:
+            rows = db.execute(
+                f"""
+                SELECT * FROM memory_entries
+                WHERE {' AND '.join(clauses)}
+                ORDER BY importance DESC, updated_at DESC
+                LIMIT ?
+                """,
+                params,
+            ).fetchall()
+        return [self._row(row) for row in rows]
+
     def stats(self) -> dict[str, Any]:
         with self._connect() as db:
             rows = db.execute(
@@ -259,12 +334,21 @@ class SayuriMemory:
         counts = {scope: {"count": 0, "uses": 0} for scope in MEMORY_SCOPES}
         for row in rows:
             counts[row["scope"]] = {"count": row["count"], "uses": row["uses"]}
+        with self._connect() as db:
+            stale = db.execute(
+                """
+                SELECT COUNT(*) AS count
+                FROM memory_entries
+                WHERE active = 1 AND retention_score < 0.30
+                """
+            ).fetchone()["count"]
         return {
             "status": "готово",
             "database": str(self.path),
             "total": sum(item["count"] for item in counts.values()),
             "personal": counts["personal"],
             "project": counts["project"],
+            "stale_candidates": stale,
         }
 
     @staticmethod

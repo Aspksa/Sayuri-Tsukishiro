@@ -40,6 +40,34 @@ class SemanticMemoryTests(unittest.TestCase):
                 found["personal"][0]["semantic_match"]["reasons"],
             )
 
+    def test_semantic_search_can_find_relevant_memory_beyond_first_300_rows(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            memory = SayuriMemory(Path(tmp) / "memory.db")
+            memory.initialize()
+            target = memory.add(
+                scope="project",
+                kind="note",
+                content="Редкий маркер: северный маяк обслуживает архив договоров",
+                importance=3,
+            )
+            for index in range(360):
+                memory.add(
+                    scope="project",
+                    kind="note",
+                    content=f"Обычная техническая заметка номер {index}",
+                    importance=3,
+                )
+            semantic = SemanticMemoryIndex(memory)
+
+            found = semantic.search(
+                "где упоминается северный маяк и архив договоров",
+                scopes=("project",),
+                limit=5,
+            )
+
+            self.assertTrue(found["project"])
+            self.assertEqual(found["project"][0]["id"], target["id"])
+
     def test_semantic_search_preserves_personal_project_boundary(self):
         with tempfile.TemporaryDirectory() as tmp:
             memory = SayuriMemory(Path(tmp) / "memory.db")

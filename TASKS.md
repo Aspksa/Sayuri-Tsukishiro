@@ -169,3 +169,18 @@
 - Опыт калибрует confidence Memory Intelligence в ограниченном диапазоне ±8%.
 - Релевантный положительный/отрицательный опыт передаётся в чат отдельным недоверенным context block.
 - В Личном кабинете отображаются статистика и success rate стратегий.
+
+## MEM-004 — Memory 3.0
+
+- Статус: `implemented`.
+- Working Memory с TTL 24 часа.
+- Episodic Memory для значимых событий вместо копирования всего чата.
+- Knowledge Memory с confidence, source IDs и temporal validity.
+- Knowledge Graph с person/project/document/memory/knowledge/decision/vehicle nodes.
+- Temporal Memory timeline.
+- Memory Consolidation без удаления источников.
+- Forgetting/Retention Engine без физического удаления.
+- Contradiction Resolver с `prefer_new/prefer_old/keep_both`.
+- Автоматический bootstrap и opportunistic maintenance каждые 6 часов.
+- Memory 3.0 context подключён к DeepSeek-V4-Flash как отдельный недоверенный блок.
+- В Личном кабинете добавлен полноценный Memory 3.0 dashboard.

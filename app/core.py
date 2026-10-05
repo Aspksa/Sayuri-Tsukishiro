@@ -85,6 +85,34 @@ class SayuriCore:
         except AgentRuntimeError as exc:
             raise BadRequestError(str(exc)) from exc
 
+    def sayuri_memory_v3(self) -> dict[str, Any]:
+        return self.agent.memory_v3_payload()
+
+    def maintain_sayuri_memory_v3(self) -> dict[str, Any]:
+        result = self.agent.memory_v3_maintenance()
+        self.database.record_event(
+            "Sayuri",
+            "Memory 3.0 обслужена",
+            details={
+                "stale_count": result["retention"]["stale_count"],
+                "knowledge_promoted": result["knowledge_promoted"],
+                "consolidations": result["consolidation"]["created"],
+            },
+        )
+        return result
+
+    def resolve_sayuri_memory_v3_conflict(self, conflict_id: str, resolution: str) -> dict[str, Any]:
+        try:
+            result = self.agent.resolve_memory_v3_conflict(conflict_id, resolution)
+        except AgentRuntimeError as exc:
+            raise BadRequestError(str(exc)) from exc
+        self.database.record_event(
+            "Sayuri",
+            "Конфликт памяти разрешён",
+            details={"conflict_id": conflict_id, "resolution": resolution},
+        )
+        return result
+
     def sayuri_memory_candidates(self, *, status: str | None = None, limit: int = 100) -> dict[str, Any]:
         try:
             return self.agent.memory_candidates(status=status, limit=limit)
