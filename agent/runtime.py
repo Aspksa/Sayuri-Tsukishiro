@@ -287,6 +287,7 @@ class SayuriAgent:
         self.secrets = SecretStore(root / "data" / "sayuri-cloudru.secret")
         self.memory = SayuriMemory(root / "data" / "sayuri-memory.db")
         self.avatars = AvatarStore(root / "data" / "sayuri-avatars")
+        self.memory.initialize()
 
     def initialize(self) -> None:
         self.memory.initialize()
