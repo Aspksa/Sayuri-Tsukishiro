@@ -197,9 +197,9 @@ class SemanticMemoryIndex:
             return {scope: [] for scope in valid_scopes}
 
         scored: list[tuple[float, dict[str, Any], dict[str, Any]]] = []
-        per_scope_limit = min(max(int(limit) * 12, 80), 300)
+        per_scope_limit = min(max(int(limit) * 40, 600), 5000)
         for scope in valid_scopes:
-            for entry in self.memory.list(scope=scope, limit=per_scope_limit):
+            for entry in self.memory.scan_active(scope=scope, limit=per_scope_limit):
                 details = self.score(
                     query,
                     entry["content"],
