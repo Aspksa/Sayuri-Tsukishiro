@@ -430,3 +430,48 @@ API:
 - `GET /api/sayuri/avatar/{slot}`;
 - `POST /api/sayuri/avatar/upload?slot=...`;
 - `DELETE /api/sayuri/avatar/{slot}`.
+
+## Sayuri Safe Actions 0.1
+
+Реализация брокера: `agent/actions.py`.
+
+Хранилище: `data/sayuri-actions.db`.
+
+Поток:
+
+```text
+text + UI context
+-> deterministic plan
+-> pending action
+-> user confirm
+-> atomic claim
+-> core tool executor
+-> completed/failed audit
+```
+
+Allowlist stage 1:
+- `disk.create_folder`;
+- `disk.set_favorite`;
+- `disk.trash_current`;
+- `disk.move_current`;
+- `memory.remember`.
+
+Инварианты безопасности:
+- все tools имеют `confirmation_required=true`;
+- TTL pending action = 10 минут;
+- payload сериализуется канонически и получает SHA-256;
+- `BEGIN IMMEDIATE` защищает claim от двойного конкурентного confirm;
+- `completed/cancelled/expired/failed` нельзя повторно исполнять;
+- core выполняет только известный tool ID;
+- LLM не вызывает executor напрямую.
+
+API:
+- `GET /api/sayuri/actions`;
+- `POST /api/sayuri/actions/plan`;
+- `POST /api/sayuri/actions/{id}/confirm`;
+- `POST /api/sayuri/actions/{id}/cancel`.
+
+UI:
+- `.sayuri-action-proposal` — карточка подтверждения в чате;
+- `#sayuri-tool-list` — allowlist в Личном кабинете;
+- `#sayuri-actions-history` — локальный журнал.

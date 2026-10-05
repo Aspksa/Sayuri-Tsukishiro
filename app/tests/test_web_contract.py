@@ -125,6 +125,23 @@ class WebContractTests(unittest.TestCase):
         self.assertIn('.sayuri-avatar-slot', css)
         self.assertIn('SAYURI UI 0.15 — Long-term Memory & Avatar Studio', css)
 
+    def test_sayuri_safe_actions_require_confirmation_in_ui(self):
+        html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+        css = (ROOT / "web" / "styles.css").read_text(encoding="utf-8")
+
+        self.assertIn('id="sayuri-tool-list"', html)
+        self.assertIn('id="sayuri-actions-history"', html)
+        self.assertIn('Только после подтверждения', html)
+        self.assertIn('/api/sayuri/actions/plan', script)
+        self.assertIn('/confirm', script)
+        self.assertIn('/cancel', script)
+        self.assertIn('createSayuriActionCard', script)
+        self.assertIn('Подтвердить', script)
+        self.assertIn('Отменить', script)
+        self.assertIn('.sayuri-action-proposal', css)
+        self.assertIn('SAYURI UI 0.16 — Confirmation-gated Actions', css)
+
     def test_unified_visual_system_is_readable_and_consistent(self):
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         css = (ROOT / "web" / "styles.css").read_text(encoding="utf-8")

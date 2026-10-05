@@ -1590,6 +1590,7 @@ function renderSayuriProfile(profile) {
     : 'Откройте Личный кабинет Sayuri и добавьте ключ Cloud.ru';
   renderSayuriMemoryStats(profile.memory || {});
   renderSayuriAvatarManager(profile.avatars || {});
+  renderSayuriActionCenter(profile.actions || {});
   applySayuriAvatarImages();
 }
 
@@ -1911,6 +1912,199 @@ async function clearSayuriProvider() {
   }
 }
 
+
+function actionStatusLabel(status) {
+  return {
+    pending: 'Ожидает подтверждения',
+    executing: 'Выполняется',
+    completed: 'Выполнено',
+    cancelled: 'Отменено',
+    expired: 'Истекло',
+    failed: 'Ошибка'
+  }[status] || status;
+}
+
+function actionRiskLabel(risk) {
+  return {
+    low: 'низкий риск',
+    medium: 'средний риск',
+    high: 'высокий риск'
+  }[risk] || risk;
+}
+
+function renderSayuriActionCenter(actions) {
+  const toolsContainer = byId('sayuri-tool-list');
+  if (toolsContainer) {
+    toolsContainer.replaceChildren();
+    for (const tool of actions.available_tools || []) {
+      const item = document.createElement('article');
+      item.className = 'sayuri-tool-chip';
+      const text = document.createElement('div');
+      const title = document.createElement('strong');
+      title.textContent = tool.label;
+      const meta = document.createElement('small');
+      meta.textContent = `${actionRiskLabel(tool.risk)} · подтверждение обязательно`;
+      text.append(title, meta);
+      const state = document.createElement('span');
+      state.textContent = 'разрешено';
+      item.append(text, state);
+      toolsContainer.append(item);
+    }
+  }
+
+  const history = byId('sayuri-actions-history');
+  if (!history) return;
+  history.replaceChildren();
+  const recent = actions.recent || [];
+  if (!recent.length) {
+    const empty = document.createElement('p');
+    empty.className = 'muted';
+    empty.textContent = 'Подтверждённых действий пока не было.';
+    history.append(empty);
+    return;
+  }
+  for (const action of recent) {
+    const row = document.createElement('article');
+    row.className = `sayuri-action-history-row ${action.status}`;
+    const body = document.createElement('div');
+    const title = document.createElement('strong');
+    title.textContent = action.title;
+    const meta = document.createElement('small');
+    meta.textContent = `${action.tool} · ${actionRiskLabel(action.risk)} · ${formatDate(action.created_at)}`;
+    body.append(title, meta);
+    const status = document.createElement('span');
+    status.textContent = actionStatusLabel(action.status);
+    row.append(body, status);
+    history.append(row);
+  }
+}
+
+async function loadSayuriActions() {
+  const response = await fetch('/api/sayuri/actions?limit=20', {cache: 'no-store'});
+  const data = await response.json();
+  if (!response.ok) throw new Error(data?.error?.message || `HTTP ${response.status}`);
+  if (!sayuriState.profile) sayuriState.profile = {};
+  sayuriState.profile.actions = {
+    confirmation_required: true,
+    available_tools: data.tools || [],
+    recent: data.actions || []
+  };
+  renderSayuriActionCenter(sayuriState.profile.actions);
+  return data;
+}
+
+function actionResultSummary(action) {
+  if (action.status === 'completed') {
+    if (action.tool === 'disk.create_folder') {
+      return `Готово: папка «${action.result?.folder?.name || action.title}» создана.`;
+    }
+    if (action.tool === 'disk.trash_current') return 'Готово: объект перемещён в корзину.';
+    if (action.tool === 'disk.set_favorite') {
+      return action.result?.favorite ? 'Готово: объект добавлен в избранное.' : 'Готово: объект убран из избранного.';
+    }
+    if (action.tool === 'disk.move_current') return 'Готово: объект перемещён.';
+    if (action.tool === 'memory.remember') return 'Готово: решение сохранено в проектную память.';
+    return 'Действие выполнено.';
+  }
+  if (action.status === 'cancelled') return 'Действие отменено.';
+  if (action.status === 'expired') return 'Время подтверждения истекло. Отправьте команду ещё раз.';
+  if (action.status === 'failed') return `Действие не выполнено: ${action.error || 'неизвестная ошибка'}`;
+  if (action.status === 'executing') return 'Действие уже выполняется.';
+  return 'Действие ожидает подтверждения.';
+}
+
+function createSayuriActionCard(action, messageIndex) {
+  const card = document.createElement('section');
+  card.className = `sayuri-action-proposal ${action.status || 'pending'}`;
+
+  const head = document.createElement('div');
+  head.className = 'sayuri-action-proposal-head';
+  const titleWrap = document.createElement('div');
+  const eyebrow = document.createElement('span');
+  eyebrow.textContent = 'ДЕЙСТВИЕ SAYURI';
+  const title = document.createElement('strong');
+  title.textContent = action.title;
+  titleWrap.append(eyebrow, title);
+  const risk = document.createElement('em');
+  risk.textContent = actionRiskLabel(action.risk);
+  head.append(titleWrap, risk);
+
+  const description = document.createElement('p');
+  description.textContent = action.description;
+
+  const status = document.createElement('div');
+  status.className = 'sayuri-action-proposal-status';
+  status.textContent = actionStatusLabel(action.status);
+
+  card.append(head, description, status);
+
+  if (action.status === 'pending') {
+    const warning = document.createElement('small');
+    warning.textContent = 'Ничего не изменится, пока вы не нажмёте «Подтвердить».';
+    const controls = document.createElement('div');
+    controls.className = 'sayuri-action-proposal-controls';
+    const confirm = document.createElement('button');
+    confirm.type = 'button';
+    confirm.className = 'primary-button';
+    confirm.textContent = 'Подтвердить';
+    confirm.addEventListener('click', () => confirmSayuriAction(messageIndex, action.id));
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.className = 'secondary-button';
+    cancel.textContent = 'Отменить';
+    cancel.addEventListener('click', () => cancelSayuriAction(messageIndex, action.id));
+    controls.append(confirm, cancel);
+    card.append(warning, controls);
+  } else {
+    const result = document.createElement('small');
+    result.className = 'sayuri-action-result';
+    result.textContent = actionResultSummary(action);
+    card.append(result);
+  }
+  return card;
+}
+
+function updateSayuriMessageAction(messageIndex, action) {
+  const message = sayuriState.messages[messageIndex];
+  if (!message) return;
+  message.metadata = {...(message.metadata || {}), action};
+  message.content = actionResultSummary(action);
+  persistSayuriHistory();
+  renderSayuriMessages();
+}
+
+async function refreshAfterSayuriAction() {
+  const tasks = [loadSystem(), loadSayuriProfile(), loadSayuriActions(), loadSayuriMemory()];
+  if (document.querySelector('#view-disk.active')) tasks.push(loadDisk());
+  await Promise.allSettled(tasks);
+  updateSayuriContextUI();
+}
+
+async function confirmSayuriAction(messageIndex, actionId) {
+  byId('sayuri-chat-status').textContent = 'Выполняю подтверждённое действие…';
+  try {
+    const action = await postJson(`/api/sayuri/actions/${encodeURIComponent(actionId)}/confirm`, {});
+    updateSayuriMessageAction(messageIndex, action);
+    byId('sayuri-chat-status').textContent = action.status === 'completed'
+      ? 'Действие выполнено · подтверждено Господином'
+      : actionResultSummary(action);
+    await refreshAfterSayuriAction();
+  } catch (error) {
+    byId('sayuri-chat-status').textContent = `Ошибка действия: ${error instanceof Error ? error.message : String(error)}`;
+  }
+}
+
+async function cancelSayuriAction(messageIndex, actionId) {
+  try {
+    const action = await postJson(`/api/sayuri/actions/${encodeURIComponent(actionId)}/cancel`, {});
+    updateSayuriMessageAction(messageIndex, action);
+    byId('sayuri-chat-status').textContent = 'Действие отменено.';
+    await loadSayuriActions().catch(() => {});
+  } catch (error) {
+    byId('sayuri-chat-status').textContent = `Ошибка отмены: ${error instanceof Error ? error.message : String(error)}`;
+  }
+}
+
 function persistSayuriHistory() {
   if (sayuriState.rememberHistory) {
     localStorage.setItem('sayuri-chat-history', JSON.stringify(sayuriState.messages.slice(-40)));
@@ -1944,7 +2138,7 @@ function renderSayuriMessages() {
     return;
   }
 
-  for (const message of sayuriState.messages) {
+  sayuriState.messages.forEach((message, messageIndex) => {
     const row = document.createElement('article');
     row.className = `sayuri-message ${message.role}`;
     if (message.role === 'assistant') {
@@ -1954,10 +2148,16 @@ function renderSayuriMessages() {
       row.append(avatar);
     }
     const bubble = document.createElement('div');
-    bubble.textContent = message.content;
+    const text = document.createElement('p');
+    text.className = 'sayuri-message-text';
+    text.textContent = message.content;
+    bubble.append(text);
+    if (message.metadata?.action) {
+      bubble.append(createSayuriActionCard(message.metadata.action, messageIndex));
+    }
     row.append(bubble);
     container.append(row);
-  }
+  });
   container.scrollTop = container.scrollHeight;
 }
 
@@ -1987,10 +2187,26 @@ async function sendSayuriMessage(text) {
   byId('sayuri-chat-status').textContent = 'Sayuri думает через DeepSeek-V4-Flash…';
 
   try {
+    const context = currentSayuriContext();
+    const planned = await postJson('/api/sayuri/actions/plan', {
+      text: message,
+      context
+    });
+    if (planned.action) {
+      addSayuriMessage(
+        'assistant',
+        'Я подготовила изменение проекта. Проверьте его и подтвердите выполнение.',
+        {action: planned.action}
+      );
+      byId('sayuri-chat-status').textContent = 'Действие подготовлено · ожидает подтверждения';
+      loadSayuriActions().catch(() => {});
+      return;
+    }
+
     const result = await postJson('/api/sayuri/chat', {
       message,
       history,
-      context: currentSayuriContext()
+      context
     });
     addSayuriMessage('assistant', result.answer, {
       model: result.model,
@@ -2250,6 +2466,7 @@ function initializeSayuri() {
     sayuriMemorySearchTimer = window.setTimeout(() => loadSayuriMemory().catch(showSayuriProviderError), 250);
   });
   byId('sayuri-avatar-refresh').addEventListener('click', () => loadSayuriProfile().catch(showSayuriProviderError));
+  byId('sayuri-actions-refresh').addEventListener('click', () => loadSayuriActions().catch(showSayuriProviderError));
 
   document.querySelectorAll('[data-sayuri-action]').forEach((button) => {
     button.addEventListener('click', () => runSayuriAction(button.dataset.sayuriAction));
