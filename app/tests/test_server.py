@@ -143,6 +143,8 @@ class ServerTests(unittest.TestCase):
                     payload = json.loads(response.read().decode("utf-8"))
                     self.assertEqual(len(payload["entries"]), 1)
                     self.assertEqual(payload["entries"][0]["id"], memory_id)
+                    self.assertIn(payload["entries"][0]["v4"]["tier"], {"hot", "warm", "cold"})
+                    self.assertIn("source_trust", payload["entries"][0]["v4"])
 
                 intelligence_body = json.dumps({
                     "settings": {
@@ -223,6 +225,116 @@ class ServerTests(unittest.TestCase):
                     self.assertEqual(payload["stats"]["version"], "3.0")
                     self.assertGreaterEqual(payload["stats"]["knowledge"], 1)
                     self.assertGreaterEqual(payload["stats"]["graph_nodes"], 1)
+
+                with urllib.request.urlopen(base + "/api/sayuri/memory/v4", timeout=2) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+                    self.assertEqual(payload["stats"]["version"], "4.0")
+                    self.assertEqual(payload["stats"]["engine"], "memory-v4")
+                    self.assertIn("integrity", payload)
+
+                goal_body = json.dumps({
+                    "title": "Довести память Sayuri до устойчивого состояния",
+                    "description": "Цель API-теста Memory 4.0",
+                    "scope": "project",
+                    "priority": 5,
+                }).encode("utf-8")
+                request = urllib.request.Request(
+                    base + "/api/sayuri/memory/v4/goals",
+                    data=goal_body,
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(request, timeout=2) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+                    goal_id = payload["goal"]["id"]
+                    self.assertEqual(payload["goal"]["status"], "active")
+
+                task_body = json.dumps({
+                    "title": "Проверить Memory 4.0 API",
+                    "scope": "project",
+                    "goal_id": goal_id,
+                    "priority": 4,
+                    "next_action": "Выполнить HTTP-тест",
+                    "context": {"view": "sayuri"},
+                }).encode("utf-8")
+                request = urllib.request.Request(
+                    base + "/api/sayuri/memory/v4/tasks",
+                    data=task_body,
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(request, timeout=2) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+                    task_id = payload["task"]["id"]
+                    self.assertEqual(payload["task"]["goal_id"], goal_id)
+
+                task_update = json.dumps({
+                    "status": "in_progress",
+                    "next_action": "Завершить проверку",
+                }).encode("utf-8")
+                request = urllib.request.Request(
+                    base + f"/api/sayuri/memory/v4/tasks/{task_id}/update",
+                    data=task_update,
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(request, timeout=2) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+                    self.assertEqual(payload["task"]["status"], "in_progress")
+
+                trust_body = json.dumps({
+                    "source_key": "personal_cabinet",
+                    "score": 0.91,
+                }).encode("utf-8")
+                request = urllib.request.Request(
+                    base + "/api/sayuri/memory/v4/sources/trust",
+                    data=trust_body,
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(request, timeout=2) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+                    self.assertAlmostEqual(payload["source"]["trust_score"], 0.91, places=4)
+
+                question = server.core.agent.memory_v4.open_question(
+                    "Какой вариант памяти использовать?",
+                    scope="project",
+                    reason="server_test",
+                )
+                question_body = json.dumps({
+                    "resolution": "Использовать подтверждённый вариант",
+                }).encode("utf-8")
+                request = urllib.request.Request(
+                    base + f"/api/sayuri/memory/v4/questions/{question['id']}/resolve",
+                    data=question_body,
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(request, timeout=2) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+                    self.assertEqual(payload["question"]["status"], "resolved")
+
+                request = urllib.request.Request(
+                    base + "/api/sayuri/memory/v4/integrity",
+                    data=b"{}",
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(request, timeout=2) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+                    self.assertEqual(payload["status"], "ok")
+
+                snapshot_body = json.dumps({"reason": "server-api-test"}).encode("utf-8")
+                request = urllib.request.Request(
+                    base + "/api/sayuri/memory/v4/snapshots",
+                    data=snapshot_body,
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(request, timeout=2) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+                    self.assertTrue(payload["snapshot"]["sha256"])
+                    self.assertTrue(payload["snapshot"]["size_bytes"] > 0)
 
                 request = urllib.request.Request(
                     base + "/api/sayuri/memory/v3/maintenance",

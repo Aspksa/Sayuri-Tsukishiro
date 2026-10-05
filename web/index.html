@@ -530,6 +530,136 @@
             <p class="sayuri-security-note">Обслуживание памяти не удаляет данные автоматически. Консолидация создаёт устойчивое знание с сохранением источников, а Forgetting Engine только снижает retrieval-вес устаревшей информации.</p>
           </article>
 
+          <article class="sayuri-account-card sayuri-wide-card sayuri-memory-v4-card">
+            <div class="section-head">
+              <div><p class="eyebrow">MEMORY 4.0</p><h3>Цели, доверие и объяснимое вспоминание</h3></div>
+              <div class="sayuri-memory-v4-actions">
+                <button class="secondary-button" id="sayuri-memory-v4-refresh" type="button">Обновить</button>
+                <button class="secondary-button" id="sayuri-memory-v4-integrity" type="button">Проверить целостность</button>
+                <button class="secondary-button" id="sayuri-memory-v4-snapshot" type="button">Создать снимок</button>
+                <button class="primary-button" id="sayuri-memory-v4-maintain" type="button">Обслужить Memory 4.0</button>
+              </div>
+            </div>
+            <p class="sayuri-card-copy">Memory 4.0 связывает воспоминания с целями и задачами, оценивает доверие и свежесть источников, запоминает причины ошибок и показывает, почему конкретная память была выбрана для ответа.</p>
+
+            <div class="sayuri-memory-v4-metrics">
+              <article><span>Hot</span><strong id="memory-v4-hot">0</strong></article>
+              <article><span>Warm</span><strong id="memory-v4-warm">0</strong></article>
+              <article><span>Cold</span><strong id="memory-v4-cold">0</strong></article>
+              <article><span>Защищено</span><strong id="memory-v4-protected">0</strong></article>
+              <article><span>Активные цели</span><strong id="memory-v4-goals">0</strong></article>
+              <article><span>Открытые задачи</span><strong id="memory-v4-tasks">0</strong></article>
+              <article><span>Заблокировано</span><strong id="memory-v4-blocked">0</strong></article>
+              <article><span>Failure Memory</span><strong id="memory-v4-failures">0</strong></article>
+              <article><span>Нужно уточнить</span><strong id="memory-v4-questions">0</strong></article>
+              <article><span>Снимки</span><strong id="memory-v4-snapshots">0</strong></article>
+            </div>
+
+            <div class="sayuri-memory-v4-create-grid">
+              <form id="memory-v4-goal-form" class="sayuri-memory-v4-form">
+                <strong>Новая цель</strong>
+                <input id="memory-v4-goal-title" maxlength="500" placeholder="Например: довести Sayuri до автономного помощника">
+                <textarea id="memory-v4-goal-description" rows="2" maxlength="4000" placeholder="Критерий результата или пояснение"></textarea>
+                <div>
+                  <select id="memory-v4-goal-scope" aria-label="Область цели">
+                    <option value="project">Проектная</option>
+                    <option value="personal">Личная</option>
+                  </select>
+                  <select id="memory-v4-goal-priority" aria-label="Приоритет цели">
+                    <option value="5">Приоритет 5</option>
+                    <option value="4" selected>Приоритет 4</option>
+                    <option value="3">Приоритет 3</option>
+                    <option value="2">Приоритет 2</option>
+                    <option value="1">Приоритет 1</option>
+                  </select>
+                </div>
+                <button class="secondary-button" type="submit">Добавить цель</button>
+              </form>
+
+              <form id="memory-v4-task-form" class="sayuri-memory-v4-form">
+                <strong>Новая задача</strong>
+                <input id="memory-v4-task-title" maxlength="1000" placeholder="Что нужно продолжить или закончить">
+                <input id="memory-v4-task-next" maxlength="2000" placeholder="Следующий конкретный шаг">
+                <div>
+                  <select id="memory-v4-task-goal" aria-label="Связанная цель"><option value="">Без цели</option></select>
+                  <select id="memory-v4-task-priority" aria-label="Приоритет задачи">
+                    <option value="5">Приоритет 5</option>
+                    <option value="4">Приоритет 4</option>
+                    <option value="3" selected>Приоритет 3</option>
+                    <option value="2">Приоритет 2</option>
+                    <option value="1">Приоритет 1</option>
+                  </select>
+                </div>
+                <button class="secondary-button" type="submit">Добавить задачу</button>
+              </form>
+            </div>
+
+            <div class="sayuri-memory-v4-grid">
+              <section class="sayuri-memory-v4-panel">
+                <div class="sayuri-memory-v4-panel-head"><strong>Goal Memory</strong><span>долгосрочные цели</span></div>
+                <div id="memory-v4-goal-list" class="sayuri-memory-v4-list"><p class="muted">Активных целей пока нет.</p></div>
+              </section>
+
+              <section class="sayuri-memory-v4-panel">
+                <div class="sayuri-memory-v4-panel-head"><strong>Task Memory</strong><span>где остановились и что дальше</span></div>
+                <div id="memory-v4-task-list" class="sayuri-memory-v4-list"><p class="muted">Открытых задач пока нет.</p></div>
+              </section>
+
+              <section class="sayuri-memory-v4-panel">
+                <div class="sayuri-memory-v4-panel-head"><strong>Failure & Causal Memory</strong><span>ошибки, причины и исправления</span></div>
+                <div id="memory-v4-failure-list" class="sayuri-memory-v4-list"><p class="muted">Повторяемых ошибок пока нет.</p></div>
+              </section>
+
+              <section class="sayuri-memory-v4-panel">
+                <div class="sayuri-memory-v4-panel-head"><strong>Uncertainty / Question Memory</strong><span>что нужно уточнить</span></div>
+                <div id="memory-v4-question-list" class="sayuri-memory-v4-list"><p class="muted">Открытых вопросов нет.</p></div>
+              </section>
+
+              <section class="sayuri-memory-v4-panel">
+                <div class="sayuri-memory-v4-panel-head"><strong>Source Trust</strong><span>доверие к происхождению фактов</span></div>
+                <div id="memory-v4-source-list" class="sayuri-memory-v4-list"><p class="muted">Источники ещё не оценены.</p></div>
+              </section>
+
+              <section class="sayuri-memory-v4-panel">
+                <div class="sayuri-memory-v4-panel-head"><strong>Explainable Recall</strong><span>почему Sayuri вспомнила это</span></div>
+                <div id="memory-v4-recall-list" class="sayuri-memory-v4-list"><p class="muted">Вызовов памяти пока нет.</p></div>
+              </section>
+
+              <section class="sayuri-memory-v4-panel">
+                <div class="sayuri-memory-v4-panel-head"><strong>Decision Memory</strong><span>что решили и почему</span></div>
+                <div id="memory-v4-decision-list" class="sayuri-memory-v4-list"><p class="muted">Структурированных решений пока нет.</p></div>
+              </section>
+
+              <section class="sayuri-memory-v4-panel">
+                <div class="sayuri-memory-v4-panel-head"><strong>Entity Profiles</strong><span>люди, документы, компании и техника</span></div>
+                <div id="memory-v4-entity-list" class="sayuri-memory-v4-list"><p class="muted">Профили сущностей ещё не сформированы.</p></div>
+              </section>
+
+              <section class="sayuri-memory-v4-panel">
+                <div class="sayuri-memory-v4-panel-head"><strong>Preference Drift</strong><span>как менялись предпочтения</span></div>
+                <div id="memory-v4-preference-list" class="sayuri-memory-v4-list"><p class="muted">История предпочтений пока пуста.</p></div>
+              </section>
+
+              <section class="sayuri-memory-v4-panel">
+                <div class="sayuri-memory-v4-panel-head"><strong>Memory Audit</strong><span>кто и что изменил</span></div>
+                <div id="memory-v4-audit-list" class="sayuri-memory-v4-list"><p class="muted">Аудит памяти пока пуст.</p></div>
+              </section>
+
+              <section class="sayuri-memory-v4-panel">
+                <div class="sayuri-memory-v4-panel-head"><strong>Memory Integrity</strong><span>структурная проверка</span></div>
+                <div id="memory-v4-integrity-state" class="memory-v4-integrity-state"><p class="muted">Проверка ещё не выполнялась.</p></div>
+              </section>
+
+              <section class="sayuri-memory-v4-panel">
+                <div class="sayuri-memory-v4-panel-head"><strong>Snapshots</strong><span>локальная страховка памяти</span></div>
+                <div id="memory-v4-snapshot-list" class="sayuri-memory-v4-list"><p class="muted">Снимков пока нет.</p></div>
+              </section>
+            </div>
+
+            <div class="sayuri-memory-v4-message" id="sayuri-memory-v4-message" aria-live="polite"></div>
+            <p class="sayuri-security-note">Секреты и чувствительные идентификаторы остаются локальными и исключаются из Cloud-контекста. Restore никогда не выполняется автоматически: требуется выбрать снимок и вручную ввести <code>RESTORE MEMORY</code>.</p>
+          </article>
+
           <article class="sayuri-account-card sayuri-wide-card sayuri-experience-card">
             <div class="section-head">
               <div><p class="eyebrow">EXPERIENCE LEARNING</p><h3>Опыт Sayuri</h3></div>

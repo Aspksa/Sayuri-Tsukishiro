@@ -249,6 +249,9 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
             if parsed.path == "/api/sayuri/memory/v3":
                 self._json(self.server.core.sayuri_memory_v3())
                 return
+            if parsed.path == "/api/sayuri/memory/v4":
+                self._json(self.server.core.sayuri_memory_v4())
+                return
             if parsed.path == "/api/sayuri/memory":
                 raw_limit = query.get("limit", ["100"])[0]
                 try:
@@ -537,6 +540,171 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
             if parsed.path == "/api/sayuri/memory/v3/maintenance":
                 self._read_json()
                 self._json(self.server.core.maintain_sayuri_memory_v3())
+                return
+
+            if parsed.path == "/api/sayuri/memory/v4/maintenance":
+                payload = self._read_json()
+                create_snapshot = payload.get("create_snapshot") is True
+                self._json(
+                    self.server.core.maintain_sayuri_memory_v4(
+                        create_snapshot=create_snapshot,
+                    )
+                )
+                return
+
+            if parsed.path == "/api/sayuri/memory/v4/goals":
+                payload = self._read_json()
+                title = payload.get("title")
+                if not isinstance(title, str):
+                    raise BadRequestError("Поле title должно быть строкой.")
+                description = payload.get("description", "")
+                scope = payload.get("scope", "project")
+                priority = payload.get("priority", 4)
+                if not isinstance(description, str) or not isinstance(scope, str):
+                    raise BadRequestError("Поля description и scope должны быть строками.")
+                self._json(
+                    self.server.core.create_sayuri_memory_v4_goal(
+                        title=title,
+                        description=description,
+                        scope=scope,
+                        priority=priority,
+                    ),
+                    HTTPStatus.CREATED,
+                )
+                return
+
+            if parsed.path.startswith("/api/sayuri/memory/v4/goals/") and parsed.path.endswith("/update"):
+                goal_id = parsed.path[len("/api/sayuri/memory/v4/goals/"):-len("/update")].strip("/")
+                if not goal_id:
+                    raise BadRequestError("Не указана цель.")
+                payload = self._read_json()
+                status = payload.get("status")
+                if status is not None and not isinstance(status, str):
+                    raise BadRequestError("Поле status должно быть строкой.")
+                self._json(
+                    self.server.core.update_sayuri_memory_v4_goal(
+                        goal_id,
+                        status=status,
+                    )
+                )
+                return
+
+            if parsed.path == "/api/sayuri/memory/v4/tasks":
+                payload = self._read_json()
+                title = payload.get("title")
+                if not isinstance(title, str):
+                    raise BadRequestError("Поле title должно быть строкой.")
+                scope = payload.get("scope", "project")
+                goal_id = payload.get("goal_id")
+                next_action = payload.get("next_action", "")
+                priority = payload.get("priority", 3)
+                if not isinstance(scope, str) or not isinstance(next_action, str):
+                    raise BadRequestError("Поля scope и next_action должны быть строками.")
+                if goal_id is not None and not isinstance(goal_id, str):
+                    raise BadRequestError("Поле goal_id должно быть строкой.")
+                context = payload.get("context")
+                if context is not None and not isinstance(context, dict):
+                    raise BadRequestError("Поле context должно быть объектом.")
+                self._json(
+                    self.server.core.create_sayuri_memory_v4_task(
+                        title=title,
+                        scope=scope,
+                        goal_id=goal_id or None,
+                        priority=priority,
+                        next_action=next_action,
+                        context=context,
+                    ),
+                    HTTPStatus.CREATED,
+                )
+                return
+
+            if parsed.path.startswith("/api/sayuri/memory/v4/tasks/") and parsed.path.endswith("/update"):
+                task_id = parsed.path[len("/api/sayuri/memory/v4/tasks/"):-len("/update")].strip("/")
+                if not task_id:
+                    raise BadRequestError("Не указана задача.")
+                payload = self._read_json()
+                status = payload.get("status")
+                next_action = payload.get("next_action")
+                blocked_reason = payload.get("blocked_reason")
+                for key, value in (
+                    ("status", status),
+                    ("next_action", next_action),
+                    ("blocked_reason", blocked_reason),
+                ):
+                    if value is not None and not isinstance(value, str):
+                        raise BadRequestError(f"Поле {key} должно быть строкой.")
+                self._json(
+                    self.server.core.update_sayuri_memory_v4_task(
+                        task_id,
+                        status=status,
+                        next_action=next_action,
+                        blocked_reason=blocked_reason,
+                    )
+                )
+                return
+
+            if parsed.path == "/api/sayuri/memory/v4/sources/trust":
+                payload = self._read_json()
+                source_key = payload.get("source_key")
+                if not isinstance(source_key, str):
+                    raise BadRequestError("Поле source_key должно быть строкой.")
+                score = payload.get("score")
+                if score is not None and not isinstance(score, (int, float)):
+                    raise BadRequestError("Поле score должно быть числом или null.")
+                self._json(
+                    self.server.core.set_sayuri_memory_v4_source_trust(
+                        source_key,
+                        None if score is None else float(score),
+                    )
+                )
+                return
+
+            if parsed.path.startswith("/api/sayuri/memory/v4/questions/") and parsed.path.endswith("/resolve"):
+                question_id = parsed.path[len("/api/sayuri/memory/v4/questions/"):-len("/resolve")].strip("/")
+                if not question_id:
+                    raise BadRequestError("Не указан вопрос памяти.")
+                payload = self._read_json()
+                resolution = payload.get("resolution")
+                if not isinstance(resolution, str):
+                    raise BadRequestError("Поле resolution должно быть строкой.")
+                self._json(
+                    self.server.core.resolve_sayuri_memory_v4_question(
+                        question_id,
+                        resolution,
+                    )
+                )
+                return
+
+            if parsed.path == "/api/sayuri/memory/v4/snapshots":
+                payload = self._read_json()
+                reason = payload.get("reason", "manual")
+                if not isinstance(reason, str):
+                    raise BadRequestError("Поле reason должно быть строкой.")
+                self._json(
+                    self.server.core.create_sayuri_memory_v4_snapshot(reason),
+                    HTTPStatus.CREATED,
+                )
+                return
+
+            if parsed.path.startswith("/api/sayuri/memory/v4/snapshots/") and parsed.path.endswith("/restore"):
+                snapshot_id = parsed.path[len("/api/sayuri/memory/v4/snapshots/"):-len("/restore")].strip("/")
+                if not snapshot_id:
+                    raise BadRequestError("Не указан снимок памяти.")
+                payload = self._read_json()
+                confirmation = payload.get("confirmation")
+                if not isinstance(confirmation, str):
+                    raise BadRequestError("Поле confirmation должно быть строкой.")
+                self._json(
+                    self.server.core.restore_sayuri_memory_v4_snapshot(
+                        snapshot_id,
+                        confirmation,
+                    )
+                )
+                return
+
+            if parsed.path == "/api/sayuri/memory/v4/integrity":
+                self._read_json()
+                self._json(self.server.core.check_sayuri_memory_v4_integrity())
                 return
 
             if parsed.path.startswith("/api/sayuri/memory/v3/conflicts/") and parsed.path.endswith("/resolve"):
