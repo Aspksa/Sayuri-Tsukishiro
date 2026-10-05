@@ -673,7 +673,7 @@ class MemorySystemV4:
             scopes=valid_scopes,
             limit=min(max(int(limit) * 6, 40), 120),
             minimum_score=0.02,
-            mark_used=record_usage,
+            mark_used=False,
         )
         ranked: list[tuple[float, dict[str, Any], dict[str, Any]]] = []
         for scope in valid_scopes:
@@ -711,43 +711,15 @@ class MemorySystemV4:
         selected = ranked[: min(max(int(limit), 1), 30)]
         selected_ids = [entry["id"] for _, entry, _ in selected]
         explanations = [explanation for _, _, explanation in selected]
+        prepared_recall = {
+            "selected_ids": selected_ids,
+            "explanations": explanations,
+            "scopes": list(valid_scopes),
+            "for_cloud": bool(for_cloud),
+        }
         recall_id: str | None = None
         if record_usage:
-            recall_id = uuid.uuid4().hex
-            now = self._now()
-            with self._connect() as db:
-                db.execute(
-                    """
-                    INSERT INTO memory_recall_audit(
-                        id, query_hash, query_excerpt, selected_ids_json,
-                        explanations_json, scopes_json, created_at
-                    ) VALUES(?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        recall_id,
-                        hashlib.sha256(text.encode("utf-8")).hexdigest(),
-                        text[:300],
-                        self._json(selected_ids),
-                        self._json(explanations),
-                        self._json(valid_scopes),
-                        now,
-                    ),
-                )
-                if selected_ids:
-                    db.executemany(
-                        """
-                        UPDATE memory_v4_state
-                        SET recall_count = recall_count + 1, last_recalled_at = ?
-                        WHERE memory_id = ?
-                        """,
-                        [(now, memory_id) for memory_id in selected_ids],
-                    )
-            self._audit(
-                "memory_recalled",
-                "recall",
-                recall_id,
-                {"count": len(selected_ids), "scopes": list(valid_scopes), "for_cloud": for_cloud},
-            )
+            recall_id = self.commit_prepared_recall(text, prepared_recall)
 
         result = {scope: [] for scope in valid_scopes}
         for _, entry, _ in selected:
@@ -756,8 +728,72 @@ class MemorySystemV4:
             "recall_id": recall_id,
             "retrieval": self.ENGINE_ID,
             "explanations": explanations,
+            "prepared_recall": prepared_recall,
         })
         return result
+
+    def commit_prepared_recall(self, query: str, prepared: Any) -> str | None:
+        if not isinstance(prepared, dict):
+            return None
+        selected_ids = [
+            str(memory_id)
+            for memory_id in prepared.get("selected_ids", [])
+            if isinstance(memory_id, str) and memory_id
+        ][:30]
+        explanations = prepared.get("explanations")
+        if not isinstance(explanations, list):
+            explanations = []
+        scopes = [
+            str(scope)
+            for scope in prepared.get("scopes", [])
+            if scope in {"personal", "project"}
+        ]
+        if not scopes:
+            scopes = ["personal", "project"]
+
+        recall_id = uuid.uuid4().hex
+        now = self._now()
+        text = (query or "").strip()
+        with self._connect() as db:
+            db.execute(
+                """
+                INSERT INTO memory_recall_audit(
+                    id, query_hash, query_excerpt, selected_ids_json,
+                    explanations_json, scopes_json, created_at
+                ) VALUES(?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    recall_id,
+                    hashlib.sha256(text.encode("utf-8")).hexdigest(),
+                    text[:300],
+                    self._json(selected_ids),
+                    self._json(explanations),
+                    self._json(scopes),
+                    now,
+                ),
+            )
+            if selected_ids:
+                db.executemany(
+                    """
+                    UPDATE memory_v4_state
+                    SET recall_count = recall_count + 1, last_recalled_at = ?
+                    WHERE memory_id = ?
+                    """,
+                    [(now, memory_id) for memory_id in selected_ids],
+                )
+        if selected_ids:
+            self.memory.mark_used(selected_ids)
+        self._audit(
+            "memory_recalled",
+            "recall",
+            recall_id,
+            {
+                "count": len(selected_ids),
+                "scopes": scopes,
+                "for_cloud": bool(prepared.get("for_cloud")),
+            },
+        )
+        return recall_id
 
     def bind_response(self, response_id: str, recall_id: str | None) -> None:
         if not response_id or not recall_id:
@@ -2233,8 +2269,13 @@ class MemorySystemV4:
             "avoid": safe_items("avoid"),
         }
 
-    def context(self, query: str) -> dict[str, Any]:
-        recalled = self.recall(query, limit=10, for_cloud=True, record_usage=True)
+    def context(self, query: str, *, record_usage: bool = True) -> dict[str, Any]:
+        recalled = self.recall(
+            query,
+            limit=10,
+            for_cloud=True,
+            record_usage=record_usage,
+        )
 
         active_goals = [
             item
@@ -2275,6 +2316,7 @@ class MemorySystemV4:
         return {
             "engine": self.ENGINE_ID,
             "recall_id": recalled["recall_id"],
+            "_prepared_recall": recalled.get("prepared_recall"),
             "personal": [
                 {
                     "kind": item["kind"],
