@@ -111,7 +111,7 @@ function showView(name) {
     loadDisk().catch(showDiskError);
   } else if (name === 'sayuri') {
     history.replaceState(null, '', '#sayuri');
-    Promise.all([loadSayuriProfile(), loadSayuriMemory(), loadSayuriMemoryCandidates()]).catch(showSayuriProviderError);
+    Promise.all([loadSayuriProfile(), loadSayuriMemory(), loadSayuriMemoryCandidates(), loadSayuriExperience()]).catch(showSayuriProviderError);
   } else if (name === 'settings') {
     history.replaceState(null, '', '#settings');
   } else {
@@ -1685,6 +1685,7 @@ function renderSayuriProfile(profile) {
     ? 'DeepSeek-V4-Flash · Cloud.ru · готово'
     : 'Откройте Личный кабинет Sayuri и добавьте ключ Cloud.ru';
   renderSayuriMemoryStats(profile.memory || {});
+  renderSayuriExperience(profile.experience || {});
   renderSayuriAvatarManager(profile.avatars || {});
   renderSayuriActionCenter(profile.actions || {});
   applySayuriAvatarImages();
@@ -1716,9 +1717,103 @@ function renderSayuriMemoryStats(stats) {
   if (byId('sayuri-memory-project')) byId('sayuri-memory-project').textContent = String(stats.project?.count ?? 0);
   if (byId('sayuri-memory-pending')) byId('sayuri-memory-pending').textContent = String(stats.intelligence?.pending_review ?? 0);
   if (byId('sayuri-memory-total')) byId('sayuri-memory-total').textContent = String(stats.total ?? 0);
+  if (byId('sayuri-semantic-engine')) byId('sayuri-semantic-engine').textContent = stats.semantic?.engine || 'hybrid-semantic-v1';
   renderMemoryIntelligenceSettings(stats.intelligence?.settings || {});
 }
 
+
+
+function renderSayuriExperience(stats) {
+  if (byId('sayuri-experience-total')) byId('sayuri-experience-total').textContent = String(stats.total ?? 0);
+  if (byId('sayuri-experience-positive')) byId('sayuri-experience-positive').textContent = String(stats.positive ?? 0);
+  if (byId('sayuri-experience-negative')) byId('sayuri-experience-negative').textContent = String(stats.negative ?? 0);
+  if (byId('sayuri-experience-learned')) byId('sayuri-experience-learned').textContent = String(stats.learned_strategies ?? 0);
+
+  const container = byId('sayuri-experience-strategies');
+  if (!container) return;
+  container.replaceChildren();
+  const strategies = stats.strategies || [];
+  if (!strategies.length) {
+    const empty = document.createElement('p');
+    empty.className = 'muted';
+    empty.textContent = 'Опыт ещё не накоплен.';
+    container.append(empty);
+    return;
+  }
+  for (const item of strategies.slice(0, 12)) {
+    const row = document.createElement('article');
+    row.className = 'sayuri-experience-strategy';
+    const body = document.createElement('div');
+    const title = document.createElement('strong');
+    title.textContent = item.strategy;
+    const meta = document.createElement('small');
+    meta.textContent = `положительных ${item.positive} · отрицательных ${item.negative} · нейтральных ${item.neutral}`;
+    body.append(title, meta);
+    const score = document.createElement('span');
+    score.textContent = item.meaningful
+      ? `${Math.round((Number(item.success_rate) || 0) * 100)}%`
+      : '—';
+    score.title = item.meaningful ? 'Сглаженная оценка успешности' : 'Пока нет оценённых исходов';
+    row.append(body, score);
+    container.append(row);
+  }
+}
+
+async function loadSayuriExperience() {
+  const response = await fetch('/api/sayuri/experience?limit=50', {cache: 'no-store'});
+  const data = await response.json();
+  if (!response.ok) throw new Error(data?.error?.message || `HTTP ${response.status}`);
+  renderSayuriExperience(data.stats || {});
+  if (sayuriState.profile) sayuriState.profile.experience = data.stats || {};
+  return data;
+}
+
+async function rateSayuriMessage(messageIndex, rating) {
+  const message = sayuriState.messages[messageIndex];
+  const responseId = message?.metadata?.response_id;
+  if (!responseId || message.metadata?.feedback) return;
+  try {
+    const result = await postJson('/api/sayuri/experience/feedback', {
+      response_id: responseId,
+      rating,
+      context: currentSayuriContext()
+    });
+    message.metadata = {...message.metadata, feedback: rating};
+    persistSayuriHistory();
+    renderSayuriMessages();
+    renderSayuriExperience(result.stats || {});
+  } catch (error) {
+    byId('sayuri-chat-status').textContent = `Не удалось сохранить оценку: ${error instanceof Error ? error.message : String(error)}`;
+  }
+}
+
+function createSayuriFeedbackControls(messageIndex, message) {
+  if (message.role !== 'assistant' || !message.metadata?.response_id) return null;
+  const controls = document.createElement('div');
+  controls.className = 'sayuri-response-feedback';
+
+  if (message.metadata.feedback) {
+    const saved = document.createElement('span');
+    saved.textContent = message.metadata.feedback === 'useful'
+      ? 'Оценено: полезно'
+      : 'Оценено: не помогло';
+    controls.append(saved);
+    return controls;
+  }
+
+  const useful = document.createElement('button');
+  useful.type = 'button';
+  useful.textContent = 'Полезно';
+  useful.addEventListener('click', () => rateSayuriMessage(messageIndex, 'useful'));
+
+  const notUseful = document.createElement('button');
+  notUseful.type = 'button';
+  notUseful.textContent = 'Не помогло';
+  notUseful.addEventListener('click', () => rateSayuriMessage(messageIndex, 'not_useful'));
+
+  controls.append(useful, notUseful);
+  return controls;
+}
 
 function setMemoryCandidateMessage(text, kind = '') {
   const target = byId('sayuri-memory-candidate-message');
@@ -1855,7 +1950,7 @@ async function reviewSayuriMemoryCandidate(candidateId, decision) {
       decision === 'accept' ? 'Кандидат сохранён в долговременную память.' : 'Кандидат отклонён.',
       decision === 'accept' ? 'ready' : ''
     );
-    await Promise.all([loadSayuriMemory(), loadSayuriMemoryCandidates(), loadSayuriProfile(), loadSystem()]);
+    await Promise.all([loadSayuriMemory(), loadSayuriMemoryCandidates(), loadSayuriProfile(), loadSayuriExperience(), loadSystem()]);
   } catch (error) {
     setMemoryCandidateMessage(`Ошибка: ${error instanceof Error ? error.message : String(error)}`, 'error');
   }
@@ -1953,7 +2048,10 @@ function renderSayuriMemoryList(payload) {
     const footer = document.createElement('div');
     footer.className = 'sayuri-memory-entry-footer';
     const details = document.createElement('small');
-    details.textContent = `${entry.source} · использовано ${entry.use_count || 0} раз · ${formatDate(entry.updated_at)}`;
+    const semantic = entry.retrieval === 'hybrid-semantic-v1'
+      ? ` · смысл ${Math.round((Number(entry.relevance) || 0) * 100)}%`
+      : '';
+    details.textContent = `${entry.source} · использовано ${entry.use_count || 0} раз${semantic} · ${formatDate(entry.updated_at)}`;
     const remove = document.createElement('button');
     remove.type = 'button';
     remove.className = 'secondary-button danger-soft';
@@ -2355,7 +2453,7 @@ function updateSayuriMessageAction(messageIndex, action) {
 }
 
 async function refreshAfterSayuriAction() {
-  const tasks = [loadSystem(), loadSayuriProfile(), loadSayuriActions(), loadSayuriMemory()];
+  const tasks = [loadSystem(), loadSayuriProfile(), loadSayuriActions(), loadSayuriMemory(), loadSayuriExperience()];
   if (document.querySelector('#view-disk.active')) tasks.push(loadDisk());
   await Promise.allSettled(tasks);
   updateSayuriContextUI();
@@ -2440,6 +2538,8 @@ function renderSayuriMessages() {
       const notice = createMemoryCandidateChatNotice(message.metadata.memory_candidates);
       if (notice) bubble.append(notice);
     }
+    const feedback = createSayuriFeedbackControls(messageIndex, message);
+    if (feedback) bubble.append(feedback);
     row.append(bubble);
     container.append(row);
   });
@@ -2498,7 +2598,9 @@ async function sendSayuriMessage(text) {
       usage: result.usage,
       memory_used: result.memory_used,
       memory_saved: result.memory_saved,
-      memory_candidates: result.memory_candidates || []
+      memory_candidates: result.memory_candidates || [],
+      response_id: result.response_id || null,
+      semantic_memory: result.semantic_memory || null
     });
     if (result.memory_saved) {
       loadSayuriMemory().catch(() => {});
@@ -2759,6 +2861,7 @@ function initializeSayuri() {
   });
   byId('sayuri-avatar-refresh').addEventListener('click', () => loadSayuriProfile().catch(showSayuriProviderError));
   byId('sayuri-actions-refresh').addEventListener('click', () => loadSayuriActions().catch(showSayuriProviderError));
+  byId('sayuri-experience-refresh').addEventListener('click', () => loadSayuriExperience().catch(showSayuriProviderError));
 
   document.querySelectorAll('[data-sayuri-action]').forEach((button) => {
     button.addEventListener('click', () => runSayuriAction(button.dataset.sayuriAction));
