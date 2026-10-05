@@ -551,3 +551,61 @@ API:
 - `POST /api/sayuri/memory/intelligence`.
 
 Memory context для LLM остаётся разделённым на personal/project и передаётся как недоверенные справочные данные.
+
+## Semantic Memory & Experience Learning 0.1
+
+### Semantic Memory
+
+Реализация: `agent/semantic_memory.py`.
+
+Engine: `hybrid-semantic-v1`.
+
+Он использует Python stdlib и существующую SQLite memory DB. Новый внешний AI API не добавлен.
+
+Scoring:
+- token overlap;
+- light stemming;
+- concept expansion;
+- character 3-gram cosine;
+- phrase bonus;
+- importance/confidence weighting.
+
+`SemanticMemoryIndex.context()` возвращает personal/project отдельно и является каноническим memory-context для чата.
+
+### Experience Learning
+
+Реализация: `agent/experience.py`.
+
+Хранилище: `data/sayuri-experience.db`.
+
+Experience events дедуплицируются fingerprint. Повторный outcome одного action или повторная feedback-оценка одного response не должны размножать записи.
+
+Стратегия имеет сглаженный success rate Beta(1,1) и evidence strength. Confidence adjustment включается после трёх meaningful outcomes и ограничен ±0.08.
+
+Relevant experience извлекается тем же прозрачным semantic scorer и разделяется на:
+- `helpful`;
+- `avoid`.
+
+В prompt это передаётся отдельным system-data блоком с запретом трактовать опыт как факт или инструкцию.
+
+### Chat feedback
+
+Cloud response получает `response_id`.
+
+`POST /api/sayuri/experience/feedback` принимает:
+- response_id;
+- rating `useful|not_useful`;
+- prompt;
+- answer excerpt;
+- безопасный UI context.
+
+Prompt ограничивается 2000 символами, excerpt ответа — 1200. Полная browser chat history в experience DB не записывается.
+
+### Проверки
+
+- `python3 -m unittest discover -s app/tests -v`;
+- `node --check web/app.js`;
+- `python3 -m app.preflight`;
+- `python3 scripts/versioning.py check --each-commit`.
+
+При работе через GitHub API функциональные проверки промежуточной ветки выполняются до атомарной сборки релиза. Итоговый release commit обязан отдельно пройти полный workflow Versions.
