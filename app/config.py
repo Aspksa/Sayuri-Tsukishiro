@@ -46,6 +46,10 @@ class Settings:
         return self.data_dir / "sayuri.db"
 
     @property
+    def disk_dir(self) -> Path:
+        return self.data_dir / "disk"
+
+    @property
     def logs_dir(self) -> Path:
         return self.root / "logs"
 
@@ -63,4 +67,5 @@ class Settings:
 
     def ensure_runtime_dirs(self) -> None:
         self.data_dir.mkdir(parents=True, exist_ok=True)
+        self.disk_dir.mkdir(parents=True, exist_ok=True)
         self.logs_dir.mkdir(parents=True, exist_ok=True)

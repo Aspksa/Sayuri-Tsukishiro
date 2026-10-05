@@ -24,6 +24,10 @@
           <span class="nav-icon">⌂</span>
           <span>Главная</span>
         </button>
+        <button class="nav-item" type="button" data-view="disk">
+          <span class="nav-icon">◫</span>
+          <span>Диск Sayuri</span>
+        </button>
         <button class="nav-item" type="button" data-view="settings">
           <span class="nav-icon">⚙</span>
           <span>Настройки</span>
@@ -48,9 +52,9 @@
       <section class="view active" id="view-home">
         <section class="hero">
           <div>
-            <p class="eyebrow">SAYURI CORE · CORE-002</p>
+            <p class="eyebrow">ЯДРО САЮРИ · ЭТАП 2</p>
             <h2>Локальная основа Саюри работает.</h2>
-            <p class="lead">Ядро, база данных, веб-интерфейс и системный контур готовы. Настройки и техническая информация теперь собраны в отдельном разделе слева.</p>
+            <p class="lead">Ядро, база данных, веб-интерфейс и системный контур готовы. Файлы и документы теперь можно хранить в отдельном модуле «Диск Sayuri».</p>
           </div>
           <div class="version-box">
             <span>Версия проекта</span>
@@ -71,20 +75,68 @@
             <small id="home-agent-detail">контракт</small>
           </article>
           <article class="summary-card">
-            <span class="summary-label">Время работы</span>
-            <strong id="home-uptime">—</strong>
-            <small>текущий запуск</small>
+            <span class="summary-label">Диск Sayuri</span>
+            <strong id="home-disk-status">—</strong>
+            <small id="home-disk-detail">локальное хранилище</small>
           </article>
         </section>
+      </section>
 
-        <article class="home-note">
-          <div class="note-mark">02</div>
+      <section class="view" id="view-disk">
+        <div class="disk-head">
           <div>
-            <p class="eyebrow">CORE-002</p>
-            <h3>Системный слой подготовлен для следующего этапа</h3>
-            <p>Настройки типизированы и сохраняются в SQLite. Граница Agent Core отделена от будущего AI-провайдера, памяти и инструментов.</p>
+            <p class="eyebrow">ЛОКАЛЬНОЕ ХРАНИЛИЩЕ</p>
+            <h2>Диск Sayuri</h2>
+            <p>Файлы хранятся локально внутри проекта. Метаданные и контрольные суммы записываются в SQLite.</p>
           </div>
-        </article>
+          <div class="disk-actions">
+            <button class="secondary-button" id="new-folder-button" type="button">Новая папка</button>
+            <button class="primary-button" id="upload-button" type="button">Загрузить файлы</button>
+            <input id="disk-file-input" type="file" multiple hidden>
+          </div>
+        </div>
+
+        <section class="disk-stats">
+          <article><span>Файлов</span><strong id="disk-files-count">0</strong></article>
+          <article><span>Папок</span><strong id="disk-folders-count">0</strong></article>
+          <article><span>Занято</span><strong id="disk-bytes">0 Б</strong></article>
+          <article><span>Лимит файла</span><strong id="disk-max-file">1 ГБ</strong></article>
+        </section>
+
+        <section class="disk-panel">
+          <div class="disk-toolbar">
+            <nav class="breadcrumbs" id="disk-breadcrumbs" aria-label="Путь">
+              <button type="button" data-folder-id="">Диск Sayuri</button>
+            </nav>
+            <label class="disk-search">
+              <span>⌕</span>
+              <input id="disk-search-input" type="search" placeholder="Поиск в папке">
+            </label>
+          </div>
+
+          <form class="new-folder-form hidden" id="new-folder-form">
+            <input id="new-folder-name" type="text" maxlength="255" placeholder="Название папки" autocomplete="off">
+            <button class="primary-button" type="submit">Создать</button>
+            <button class="secondary-button" id="cancel-folder-button" type="button">Отмена</button>
+          </form>
+
+          <div class="drop-zone" id="disk-drop-zone">
+            <strong>Перетащите файлы сюда</strong>
+            <span>или нажмите «Загрузить файлы»</span>
+          </div>
+
+          <div class="disk-message" id="disk-message" aria-live="polite"></div>
+
+          <div class="disk-list-head">
+            <span>Имя</span>
+            <span>Размер</span>
+            <span>Изменён</span>
+            <span></span>
+          </div>
+          <div class="disk-list" id="disk-list">
+            <p class="muted">Загрузка содержимого…</p>
+          </div>
+        </section>
       </section>
 
       <section class="view" id="view-settings">
@@ -128,12 +180,12 @@
 
           <div class="agent-panel">
             <div>
-              <p class="eyebrow">AGENT CORE</p>
+              <p class="eyebrow">АГЕНТНОЕ ЯДРО</p>
               <h4>Агентное ядро</h4>
               <p id="agent-message">Загрузка…</p>
             </div>
             <div class="agent-flags">
-              <span id="agent-provider">AI-провайдер —</span>
+              <span id="agent-provider">ИИ-провайдер —</span>
               <span id="agent-memory">Память —</span>
               <span id="agent-tools">Инструменты —</span>
             </div>

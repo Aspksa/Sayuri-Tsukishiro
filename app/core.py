@@ -7,6 +7,7 @@ import time
 from typing import Any
 
 from agent import AgentCoreContract
+from disk import DiskService
 
 from .config import Settings
 from .database import Database
@@ -19,11 +20,13 @@ class SayuriCore:
         self.settings.ensure_runtime_dirs()
         self.database = Database(settings.database_path)
         self.system_settings = SystemSettings(self.database)
+        self.disk = DiskService(settings.database_path, settings.disk_dir)
         self.started_monotonic = time.monotonic()
 
     def initialize(self, *, record_event: bool = True) -> None:
         self.database.initialize()
         self.system_settings.initialize()
+        self.disk.initialize()
         if not record_event:
             return
         self.database.record_event(
@@ -89,6 +92,7 @@ class SayuriCore:
                 "loopback_only": True,
             },
             "agent": AgentCoreContract.snapshot(),
+            "disk": self.disk.health(),
             "uptime_seconds": round(time.monotonic() - self.started_monotonic, 3),
             "time_utc": datetime.now(timezone.utc).isoformat(),
         }
@@ -117,6 +121,7 @@ class SayuriCore:
                 "errors": health["database"]["errors"],
             },
             "agent": health["agent"],
+            "disk": health["disk"],
             "architecture": self.module_registry(),
             "time_utc": health["time_utc"],
         }

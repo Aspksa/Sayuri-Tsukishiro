@@ -6,7 +6,7 @@ import json
 import logging
 import mimetypes
 import traceback
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlparse
 import uuid
 
 from .core import SayuriCore
@@ -53,17 +53,31 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
                 exc.__class__.__name__,
             )
 
-    def _headers(self, status: int, content_type: str, length: int) -> None:
+    def _headers(
+        self,
+        status: int,
+        content_type: str,
+        length: int,
+        extra_headers: dict[str, str] | None = None,
+    ) -> None:
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(length))
         for key, value in SECURITY_HEADERS.items():
             self.send_header(key, value)
+        for key, value in (extra_headers or {}).items():
+            self.send_header(key, value)
         self.end_headers()
 
-    def _send(self, body: bytes, content_type: str, status: int = 200) -> bool:
+    def _send(
+        self,
+        body: bytes,
+        content_type: str,
+        status: int = 200,
+        extra_headers: dict[str, str] | None = None,
+    ) -> bool:
         try:
-            self._headers(status, content_type, len(body))
+            self._headers(status, content_type, len(body), extra_headers)
             if body:
                 self.wfile.write(body)
             return True
@@ -88,7 +102,7 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
         if length <= 0:
             raise BadRequestError("Пустое тело запроса.")
         if length > MAX_JSON_BODY:
-            raise BadRequestError("Тело запроса слишком большое.")
+            raise BadRequestError("Тело JSON-запроса слишком большое.")
         raw = self.rfile.read(length)
         try:
             payload = json.loads(raw.decode("utf-8"))
@@ -97,6 +111,42 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
         if not isinstance(payload, dict):
             raise BadRequestError("Корневой JSON должен быть объектом.")
         return payload
+
+    @staticmethod
+    def _query_folder(query: dict[str, list[str]]) -> str | None:
+        value = query.get("folder_id", [""])[0].strip()
+        return value or None
+
+    def _send_download(self, item: dict) -> None:
+        path = item["path"]
+        headers = {
+            "Content-Disposition": f"attachment; filename*=UTF-8''{quote(item['name'])}",
+            "ETag": f'"{item["sha256"]}"',
+            "X-Sayuri-SHA256": item["sha256"],
+        }
+        try:
+            self._headers(HTTPStatus.OK, item["content_type"], item["size_bytes"], headers)
+            with path.open("rb") as source:
+                while True:
+                    chunk = source.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+        except CLIENT_DISCONNECT_ERRORS as exc:
+            self.server.logger.info(
+                "HTTP | скачивание прервано клиентом | файл=%s | %s",
+                item["id"],
+                exc.__class__.__name__,
+            )
+
+    def _disk_error(self, error: Exception, request_id: str) -> None:
+        if isinstance(error, FileNotFoundError):
+            self._error(StaticFileError(str(error)), request_id)
+            return
+        if isinstance(error, (ValueError, FileExistsError, OSError)):
+            self._error(BadRequestError(str(error)), request_id)
+            return
+        self._error(error, request_id)
 
     def _error(self, error: Exception, request_id: str) -> None:
         if isinstance(error, SayuriError):
@@ -130,6 +180,8 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
         request_id = uuid.uuid4().hex[:12]
         try:
             parsed = urlparse(self.path)
+            query = parse_qs(parsed.query)
+
             if parsed.path == "/api/health":
                 self._json(self.server.core.health(port=self.server.server_port))
                 return
@@ -139,8 +191,18 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
             if parsed.path == "/api/settings":
                 self._json(self.server.core.settings_payload())
                 return
+            if parsed.path == "/api/disk":
+                folder_id = self._query_folder(query)
+                search = query.get("q", [""])[0]
+                self._json(self.server.core.disk.list_entries(folder_id, search))
+                return
+            if parsed.path.startswith("/api/disk/files/") and parsed.path.endswith("/download"):
+                file_id = parsed.path[len("/api/disk/files/"):-len("/download")].strip("/")
+                if not file_id:
+                    raise FileNotFoundError("Файл не найден.")
+                self._send_download(self.server.core.disk.get_file(file_id))
+                return
             if parsed.path == "/api/events":
-                query = parse_qs(parsed.query)
                 raw_limit = query.get("limit", ["20"])[0]
                 try:
                     limit = int(raw_limit)
@@ -158,6 +220,8 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
                 self.path,
                 exc.__class__.__name__,
             )
+        except (FileNotFoundError, ValueError, FileExistsError, OSError) as exc:
+            self._disk_error(exc, request_id)
         except Exception as exc:
             self._error(exc, request_id)
 
@@ -165,20 +229,90 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
         request_id = uuid.uuid4().hex[:12]
         try:
             parsed = urlparse(self.path)
-            if parsed.path != "/api/settings":
-                raise StaticFileError(f"API не найден: {parsed.path}")
-            payload = self._read_json()
-            changes = payload.get("settings")
-            if not isinstance(changes, dict):
-                raise BadRequestError("Поле settings должно быть объектом.")
-            result = self.server.core.update_settings(changes)
-            self._json(result)
+            query = parse_qs(parsed.query)
+
+            if parsed.path == "/api/settings":
+                payload = self._read_json()
+                changes = payload.get("settings")
+                if not isinstance(changes, dict):
+                    raise BadRequestError("Поле settings должно быть объектом.")
+                self._json(self.server.core.update_settings(changes))
+                return
+
+            if parsed.path == "/api/disk/folders":
+                payload = self._read_json()
+                name = payload.get("name")
+                parent_id = payload.get("parent_id") or None
+                if not isinstance(name, str):
+                    raise BadRequestError("Поле name должно содержать имя папки.")
+                folder = self.server.core.disk.create_folder(name, parent_id)
+                self.server.core.database.record_event("Диск Sayuri", "Папка создана", details={"name": folder["name"]})
+                self._json({"status": "создано", "folder": folder}, HTTPStatus.CREATED)
+                return
+
+            if parsed.path == "/api/disk/upload":
+                raw_length = self.headers.get("Content-Length", "")
+                try:
+                    size_bytes = int(raw_length)
+                except ValueError as exc:
+                    raise BadRequestError("Для загрузки требуется корректный Content-Length.") from exc
+                encoded_name = self.headers.get("X-Sayuri-Filename", "")
+                name = unquote(encoded_name).strip()
+                if not name:
+                    raise BadRequestError("Не передано имя файла.")
+                folder_id = self._query_folder(query)
+                item = self.server.core.disk.store_stream(
+                    name=name,
+                    content_type=self.headers.get("Content-Type"),
+                    size_bytes=size_bytes,
+                    stream=self.rfile,
+                    folder_id=folder_id,
+                )
+                self.server.core.database.record_event(
+                    "Диск Sayuri",
+                    "Файл загружен",
+                    details={"name": item["name"], "size_bytes": item["size_bytes"]},
+                )
+                self._json({"status": "загружено", "file": item}, HTTPStatus.CREATED)
+                return
+
+            raise StaticFileError(f"API не найден: {parsed.path}")
         except CLIENT_DISCONNECT_ERRORS as exc:
             self.server.logger.info(
                 "HTTP | клиент закрыл соединение | путь=%s | %s",
                 self.path,
                 exc.__class__.__name__,
             )
+        except (FileNotFoundError, ValueError, FileExistsError, OSError) as exc:
+            self._disk_error(exc, request_id)
+        except Exception as exc:
+            self._error(exc, request_id)
+
+    def do_DELETE(self) -> None:
+        request_id = uuid.uuid4().hex[:12]
+        try:
+            parsed = urlparse(self.path)
+            if parsed.path.startswith("/api/disk/files/"):
+                file_id = parsed.path[len("/api/disk/files/"):].strip("/")
+                result = self.server.core.disk.delete_file(file_id)
+                self.server.core.database.record_event("Диск Sayuri", "Файл удалён")
+                self._json(result)
+                return
+            if parsed.path.startswith("/api/disk/folders/"):
+                folder_id = parsed.path[len("/api/disk/folders/"):].strip("/")
+                result = self.server.core.disk.delete_folder(folder_id)
+                self.server.core.database.record_event("Диск Sayuri", "Папка удалена")
+                self._json(result)
+                return
+            raise StaticFileError(f"API не найден: {parsed.path}")
+        except CLIENT_DISCONNECT_ERRORS as exc:
+            self.server.logger.info(
+                "HTTP | клиент закрыл соединение | путь=%s | %s",
+                self.path,
+                exc.__class__.__name__,
+            )
+        except (FileNotFoundError, ValueError, FileExistsError, OSError) as exc:
+            self._disk_error(exc, request_id)
         except Exception as exc:
             self._error(exc, request_id)
 

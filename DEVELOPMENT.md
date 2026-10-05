@@ -7,25 +7,46 @@
 | ID | Имя | Путь | Назначение |
 | --- | --- | --- | --- |
 | `sayuri-core` | Ядро Саюри | `app/` | SQLite, настройки, API, сервер, диагностика |
-| `agent-core` | Агентное ядро | `agent/` | контракт AI/Memory/Tool исполнения |
-| `web-ui` | Веб-интерфейс | `web/` | левое меню, главная, настройки |
+| `agent-core` | Агентное ядро | `agent/` | контракт будущего ИИ/Memory/Tool исполнения |
+| `sayuri-disk` | Диск Sayuri | `disk/` | локальное файловое хранилище |
+| `web-ui` | Веб-интерфейс | `web/` | левое меню, главная, Диск Sayuri, настройки |
 | `dev-tools` | Инструменты разработки | `scripts/` | версии, тесты, Windows bootstrap |
 
-## База данных
+## Системная база данных
 
-Файл: `data/sayuri.db`. Schema 2 содержит `schema_meta`, `system_events`, `error_events`, `system_settings`.
+Файл: `data/sayuri.db`.
 
-## API CORE-002
+Системная schema 2 содержит `schema_meta`, `system_events`, `error_events`, `system_settings`. Модуль «Диск Sayuri» хранит собственную схему версии 1 в таблицах `disk_meta`, `disk_folders`, `disk_files`.
 
-- `GET /api/health` — краткое состояние.
-- `GET /api/system` — единое состояние системы и архитектура.
-- `GET /api/settings` — текущие настройки и их спецификации.
-- `POST /api/settings` — сохранение проверенных значений.
-- `GET /api/events?limit=N` — последние события.
+## Хранилище «Диск Sayuri»
 
-## Agent Core
+- Объекты: `data/disk/objects/`.
+- Временные загрузки: `data/disk/temp/`.
+- Реальные имена файлов не используются как имена объектов на диске.
+- Идентификаторы файлов и папок — UUID.
+- Для каждого файла хранится SHA-256.
+- Максимальный размер одного файла в версии 0.1.6 — 1 ГБ.
+- Чтение/запись выполняются блоками по 1 МБ.
+- `data/` не коммитится в Git.
 
-`agent/contract.py` задаёт структуры `AgentRequest`, `AgentResult` и snapshot состояния. В CORE-002 выполнение выключено; AI-провайдер, память и инструменты подключаются позже отдельными слоями.
+## API
+
+Система:
+- `GET /api/health`
+- `GET /api/system`
+- `GET /api/settings`
+- `POST /api/settings`
+- `GET /api/events?limit=N`
+
+Диск Sayuri:
+- `GET /api/disk?folder_id=<id>&q=<поиск>`
+- `POST /api/disk/folders`
+- `POST /api/disk/upload?folder_id=<id>`
+- `GET /api/disk/files/{id}/download`
+- `DELETE /api/disk/files/{id}`
+- `DELETE /api/disk/folders/{id}`
+
+Загрузка использует тело запроса как поток файла; имя передаётся URL-кодированным в заголовке `X-Sayuri-Filename`.
 
 ## Запуск и проверки
 
@@ -39,4 +60,4 @@ python -m app.main --no-browser
 python scripts/versioning.py check
 ```
 
-Windows launcher дополнительно проверяется в GitHub Actions на `windows-latest`.
+Windows launcher дополнительно проверяется GitHub Actions на `windows-latest`.
