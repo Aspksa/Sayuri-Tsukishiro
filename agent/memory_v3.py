@@ -393,11 +393,21 @@ class MemorySystemV3:
             existing = None
             if safe_fingerprint:
                 existing = db.execute(
-                    "SELECT id FROM episodic_memory WHERE fingerprint = ?",
+                    "SELECT * FROM episodic_memory WHERE fingerprint = ?",
                     (safe_fingerprint,),
                 ).fetchone()
+            changed_existing = False
             if existing:
                 event_id = existing["id"]
+                next_details = self._json(details) if details else None
+                changed_existing = any((
+                    existing["scope"] != scope,
+                    existing["event_type"] != event_type[:80],
+                    existing["summary"] != text[:2000],
+                    existing["details_json"] != next_details,
+                    existing["source"] != (source or "system")[:80],
+                    existing["importance"] != importance,
+                ))
                 db.execute(
                     """
                     UPDATE episodic_memory
@@ -436,14 +446,28 @@ class MemorySystemV3:
                         safe_fingerprint,
                     ),
                 )
-        self._timeline(
-            event_type=event_type,
-            subject_type="episode",
-            subject_id=event_id,
-            scope=scope,
-            summary=text,
-            details=details,
-        )
+        if existing is None:
+            self._timeline(
+                event_type=event_type,
+                subject_type="episode",
+                subject_id=event_id,
+                scope=scope,
+                summary=text,
+                details=details,
+            )
+        elif changed_existing:
+            self._timeline(
+                event_type="episode_updated",
+                subject_type="episode",
+                subject_id=event_id,
+                scope=scope,
+                summary=text,
+                details={
+                    "event_type": event_type,
+                    "fingerprint": safe_fingerprint,
+                    "details": details,
+                },
+            )
         with self._connect() as db:
             event_node = self._ensure_node(
                 db,
@@ -1108,7 +1132,7 @@ class MemorySystemV3:
         now = self._now()
         conflict_id = hashlib.sha256(f"{old_memory_id}|{new_memory_id}".encode("utf-8")).hexdigest()
         with self._connect() as db:
-            db.execute(
+            cursor = db.execute(
                 """
                 INSERT OR IGNORE INTO memory_conflicts(
                     id, scope, candidate_id, old_memory_id, new_memory_id,
@@ -1126,15 +1150,17 @@ class MemorySystemV3:
                     now,
                 ),
             )
+            created = cursor.rowcount > 0
             row = db.execute("SELECT * FROM memory_conflicts WHERE id = ?", (conflict_id,)).fetchone()
-        self._timeline(
-            event_type="memory_conflict_opened",
-            subject_type="conflict",
-            subject_id=conflict_id,
-            scope=scope,
-            summary="Обнаружено противоречие между старой и новой памятью.",
-            details={"old_memory_id": old_memory_id, "new_memory_id": new_memory_id},
-        )
+        if created:
+            self._timeline(
+                event_type="memory_conflict_opened",
+                subject_type="conflict",
+                subject_id=conflict_id,
+                scope=scope,
+                summary="Обнаружено противоречие между старой и новой памятью.",
+                details={"old_memory_id": old_memory_id, "new_memory_id": new_memory_id},
+            )
         return self._conflict_row(row)
 
     @staticmethod
