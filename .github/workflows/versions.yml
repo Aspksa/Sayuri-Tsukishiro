@@ -1,0 +1,42 @@
+name: Versions
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  version-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # verified v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Test version tooling
+        run: python3 -m unittest discover -s scripts/tests -v
+      - name: Check every changed commit
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import subprocess
+          import sys
+          base = os.environ["BASE_SHA"]
+          target = os.environ["TARGET_SHA"]
+          if not base or set(base) == {"0"}:
+              parent = subprocess.run(["git", "rev-parse", target + "^1"], capture_output=True, text=True)
+              if parent.returncode:
+                  subprocess.run([sys.executable, "scripts/versioning.py", "show"], check=True)
+                  raise SystemExit(0)
+              base = parent.stdout.strip()
+          if os.environ["EVENT_NAME"] == "pull_request":
+              base = subprocess.check_output(["git", "merge-base", base, target], text=True).strip()
+          subprocess.run([sys.executable, "scripts/versioning.py", "check", "--base", base,
+                          "--target", target, "--each-commit"], check=True)
+          PY
