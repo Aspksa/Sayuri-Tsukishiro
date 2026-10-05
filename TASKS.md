@@ -137,7 +137,7 @@
 
 ## AI-004 — Semantic Memory + Experience Learning
 
-- Статус: `implemented; final CI pending`.
+- Статус: `implemented`.
 - Добавлен локальный `hybrid-semantic-v1` без второй облачной модели.
 - Поиск памяти учитывает ключевые слова, формы слов, концепты, char n-grams, importance и confidence.
 - Personal/project граница сохраняется.
@@ -151,7 +151,7 @@
 
 ## MEM-003 — Semantic Memory
 
-- Статус: `implemented; final CI pending`.
+- Статус: `implemented`.
 - Engine: `hybrid-semantic-v1`.
 - Полностью локальный retrieval без второй облачной модели.
 - Использует token overlap, лёгкую морфологию, локальные concepts и character n-grams.
@@ -162,7 +162,7 @@
 
 ## EXP-001 — Experience Learning
 
-- Статус: `implemented; final CI pending`.
+- Статус: `implemented`.
 - Хранилище: `data/sayuri-experience.db`.
 - Записываются подтверждённые исходы Safe Actions, review Memory Intelligence и явная оценка AI-ответов.
 - Обратная связь ответа idempotent: повторная оценка заменяет outcome той же записи.
