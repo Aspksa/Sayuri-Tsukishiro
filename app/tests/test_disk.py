@@ -360,7 +360,7 @@ class DiskServiceTests(unittest.TestCase):
             self.assertEqual(action_fact["role"], "request")
 
             first_fact_id = date_fact["id"]
-            forced = service.document_dna(item["id"], force=True)
+            forced = service.document_dna(item["id"], force=True, bypass_cooldown=True)
             forced_date = next(
                 fact for fact in forced["molecules"]["facts"]
                 if fact["type"] == "date" and fact["role"] == "document_date"
