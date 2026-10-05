@@ -4,13 +4,13 @@
     {
       "id": "sayuri-core",
       "display_name": "Ядро Саюри",
-      "description": "Системное ядро, SQLite, конфигурация, API, диагностика и безопасное выполнение подтверждённых действий Sayuri.",
+      "description": "Системное ядро, SQLite, конфигурация, API, диагностика, Memory Intelligence и безопасное выполнение подтверждённых действий Sayuri.",
       "path": "app"
     },
     {
       "id": "agent-core",
       "display_name": "Агентное ядро",
-      "description": "Sayuri Agent Core: Cloud.ru/DeepSeek-V4-Flash, раздельная память и confirmation-gated Action Broker с разрешёнными локальными инструментами.",
+      "description": "Sayuri Agent Core: Cloud.ru/DeepSeek-V4-Flash, Memory Intelligence 2.0, раздельная долговременная память и confirmation-gated Action Broker.",
       "path": "agent"
     },
     {
@@ -22,7 +22,7 @@
     {
       "id": "web-ui",
       "display_name": "Веб-интерфейс",
-      "description": "Единая светлая оболочка Sayuri с глобальной помощницей, чатом, подтверждением действий, Личным кабинетом и надёжным состоянием загрузки/ошибок ДНК.",
+      "description": "Единая оболочка Sayuri с глобальной помощницей, Memory Intelligence 2.0, очередью кандидатов памяти, чатом, действиями, аватарами, Диском и ДНК.",
       "path": "web"
     },
     {
