@@ -2960,16 +2960,32 @@ function renderSayuriMemoryList(payload) {
     importance.textContent = `важность ${entry.importance}/5`;
     meta.append(scope, kind, importance);
 
+    if (entry.v4?.tier) {
+      const tier = document.createElement('span');
+      tier.className = `memory-v4-tier ${entry.v4.tier}`;
+      tier.textContent = entry.v4.tier;
+      meta.append(tier);
+    }
+    if (entry.v4 && entry.v4.cloud_allowed === false) {
+      const protectedBadge = document.createElement('span');
+      protectedBadge.className = 'memory-v4-tier memory-v4-protected';
+      protectedBadge.textContent = 'LOCAL ONLY';
+      meta.append(protectedBadge);
+    }
+
     const body = document.createElement('p');
     body.textContent = entry.content;
 
     const footer = document.createElement('div');
     footer.className = 'sayuri-memory-entry-footer';
     const details = document.createElement('small');
-    const semantic = entry.retrieval === 'hybrid-semantic-v1'
-      ? ` · смысл ${Math.round((Number(entry.relevance) || 0) * 100)}%`
+    const semantic = entry.relevance != null
+      ? ` · релевантность ${Math.round((Number(entry.relevance) || 0) * 100)}%`
       : '';
-    details.textContent = `${entry.source} · использовано ${entry.use_count || 0} раз${semantic} · ${formatDate(entry.updated_at)}`;
+    const trust = entry.v4
+      ? ` · доверие ${Math.round((Number(entry.v4.source_trust) || 0) * 100)}% · свежесть ${Math.round((Number(entry.v4.freshness_score) || 0) * 100)}%`
+      : '';
+    details.textContent = `${entry.source} · использовано ${entry.use_count || 0} раз${semantic}${trust} · ${formatDate(entry.updated_at)}`;
     const remove = document.createElement('button');
     remove.type = 'button';
     remove.className = 'secondary-button danger-soft';
@@ -2977,7 +2993,15 @@ function renderSayuriMemoryList(payload) {
     remove.addEventListener('click', () => deleteSayuriMemory(entry.id));
     footer.append(details, remove);
 
-    card.append(meta, body, footer);
+    card.append(meta, body);
+    const recallReasons = entry.recall_explanation?.why || [];
+    if (recallReasons.length) {
+      const why = document.createElement('div');
+      why.className = 'sayuri-memory-recall-reason';
+      why.textContent = `Почему вспомнила: ${recallReasons.join(' · ')}`;
+      card.append(why);
+    }
+    card.append(footer);
     container.append(card);
   }
 }
@@ -3026,7 +3050,7 @@ async function deleteSayuriMemory(entryId) {
     const data = await response.json();
     if (!response.ok) throw new Error(data?.error?.message || `HTTP ${response.status}`);
     setSayuriMemoryMessage(data.deleted ? 'Запись удалена.' : 'Запись уже отсутствует.');
-    await Promise.all([loadSayuriMemory(), loadSayuriProfile(), loadSystem()]);
+    await Promise.all([loadSayuriMemory(), loadSayuriMemoryV3(), loadSayuriMemoryV4(), loadSayuriProfile(), loadSystem()]);
   } catch (error) {
     setSayuriMemoryMessage(`Ошибка: ${error instanceof Error ? error.message : String(error)}`, 'error');
   }
