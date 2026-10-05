@@ -72,7 +72,9 @@ Memory 3.0 строит локальный граф:
 - memory;
 - knowledge;
 - decision;
-- vehicle.
+- vehicle;
+- company;
+- event.
 
 Связи включают:
 
