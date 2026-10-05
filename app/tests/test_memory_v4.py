@@ -14,7 +14,7 @@ from agent.semantic_memory import SemanticMemoryIndex
 
 class MemoryV4Tests(unittest.TestCase):
     def _build(self, root: Path):
-        (root / "VERSION").write_text("0.1.45\n", encoding="utf-8")
+        (root / "VERSION").write_text("0.1.46\n", encoding="utf-8")
         memory = SayuriMemory(root / "data" / "sayuri-memory.db")
         memory.initialize()
         semantic = SemanticMemoryIndex(memory)
@@ -253,6 +253,40 @@ class MemoryV4Tests(unittest.TestCase):
             self.assertEqual(len(v4.recall_audit()), 0)
             self.assertTrue(any(item.get("content_truncated") for item in sent))
             self.assertTrue(all(len(item["content"]) <= 2400 for item in sent))
+
+    def test_quality_maintenance_is_automatic_and_rate_limited(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            memory, semantic, v3, v4 = self._build(root)
+            memory.add(
+                scope="project",
+                kind="fact",
+                content="Текущая версия API требует периодической проверки",
+                importance=5,
+                confidence=0.9,
+                source="document",
+            )
+
+            first = v4.bootstrap()
+            immediate = v4.maybe_maintain(interval_hours=24)
+            self.assertFalse(first["already_bootstrapped"])
+            self.assertFalse(immediate["ran"])
+
+            old = (datetime.now(timezone.utc) - timedelta(hours=25)).isoformat()
+            with sqlite3.connect(root / "data" / "sayuri-memory.db") as db:
+                db.execute(
+                    """
+                    UPDATE memory_v4_meta
+                    SET value=?, updated_at=?
+                    WHERE key='last_quality_maintenance'
+                    """,
+                    (old, old),
+                )
+
+            delayed = v4.maybe_maintain(interval_hours=24)
+            self.assertTrue(delayed["ran"])
+            self.assertIn("verification", delayed)
+            self.assertEqual(v4.stats()["snapshots"], 0)
 
     def test_goal_task_and_decision_memory_are_structured_and_graph_linked(self):
         with tempfile.TemporaryDirectory() as tmp:
