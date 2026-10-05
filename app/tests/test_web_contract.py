@@ -8,35 +8,42 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class WebContractTests(unittest.TestCase):
-    def test_disk_layout_matches_requested_ux(self):
+    def test_disk_layout_has_no_second_sidebar_and_has_top_scopes(self):
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         self.assertIn('>Диск Sayuri<', html)
-        self.assertIn('id="disk-drop-zone"', html)
-        self.assertIn('id="disk-folder-tree"', html)
-        self.assertIn('id="file-viewer-modal"', html)
-        self.assertIn('id="viewer-tab-preview"', html)
-        self.assertIn('id="viewer-tab-properties"', html)
-        self.assertIn('id="disk-context-menu"', html)
-        self.assertNotIn('id="disk-actions-list"', html)
-        self.assertLess(html.index('id="disk-drop-zone"'), html.index('class="disk-stats"'))
+        self.assertNotIn('class="disk-rail"', html)
+        self.assertNotIn('id="disk-folder-tree"', html)
+        self.assertIn('class="disk-scope-tabs"', html)
+        self.assertIn('data-disk-scope="favorites"', html)
+        self.assertIn('data-disk-scope="recent"', html)
+        self.assertIn('id="disk-trash-target"', html)
+        self.assertIn('data-view-mode="tiles"', html)
+        self.assertIn('data-view-mode="list"', html)
+        self.assertIn('id="disk-undo-toast"', html)
+        self.assertIn('class="move-dialog move-dialog-wide"', html)
 
-    def test_frontend_supports_context_menu_center_viewer_and_long_name_actions(self):
+    def test_frontend_supports_real_drag_drop_mass_move_and_undo(self):
         script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
-        self.assertIn("addEventListener('contextmenu'", script)
-        self.assertIn("/api/disk/files/", script)
-        self.assertIn("/preview", script)
-        self.assertIn("openViewer(item.kind, item.id", script)
-        self.assertIn("property-name-input", script)
-        self.assertIn("loadFolderTree()", script)
-        self.assertNotIn("loadDiskActions()", script)
+        self.assertIn("addEventListener('dragstart'", script)
+        self.assertIn("attachFolderDropTarget", script)
+        self.assertIn("diskDragItems", script)
+        self.assertIn("selectedDiskItems()", script)
+        self.assertIn("/api/disk/undo-move", script)
+        self.assertIn("trashByDrag", script)
+        self.assertIn("window.setTimeout(() =>", script)
+        self.assertIn("900", script)
+        self.assertNotIn("loadFolderTree()", script)
 
-    def test_preview_css_has_centered_modal_and_wrapped_names(self):
+    def test_css_has_tiles_list_drop_highlights_and_comfortable_width(self):
         css = (ROOT / "web" / "styles.css").read_text(encoding="utf-8")
-        self.assertIn(".file-viewer-dialog", css)
-        self.assertIn(".preview-table", css)
-        self.assertIn(".disk-context-menu", css)
-        self.assertIn("overflow-wrap: anywhere", css)
-        self.assertIn(".folder-tree-item", css)
+        self.assertIn("#view-disk", css)
+        self.assertIn("max-width: 1380px", css)
+        self.assertIn(".disk-list.tiles", css)
+        self.assertIn(".disk-list.list", css)
+        self.assertIn(".disk-drop-target-active", css)
+        self.assertIn(".trash-drag-active", css)
+        self.assertIn(".move-dialog-wide", css)
+        self.assertIn(".disk-undo-toast", css)
 
 
 if __name__ == "__main__":

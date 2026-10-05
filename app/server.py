@@ -380,6 +380,18 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
                 self._json(result)
                 return
 
+            if parsed.path == "/api/disk/undo-move":
+                payload = self._read_json()
+                moves = payload.get("moves")
+                if not isinstance(moves, list) or not moves:
+                    raise BadRequestError("Нет данных для отмены перемещения.")
+                result = self.server.core.disk.undo_move(moves)
+                self.server.core.database.record_event(
+                    "Диск Sayuri", f"Отменено перемещений: {result['count']}"
+                )
+                self._json(result)
+                return
+
             if parsed.path == "/api/disk/favorite":
                 payload = self._read_json()
                 favorite = payload.get("favorite")

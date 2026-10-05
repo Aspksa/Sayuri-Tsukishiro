@@ -1580,3 +1580,428 @@ button.disk-name:hover { text-decoration: underline; }
     min-height: 540px;
   }
 }
+
+
+/* Диск Sayuri 0.2.2 — широкий рабочий холст, плитки и drag-and-drop */
+#view-disk {
+  max-width: 1380px;
+}
+#view-disk .disk-head,
+#view-disk .disk-drop-top,
+#view-disk .disk-stats,
+#view-disk .disk-panel {
+  width: 100%;
+}
+.disk-commandbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.disk-scope-tabs {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.disk-scope-tabs .disk-scope {
+  width: auto;
+  min-height: 38px;
+  grid-template-columns: 18px auto auto;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+}
+.disk-scope-tabs .disk-scope strong {
+  font-size: 10px;
+}
+.disk-scope-tabs .disk-scope.active {
+  border-color: #dfe4ea;
+  background: #f1f4f7;
+  color: #263247;
+}
+.disk-scope-tabs .disk-scope.active em {
+  background: #fff;
+  color: #536075;
+}
+.disk-trash-target.trash-drag-active {
+  border-color: #e19a9a !important;
+  background: #fff0f0 !important;
+  color: #a43f3f !important;
+  box-shadow: 0 0 0 4px rgba(201,75,75,.08);
+}
+.disk-toolbar-controls {
+  flex: 0 1 auto;
+}
+.view-mode-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid #dfe4ea;
+  border-radius: 10px;
+  background: #f8fafb;
+}
+.view-mode-toggle button {
+  width: 31px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #7c8797;
+  font-size: 13px;
+}
+.view-mode-toggle button.active {
+  background: #fff;
+  color: #283448;
+  box-shadow: 0 2px 7px rgba(25,38,58,.09);
+}
+
+.disk-pathbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 50px;
+  margin-bottom: 12px;
+  padding: 9px 12px;
+  overflow: hidden;
+  border: 1px solid #e4e8ee;
+  border-radius: 13px;
+  background: #fafbfc;
+}
+.disk-path-label {
+  flex: 0 0 auto;
+  color: #9aa3b1;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.disk-breadcrumbs-large {
+  min-width: 0;
+  gap: 7px;
+  font-size: 14px;
+}
+.disk-breadcrumbs-large button,
+.disk-breadcrumbs-large strong {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #344156;
+  font-size: 13px;
+  font-weight: 700;
+}
+.disk-breadcrumbs-large > span {
+  color: #a8b0bc;
+  font-size: 15px;
+}
+.breadcrumb-drop-target.disk-drop-target-active {
+  background: #eaf7f0;
+  color: #267451;
+  box-shadow: inset 0 0 0 1px #afd8c2;
+}
+
+.disk-panel[data-view-mode="tiles"] .disk-list-head {
+  display: none;
+}
+.disk-list.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(205px, 1fr));
+  gap: 11px;
+  padding-top: 2px;
+}
+.disk-list.tiles .disk-row {
+  position: relative;
+  min-height: 156px;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) 34px;
+  grid-template-areas:
+    "check name actions"
+    ". name .";
+  gap: 8px;
+  align-content: start;
+  padding: 15px;
+  border: 1px solid #e2e7ed;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 6px 18px rgba(28,41,62,.035);
+  transition: transform .14s ease, border-color .14s ease, box-shadow .14s ease, background .14s ease;
+}
+.disk-list.tiles .disk-row:hover {
+  transform: translateY(-1px);
+  border-color: #cfd7e1;
+  box-shadow: 0 10px 24px rgba(28,41,62,.065);
+}
+.disk-list.tiles .disk-row.folder {
+  background: linear-gradient(180deg, #fffdf8 0%, #fff 62%);
+}
+.disk-list.tiles .disk-check {
+  grid-area: check;
+  align-self: start;
+}
+.disk-list.tiles .disk-name-cell {
+  grid-area: name;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 11px;
+}
+.disk-list.tiles .disk-file-icon {
+  width: 50px;
+  height: 50px;
+  margin: 0;
+  border-radius: 14px;
+  font-size: 10px;
+}
+.disk-list.tiles .disk-file-icon.folder {
+  background: #fff3cf;
+  color: #896817;
+  font-size: 27px;
+}
+.disk-list.tiles .disk-name-wrap {
+  width: 100%;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.disk-list.tiles .disk-name-button {
+  width: 100%;
+  min-height: 39px;
+  display: -webkit-box;
+  overflow: hidden;
+  color: #263247;
+  font-size: 14px;
+  line-height: 1.38;
+  font-weight: 700;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+.disk-card-meta {
+  display: block;
+  width: 100%;
+  margin-top: 3px;
+  color: #8b95a4;
+  font-size: 10px;
+  font-weight: 500;
+}
+.disk-list.tiles .disk-row-actions {
+  grid-area: actions;
+  align-self: start;
+  justify-self: end;
+  padding: 0;
+}
+.disk-list.tiles .disk-col-size,
+.disk-list.tiles .disk-col-type,
+.disk-list.tiles .disk-col-date {
+  display: none;
+}
+
+.disk-list.list {
+  display: grid;
+}
+.disk-list.list .disk-card-meta {
+  display: none;
+}
+.disk-list.list .disk-row {
+  min-height: 68px;
+  grid-template-columns: 34px minmax(260px, 1fr) 100px 110px 155px 62px;
+}
+.disk-list.list .disk-name-button {
+  font-size: 13px;
+  line-height: 1.4;
+}
+.disk-list.list .disk-file-icon.folder {
+  font-size: 19px;
+}
+.disk-row.dragging {
+  opacity: .42;
+}
+.disk-row.disk-drop-target-active {
+  border-color: #7ab996 !important;
+  background: #eef9f3 !important;
+  box-shadow: 0 0 0 4px rgba(49,151,102,.09) !important;
+}
+.disk-list.tiles .disk-row.disk-drop-target-active {
+  transform: translateY(-2px) scale(1.01);
+}
+
+.move-dialog-wide {
+  width: min(720px, calc(100vw - 40px));
+  max-height: min(720px, calc(100vh - 40px));
+}
+.move-dialog-layout {
+  min-height: 410px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 235px;
+  gap: 14px;
+  margin-top: 14px;
+}
+.move-destinations {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #e1e5eb;
+  border-radius: 14px;
+  background: #fafbfc;
+}
+.move-root-option {
+  margin: 0;
+  border-radius: 0;
+  border-bottom: 1px solid #e5e9ee;
+  background: #fff;
+  font-size: 11px;
+  font-weight: 700;
+}
+.move-folder-list {
+  max-height: 370px;
+  margin: 0;
+  padding: 6px;
+}
+.move-folder-option {
+  min-height: 40px;
+  border-radius: 9px;
+  font-size: 10.5px;
+}
+.move-selection-preview {
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid #e1e5eb;
+  border-radius: 14px;
+  background: #fff;
+}
+.move-preview-label,
+.move-selection-count span {
+  display: block;
+  color: #98a1af;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.move-selection-preview > strong {
+  display: block;
+  margin-top: 7px;
+  color: #29364a;
+  font-size: 15px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.move-selection-preview > p {
+  margin: 7px 0 20px;
+  color: #7c8798;
+  font-size: 10px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.move-selection-count {
+  padding-top: 14px;
+  border-top: 1px solid #edf0f4;
+}
+.move-selection-count strong {
+  display: block;
+  margin-top: 5px;
+  color: #445066;
+  font-size: 12px;
+}
+
+.disk-undo-toast {
+  position: fixed;
+  left: calc(50% + 118px);
+  bottom: 28px;
+  z-index: 140;
+  min-width: 300px;
+  max-width: min(520px, calc(100vw - 30px));
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 12px 13px 12px 16px;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 13px;
+  background: #171d28;
+  color: #fff;
+  box-shadow: 0 18px 45px rgba(16,24,38,.22);
+}
+.disk-undo-toast span {
+  min-width: 0;
+  font-size: 11px;
+  line-height: 1.4;
+}
+.disk-undo-toast button {
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 8px;
+  padding: 7px 10px;
+  background: #fff;
+  color: #222d3e;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+@media (max-width: 1180px) {
+  #view-disk {
+    max-width: 1240px;
+  }
+  .disk-commandbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .disk-toolbar-controls {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+  .disk-list.tiles {
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  }
+}
+@media (max-width: 760px) {
+  .disk-scope-tabs {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    padding-bottom: 2px;
+  }
+  .disk-scope-tabs .disk-scope {
+    min-width: max-content;
+  }
+  .disk-pathbar {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .disk-breadcrumbs-large {
+    width: 100%;
+    overflow-x: auto;
+  }
+  .disk-list.tiles {
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  }
+  .move-dialog-layout {
+    grid-template-columns: 1fr;
+  }
+  .move-selection-preview {
+    min-height: auto;
+  }
+  .disk-undo-toast {
+    left: 50%;
+    bottom: 16px;
+  }
+}
+@media (max-width: 470px) {
+  .disk-list.tiles {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .disk-list.tiles .disk-row {
+    min-height: 145px;
+    padding: 12px;
+  }
+  .disk-list.tiles .disk-name-button {
+    font-size: 12px;
+  }
+}

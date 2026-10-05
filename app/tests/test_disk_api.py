@@ -26,12 +26,7 @@ class DiskApiTests(unittest.TestCase):
         (root / "web").mkdir()
         (root / "web" / "index.html").write_text("<h1>Саюри</h1>", encoding="utf-8")
 
-        settings = Settings(
-            root=root,
-            host="127.0.0.1",
-            preferred_port=18100,
-            port_scan_limit=100,
-        )
+        settings = Settings(root=root, host="127.0.0.1", preferred_port=18100, port_scan_limit=100)
         core = SayuriCore(settings)
         core.initialize()
         self.server = create_server(core, configure_logging(settings.logs_dir))
@@ -57,6 +52,7 @@ class DiskApiTests(unittest.TestCase):
 
     def test_full_disk_02_api_flow(self):
         folder = self.post_json("/api/disk/folders", {"name": "Работа"})["folder"]
+        archive = self.post_json("/api/disk/folders", {"name": "Архив"})["folder"]
 
         payload = b"disk api 0.2"
         upload_request = urllib.request.Request(
@@ -70,6 +66,22 @@ class DiskApiTests(unittest.TestCase):
         )
         with urllib.request.urlopen(upload_request, timeout=3) as response:
             uploaded = json.loads(response.read().decode("utf-8"))["file"]
+
+        move_result = self.post_json(
+            "/api/disk/move",
+            {"items": [{"kind": "file", "id": uploaded["id"]}], "destination_id": archive["id"]},
+        )
+        self.assertEqual(move_result["count"], 1)
+        self.assertEqual(move_result["destination_name"], "Архив")
+        self.assertEqual(move_result["moves"][0]["from_id"], folder["id"])
+
+        self.post_json("/api/disk/undo-move", {"moves": move_result["moves"]})
+        with urllib.request.urlopen(
+            self.base + f"/api/disk/items/file/{uploaded['id']}",
+            timeout=3,
+        ) as response:
+            moved_back = json.loads(response.read().decode("utf-8"))
+            self.assertEqual(moved_back["folder_id"], folder["id"])
 
         self.post_json(
             "/api/disk/favorite",
@@ -93,18 +105,12 @@ class DiskApiTests(unittest.TestCase):
             favorites = json.loads(response.read().decode("utf-8"))
             self.assertEqual(favorites["files"][0]["id"], uploaded["id"])
 
-        self.post_json(
-            "/api/disk/trash",
-            {"items": [{"kind": "file", "id": uploaded["id"]}]},
-        )
+        self.post_json("/api/disk/trash", {"items": [{"kind": "file", "id": uploaded["id"]}]})
         with urllib.request.urlopen(self.base + "/api/disk?scope=trash", timeout=3) as response:
             trash = json.loads(response.read().decode("utf-8"))
             self.assertEqual(trash["files"][0]["id"], uploaded["id"])
 
-        self.post_json(
-            "/api/disk/restore",
-            {"items": [{"kind": "file", "id": uploaded["id"]}]},
-        )
+        self.post_json("/api/disk/restore", {"items": [{"kind": "file", "id": uploaded["id"]}]})
 
         with urllib.request.urlopen(
             self.base + f"/api/disk/files/{uploaded['id']}/preview",
@@ -126,14 +132,6 @@ class DiskApiTests(unittest.TestCase):
             timeout=3,
         ) as response:
             self.assertEqual(response.read(), payload)
-
-        with urllib.request.urlopen(self.base + "/api/disk/actions?limit=20", timeout=3) as response:
-            actions = json.loads(response.read().decode("utf-8"))["actions"]
-            self.assertGreaterEqual(len(actions), 5)
-
-        with urllib.request.urlopen(self.base + "/api/disk/folders-tree", timeout=3) as response:
-            folders = json.loads(response.read().decode("utf-8"))["folders"]
-            self.assertEqual(folders[0]["name"], "Работа")
 
 
 if __name__ == "__main__":

@@ -239,7 +239,7 @@ class DiskService:
             return "archives"
         return "other"
 
-    def _folder_size(self, db: sqlite3.Connection, folder_id: str) -> int:
+    def _folder_stats(self, db: sqlite3.Connection, folder_id: str) -> dict[str, int]:
         row = db.execute(
             """
             WITH RECURSIVE descendants(id) AS (
@@ -250,14 +250,22 @@ class DiskService:
                 JOIN descendants d ON f.parent_id = d.id
                 WHERE f.trashed_at IS NULL
             )
-            SELECT COALESCE(SUM(size_bytes), 0) AS total
+            SELECT
+                COUNT(*) AS file_count,
+                COALESCE(SUM(size_bytes), 0) AS total
             FROM disk_files
             WHERE trashed_at IS NULL
               AND folder_id IN (SELECT id FROM descendants)
             """,
             (folder_id,),
         ).fetchone()
-        return int(row["total"] if row else 0)
+        return {
+            "file_count": int(row["file_count"] if row else 0),
+            "size_bytes": int(row["total"] if row else 0),
+        }
+
+    def _folder_size(self, db: sqlite3.Connection, folder_id: str) -> int:
+        return self._folder_stats(db, folder_id)["size_bytes"]
 
     def _folder_path(self, db: sqlite3.Connection, folder_id: str | None) -> list[dict[str, str]]:
         path: list[dict[str, str]] = []
@@ -281,7 +289,9 @@ class DiskService:
     def _decorate_folder(self, db: sqlite3.Connection, row: sqlite3.Row) -> dict[str, Any]:
         item = dict(row)
         item["favorite"] = bool(item.get("favorite"))
-        item["size_bytes"] = self._folder_size(db, item["id"])
+        stats = self._folder_stats(db, item["id"])
+        item["size_bytes"] = stats["size_bytes"]
+        item["file_count"] = stats["file_count"]
         item["kind"] = "folder"
         return item
 
@@ -318,6 +328,7 @@ class DiskService:
             "updated_at": now,
             "favorite": False,
             "size_bytes": 0,
+            "file_count": 0,
             "kind": "folder",
         }
 
@@ -748,11 +759,13 @@ class DiskService:
         if not normalized:
             raise ValueError("Не выбраны объекты для перемещения.")
         now = self._now()
+        moves: list[dict[str, Any]] = []
 
         try:
             with self._session() as db:
-                self._require_folder(db, destination_id)
-                moved = 0
+                destination_row = self._require_folder(db, destination_id)
+                destination_name = destination_row["name"] if destination_row else "Диск Sayuri"
+
                 for item in normalized:
                     kind = item.get("kind")
                     object_id = item.get("id")
@@ -766,6 +779,9 @@ class DiskService:
                         ).fetchone()
                         if row is None:
                             raise FileNotFoundError("Файл не найден.")
+                        source_id = row["folder_id"]
+                        if source_id == destination_id:
+                            continue
                         conflict = db.execute(
                             """
                             SELECT id FROM disk_files
@@ -788,6 +804,9 @@ class DiskService:
                         ).fetchone()
                         if row is None:
                             raise FileNotFoundError("Папка не найдена.")
+                        source_id = row["parent_id"]
+                        if source_id == destination_id:
+                            continue
                         if destination_id == object_id:
                             raise ValueError("Нельзя переместить папку саму в себя.")
                         if destination_id and self._is_descendant(db, object_id, destination_id):
@@ -798,18 +817,101 @@ class DiskService:
                         )
                         name = row["name"]
 
+                    move_info = {
+                        "kind": kind,
+                        "id": object_id,
+                        "name": name,
+                        "from_id": source_id,
+                        "to_id": destination_id,
+                    }
+                    moves.append(move_info)
                     self._record_action(
                         db,
                         "moved",
                         kind,
                         object_id,
                         name,
-                        {"destination_id": destination_id},
+                        {"from_id": source_id, "destination_id": destination_id},
                     )
-                    moved += 1
         except sqlite3.IntegrityError as exc:
             raise FileExistsError("В папке назначения уже есть папка с таким именем.") from exc
-        return {"status": "перемещено", "count": moved}
+
+        return {
+            "status": "перемещено",
+            "count": len(moves),
+            "destination_id": destination_id,
+            "destination_name": destination_name,
+            "moves": moves,
+        }
+
+    def undo_move(self, moves: Iterable[dict[str, Any]]) -> dict[str, Any]:
+        normalized = list(moves)
+        if not normalized:
+            raise ValueError("Нет перемещения для отмены.")
+        now = self._now()
+        restored = 0
+
+        try:
+            with self._session() as db:
+                for move in normalized:
+                    kind = move.get("kind")
+                    object_id = move.get("id")
+                    destination_id = move.get("from_id")
+                    if kind not in {"file", "folder"} or not object_id:
+                        raise ValueError("Некорректные данные отмены перемещения.")
+
+                    self._require_folder(db, destination_id)
+
+                    if kind == "file":
+                        row = db.execute(
+                            "SELECT name, name_key FROM disk_files WHERE id = ? AND trashed_at IS NULL",
+                            (object_id,),
+                        ).fetchone()
+                        if row is None:
+                            raise FileNotFoundError("Файл не найден.")
+                        conflict = db.execute(
+                            """
+                            SELECT id FROM disk_files
+                            WHERE folder_id IS ? AND name_key = ? AND id <> ? AND trashed_at IS NULL
+                            LIMIT 1
+                            """,
+                            (destination_id, row["name_key"], object_id),
+                        ).fetchone()
+                        if conflict:
+                            raise FileExistsError("Нельзя отменить перемещение: исходное имя уже занято.")
+                        db.execute(
+                            "UPDATE disk_files SET folder_id = ?, updated_at = ? WHERE id = ?",
+                            (destination_id, now, object_id),
+                        )
+                    else:
+                        row = db.execute(
+                            "SELECT name FROM disk_folders WHERE id = ? AND trashed_at IS NULL",
+                            (object_id,),
+                        ).fetchone()
+                        if row is None:
+                            raise FileNotFoundError("Папка не найдена.")
+                        if destination_id == object_id:
+                            raise ValueError("Нельзя переместить папку саму в себя.")
+                        if destination_id and self._is_descendant(db, object_id, destination_id):
+                            raise ValueError("Нельзя вернуть папку внутрь её дочерней папки.")
+                        db.execute(
+                            "UPDATE disk_folders SET parent_id = ?, updated_at = ? WHERE id = ?",
+                            (destination_id, now, object_id),
+                        )
+
+                    self._record_action(
+                        db,
+                        "move_undone",
+                        kind,
+                        object_id,
+                        row["name"],
+                        {"destination_id": destination_id},
+                    )
+                    restored += 1
+        except sqlite3.IntegrityError as exc:
+            raise FileExistsError("Нельзя отменить перемещение: имя папки уже занято.") from exc
+
+        return {"status": "перемещение отменено", "count": restored}
 
     def set_favorite(self, items: Iterable[dict[str, str]], favorite: bool) -> dict[str, Any]:
         normalized = list(items)

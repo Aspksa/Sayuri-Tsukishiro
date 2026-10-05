@@ -45,15 +45,31 @@ class DiskServiceTests(unittest.TestCase):
             self.assertEqual(folder_props["size_bytes"], len(payload) * 2)
             self.assertEqual(folder_props["direct_folders"], 1)
 
+            listing = service.list_entries(projects["id"])
+            reports_card = listing["folders"][0]
+            self.assertEqual(reports_card["file_count"], 2)
+            self.assertEqual(reports_card["size_bytes"], len(payload) * 2)
+
             service.set_favorite([{"kind": "file", "id": first["id"]}], True)
             favorites = service.list_entries(scope="favorites")
             self.assertEqual([item["id"] for item in favorites["files"]], [first["id"]])
 
             service.rename("file", first["id"], "итог.txt")
-            service.move([{"kind": "file", "id": first["id"]}], None)
+            move_result = service.move([{"kind": "file", "id": first["id"]}], None)
+            self.assertEqual(move_result["count"], 1)
+            self.assertEqual(move_result["destination_name"], "Диск Sayuri")
+            self.assertEqual(move_result["moves"][0]["from_id"], reports["id"])
+
             moved = service.properties("file", first["id"])
             self.assertEqual(moved["name"], "итог.txt")
-            self.assertEqual(moved["folder_id"], None)
+            self.assertIsNone(moved["folder_id"])
+
+            service.undo_move(move_result["moves"])
+            restored_move = service.properties("file", first["id"])
+            self.assertEqual(restored_move["folder_id"], reports["id"])
+
+            service.move([{"kind": "file", "id": first["id"]}], None)
+            moved = service.properties("file", first["id"])
             self.assertGreaterEqual(moved["duplicate_count"], 1)
 
             with self.assertRaises(FileExistsError):
@@ -83,7 +99,10 @@ class DiskServiceTests(unittest.TestCase):
 
             actions = service.recent_actions(100)
             names = {action["action"] for action in actions}
-            self.assertTrue({"uploaded", "renamed", "moved", "favorite_on", "trashed", "restored", "deleted"} <= names)
+            self.assertTrue(
+                {"uploaded", "renamed", "moved", "move_undone", "favorite_on", "trashed", "restored", "deleted"}
+                <= names
+            )
 
     def test_folder_move_cycle_and_unicode_name_conflicts(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -116,7 +135,6 @@ class DiskServiceTests(unittest.TestCase):
                     size_bytes=10,
                     stream=BytesIO(b"123"),
                 )
-
 
     def test_schema_one_database_migrates_to_disk_02(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -152,9 +170,7 @@ class DiskServiceTests(unittest.TestCase):
                     )
                     """
                 )
-                db.execute(
-                    "INSERT INTO disk_meta(key, value) VALUES('schema_version', '1')"
-                )
+                db.execute("INSERT INTO disk_meta(key, value) VALUES('schema_version', '1')")
                 db.execute(
                     "INSERT INTO disk_folders(id, parent_id, name, name_key, created_at) VALUES('f1', NULL, 'Старое', 'старое', '2026-10-01T00:00:00+00:00')"
                 )
@@ -174,7 +190,6 @@ class DiskServiceTests(unittest.TestCase):
             self.assertEqual(listing["files"][0]["name"], "старый.txt")
             self.assertFalse(listing["files"][0]["favorite"])
             self.assertEqual(service.health()["schema_version"], 2)
-
 
     def test_office_and_text_previews(self):
         with tempfile.TemporaryDirectory() as tmp:
