@@ -544,6 +544,40 @@ class MemorySystemV3:
         )
         return node_id
 
+    def _ensure_memory_node(
+        self,
+        db: sqlite3.Connection,
+        memory_id: str,
+        *,
+        fallback_label: str = "Запись памяти",
+    ) -> str:
+        row = db.execute(
+            """
+            SELECT scope, kind, content, importance
+            FROM memory_entries
+            WHERE id = ?
+            """,
+            (memory_id,),
+        ).fetchone()
+        if row is None:
+            return self._ensure_node(
+                db,
+                node_type="memory",
+                node_key=memory_id,
+                label=fallback_label,
+            )
+        return self._ensure_node(
+            db,
+            node_type="memory",
+            node_key=memory_id,
+            label=(row["content"] or fallback_label)[:180],
+            metadata={
+                "scope": row["scope"],
+                "kind": row["kind"],
+                "importance": row["importance"],
+            },
+        )
+
     def _ensure_edge(
         self,
         db: sqlite3.Connection,
@@ -717,11 +751,10 @@ class MemorySystemV3:
 
             supersedes = entry.get("supersedes_id")
             if isinstance(supersedes, str) and supersedes:
-                old_node = self._ensure_node(
+                old_node = self._ensure_memory_node(
                     db,
-                    node_type="memory",
-                    node_key=supersedes,
-                    label="Предыдущая версия памяти",
+                    supersedes,
+                    fallback_label="Предыдущая версия памяти",
                 )
                 self._ensure_edge(
                     db,
@@ -836,11 +869,10 @@ class MemorySystemV3:
                 metadata={"scope": scope, "kind": kind, "confidence": confidence},
             )
             for source_id in ids:
-                memory_node = self._ensure_node(
+                memory_node = self._ensure_memory_node(
                     db,
-                    node_type="memory",
-                    node_key=source_id,
-                    label="Источник знания",
+                    source_id,
+                    fallback_label="Источник знания",
                 )
                 self._ensure_edge(
                     db,
