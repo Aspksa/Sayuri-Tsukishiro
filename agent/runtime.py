@@ -380,27 +380,21 @@ class SayuriAgent:
         try:
             if query.strip():
                 scopes = (scope,) if scope else ("personal", "project")
-                semantic = self.semantic_memory.search(
+                recalled = self.memory_v4.recall(
                     query,
                     scopes=scopes,
                     limit=limit,
-                    mark_used=False,
+                    for_cloud=False,
                 )
                 entries = [
                     item
-                    for items in semantic.values()
-                    for item in items
+                    for target_scope in scopes
+                    for item in recalled.get(target_scope, [])
                 ]
-                entries.sort(
-                    key=lambda item: (
-                        item.get("relevance", 0),
-                        item.get("importance", 0),
-                        item.get("updated_at", ""),
-                    ),
-                    reverse=True,
-                )
             else:
                 entries = self.memory.list(scope=scope, limit=limit)
+                for entry in entries:
+                    entry["v4"] = self.memory_v4.evaluate_entry(entry)
             return {
                 "stats": {
                     **self.memory.stats(),
@@ -409,9 +403,10 @@ class SayuriAgent:
                     "v3": self.memory_v3.stats(),
                     "v4": self.memory_v4.stats(),
                 },
+                "retrieval": self.memory_v4.ENGINE_ID if query.strip() else "chronological",
                 "entries": entries,
             }
-        except MemoryError as exc:
+        except (MemoryError, MemorySystemV4Error) as exc:
             raise AgentRuntimeError(str(exc)) from exc
 
     def memory_v3_payload(self) -> dict[str, Any]:
@@ -422,12 +417,16 @@ class SayuriAgent:
 
     def resolve_memory_v3_conflict(self, conflict_id: str, resolution: str) -> dict[str, Any]:
         try:
+            conflict = self.memory_v3.resolve_conflict(conflict_id, resolution)
+            self.memory_v4.resolve_conflict_question(conflict_id, resolution)
+            self.memory_v4.refresh_memory_states()
             return {
                 "status": "разрешено",
-                "conflict": self.memory_v3.resolve_conflict(conflict_id, resolution),
+                "conflict": conflict,
                 "dashboard": self.memory_v3.dashboard(),
+                "memory_v4": self.memory_v4.dashboard(),
             }
-        except MemorySystemError as exc:
+        except (MemorySystemError, MemorySystemV4Error) as exc:
             raise AgentRuntimeError(str(exc)) from exc
 
     def memory_v4_payload(self) -> dict[str, Any]:
@@ -771,11 +770,11 @@ class SayuriAgent:
 
     def forget(self, entry_id: str) -> dict[str, Any]:
         entry = self.memory.get(entry_id, include_inactive=True)
+        state = self.memory_v4.state_for(entry_id) if entry else None
         deleted = self.memory.delete(entry_id)
         if deleted and entry:
             try:
                 self.memory_v3.archive_memory(entry)
-                state = self.memory_v4.state_for(entry_id)
                 self.memory_v4._audit(
                     "memory_archived",
                     "memory",
