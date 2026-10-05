@@ -234,6 +234,18 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
             if parsed.path == "/api/sayuri/profile":
                 self._json(self.server.core.sayuri_profile())
                 return
+            if parsed.path == "/api/sayuri/memory/candidates":
+                raw_limit = query.get("limit", ["100"])[0]
+                try:
+                    limit = int(raw_limit)
+                except ValueError:
+                    limit = 100
+                status = query.get("status", [""])[0].strip() or None
+                self._json(self.server.core.sayuri_memory_candidates(status=status, limit=limit))
+                return
+            if parsed.path == "/api/sayuri/memory/intelligence":
+                self._json(self.server.core.sayuri_memory_intelligence_settings())
+                return
             if parsed.path == "/api/sayuri/memory":
                 raw_limit = query.get("limit", ["100"])[0]
                 try:
@@ -476,6 +488,25 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
                 if not action_id:
                     raise BadRequestError("Не указано действие.")
                 self._json(self.server.core.cancel_sayuri_action(action_id))
+                return
+
+            if parsed.path == "/api/sayuri/memory/intelligence":
+                payload = self._read_json()
+                changes = payload.get("settings")
+                if not isinstance(changes, dict):
+                    raise BadRequestError("Поле settings должно быть объектом.")
+                self._json(self.server.core.update_sayuri_memory_intelligence_settings(changes))
+                return
+
+            if parsed.path.startswith("/api/sayuri/memory/candidates/") and parsed.path.endswith("/review"):
+                candidate_id = parsed.path[len("/api/sayuri/memory/candidates/"):-len("/review")].strip("/")
+                if not candidate_id:
+                    raise BadRequestError("Не указан кандидат памяти.")
+                payload = self._read_json()
+                decision = payload.get("decision")
+                if not isinstance(decision, str):
+                    raise BadRequestError("Поле decision должно быть строкой.")
+                self._json(self.server.core.review_sayuri_memory_candidate(candidate_id, decision))
                 return
 
             if parsed.path == "/api/sayuri/memory":
