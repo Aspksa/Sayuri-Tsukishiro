@@ -1677,7 +1677,7 @@ function renderSayuriMessages() {
     const welcome = document.createElement('article');
     welcome.className = 'sayuri-message assistant';
     const avatar = document.createElement('img');
-    avatar.src = '/assets/sayuri-avatar.webp';
+    avatar.src = '/assets/sayuri-avatar.svg';
     avatar.alt = '';
     const bubble = document.createElement('div');
     bubble.textContent = 'Я рядом, Господин. Откройте любой раздел проекта — я буду учитывать текущий экран в разговоре.';
@@ -1691,7 +1691,7 @@ function renderSayuriMessages() {
     row.className = `sayuri-message ${message.role}`;
     if (message.role === 'assistant') {
       const avatar = document.createElement('img');
-      avatar.src = '/assets/sayuri-avatar.webp';
+      avatar.src = '/assets/sayuri-avatar.svg';
       avatar.alt = '';
       row.append(avatar);
     }
