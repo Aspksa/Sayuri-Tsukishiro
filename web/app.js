@@ -10,6 +10,7 @@ let diskDragItems = [];
 let diskHoverTimer = null;
 let diskUndoTimer = null;
 let diskUndoAction = null;
+let sayuriMemorySearchTimer = null;
 
 const diskState = {
   folderId: null,
@@ -110,7 +111,7 @@ function showView(name) {
     loadDisk().catch(showDiskError);
   } else if (name === 'sayuri') {
     history.replaceState(null, '', '#sayuri');
-    loadSayuriProfile().catch(showSayuriProviderError);
+    Promise.all([loadSayuriProfile(), loadSayuriMemory()]).catch(showSayuriProviderError);
   } else if (name === 'settings') {
     history.replaceState(null, '', '#settings');
   } else {
@@ -1587,6 +1588,261 @@ function renderSayuriProfile(profile) {
   byId('sayuri-chat-status').textContent = configured
     ? 'DeepSeek-V4-Flash · Cloud.ru · готово'
     : 'Откройте Личный кабинет Sayuri и добавьте ключ Cloud.ru';
+  renderSayuriMemoryStats(profile.memory || {});
+  renderSayuriAvatarManager(profile.avatars || {});
+  applySayuriAvatarImages();
+}
+
+
+function avatarUrl(slot) {
+  return sayuriState.profile?.avatars?.[slot]?.url || '/assets/sayuri-avatar.svg';
+}
+
+function applySayuriAvatarImages() {
+  const targets = [
+    ['#sayuri-orb img', 'orb'],
+    ['#sayuri-chat-head img', 'chat'],
+    ['.sayuri-account-nav img', 'profile'],
+    ['.sayuri-profile-portrait img', 'hero']
+  ];
+  for (const [selector, slot] of targets) {
+    const image = document.querySelector(selector);
+    if (image) image.src = avatarUrl(slot);
+  }
+  document.querySelectorAll('.sayuri-message.assistant img').forEach((image) => {
+    image.src = avatarUrl('chat');
+  });
+}
+
+function renderSayuriMemoryStats(stats) {
+  if (byId('sayuri-memory-personal')) byId('sayuri-memory-personal').textContent = String(stats.personal?.count ?? 0);
+  if (byId('sayuri-memory-project')) byId('sayuri-memory-project').textContent = String(stats.project?.count ?? 0);
+  if (byId('sayuri-memory-total')) byId('sayuri-memory-total').textContent = String(stats.total ?? 0);
+}
+
+function setSayuriMemoryMessage(text, kind = '') {
+  const target = byId('sayuri-memory-message');
+  if (!target) return;
+  target.className = `sayuri-memory-message ${kind}`.trim();
+  target.textContent = text;
+}
+
+function memoryKindLabel(kind) {
+  return {
+    fact: 'Факт',
+    preference: 'Предпочтение',
+    decision: 'Решение',
+    task: 'Задача',
+    note: 'Заметка'
+  }[kind] || kind;
+}
+
+function renderSayuriMemoryList(payload) {
+  renderSayuriMemoryStats(payload.stats || {});
+  const container = byId('sayuri-memory-list');
+  if (!container) return;
+  container.replaceChildren();
+  const entries = payload.entries || [];
+  if (!entries.length) {
+    const empty = document.createElement('p');
+    empty.className = 'muted';
+    empty.textContent = 'В выбранной области памяти пока нет записей.';
+    container.append(empty);
+    return;
+  }
+  for (const entry of entries) {
+    const card = document.createElement('article');
+    card.className = 'sayuri-memory-entry';
+
+    const meta = document.createElement('div');
+    meta.className = 'sayuri-memory-entry-meta';
+    const scope = document.createElement('span');
+    scope.className = `memory-scope ${entry.scope}`;
+    scope.textContent = entry.scope === 'personal' ? 'ЛИЧНАЯ' : 'ПРОЕКТНАЯ';
+    const kind = document.createElement('span');
+    kind.textContent = memoryKindLabel(entry.kind);
+    const importance = document.createElement('span');
+    importance.textContent = `важность ${entry.importance}/5`;
+    meta.append(scope, kind, importance);
+
+    const body = document.createElement('p');
+    body.textContent = entry.content;
+
+    const footer = document.createElement('div');
+    footer.className = 'sayuri-memory-entry-footer';
+    const details = document.createElement('small');
+    details.textContent = `${entry.source} · использовано ${entry.use_count || 0} раз · ${formatDate(entry.updated_at)}`;
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'secondary-button danger-soft';
+    remove.textContent = 'Удалить';
+    remove.addEventListener('click', () => deleteSayuriMemory(entry.id));
+    footer.append(details, remove);
+
+    card.append(meta, body, footer);
+    container.append(card);
+  }
+}
+
+async function loadSayuriMemory() {
+  const params = new URLSearchParams();
+  const scope = byId('sayuri-memory-filter')?.value || '';
+  const query = byId('sayuri-memory-search')?.value?.trim() || '';
+  if (scope) params.set('scope', scope);
+  if (query) params.set('q', query);
+  params.set('limit', '150');
+  const response = await fetch(`/api/sayuri/memory?${params.toString()}`, {cache: 'no-store'});
+  const data = await response.json();
+  if (!response.ok) throw new Error(data?.error?.message || `HTTP ${response.status}`);
+  renderSayuriMemoryList(data);
+  return data;
+}
+
+async function saveSayuriMemory(event) {
+  event.preventDefault();
+  const text = byId('sayuri-memory-content').value.trim();
+  if (!text) {
+    setSayuriMemoryMessage('Введите то, что Sayuri должна помнить.', 'error');
+    return;
+  }
+  try {
+    const result = await postJson('/api/sayuri/memory', {
+      scope: byId('sayuri-memory-scope').value,
+      kind: byId('sayuri-memory-kind').value,
+      importance: Number(byId('sayuri-memory-importance').value),
+      content: text
+    });
+    byId('sayuri-memory-content').value = '';
+    renderSayuriMemoryStats(result.stats || {});
+    setSayuriMemoryMessage('Запись сохранена в долговременную память.', 'ready');
+    await Promise.all([loadSayuriMemory(), loadSayuriProfile(), loadSystem()]);
+  } catch (error) {
+    setSayuriMemoryMessage(`Ошибка: ${error instanceof Error ? error.message : String(error)}`, 'error');
+  }
+}
+
+async function deleteSayuriMemory(entryId) {
+  if (!window.confirm('Удалить эту запись из долговременной памяти Sayuri?')) return;
+  try {
+    const response = await fetch(`/api/sayuri/memory/${encodeURIComponent(entryId)}`, {method: 'DELETE'});
+    const data = await response.json();
+    if (!response.ok) throw new Error(data?.error?.message || `HTTP ${response.status}`);
+    setSayuriMemoryMessage(data.deleted ? 'Запись удалена.' : 'Запись уже отсутствует.');
+    await Promise.all([loadSayuriMemory(), loadSayuriProfile(), loadSystem()]);
+  } catch (error) {
+    setSayuriMemoryMessage(`Ошибка: ${error instanceof Error ? error.message : String(error)}`, 'error');
+  }
+}
+
+function setSayuriAvatarMessage(text, kind = '') {
+  const target = byId('sayuri-avatar-message');
+  if (!target) return;
+  target.className = `sayuri-avatar-message ${kind}`.trim();
+  target.textContent = text;
+}
+
+function renderSayuriAvatarManager(slots) {
+  const container = byId('sayuri-avatar-grid');
+  if (!container) return;
+  container.replaceChildren();
+  const order = ['orb', 'chat', 'profile', 'hero'];
+
+  for (const slotName of order) {
+    const slot = slots[slotName];
+    if (!slot) continue;
+    const card = document.createElement('article');
+    card.className = 'sayuri-avatar-slot';
+
+    const preview = document.createElement('img');
+    preview.src = slot.url;
+    preview.alt = slot.label;
+
+    const copy = document.createElement('div');
+    const title = document.createElement('strong');
+    title.textContent = slot.label;
+    const recommend = document.createElement('span');
+    recommend.textContent = `рекомендуется ${slot.recommended}×${slot.recommended}px`;
+    const actual = document.createElement('small');
+    actual.textContent = slot.custom
+      ? `${slot.width || '?'}×${slot.height || '?'} · ${formatBytes(slot.size_bytes)} · ${slot.filename || ''}`
+      : 'Сейчас используется стандартный образ Sayuri';
+    copy.append(title, recommend, actual);
+
+    const actions = document.createElement('div');
+    actions.className = 'sayuri-avatar-slot-actions';
+    const choose = document.createElement('button');
+    choose.type = 'button';
+    choose.className = 'secondary-button';
+    choose.textContent = slot.custom ? 'Заменить' : 'Загрузить';
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/png,image/jpeg,image/webp';
+    input.hidden = true;
+    choose.addEventListener('click', () => input.click());
+    input.addEventListener('change', () => {
+      const file = input.files?.[0];
+      if (file) uploadSayuriAvatar(slotName, file);
+      input.value = '';
+    });
+    actions.append(choose, input);
+
+    if (slot.custom) {
+      const reset = document.createElement('button');
+      reset.type = 'button';
+      reset.className = 'secondary-button danger-soft';
+      reset.textContent = 'Стандартный';
+      reset.addEventListener('click', () => resetSayuriAvatar(slotName));
+      actions.append(reset);
+    }
+
+    card.append(preview, copy, actions);
+    container.append(card);
+  }
+}
+
+async function uploadSayuriAvatar(slot, file) {
+  if (file.size > 8 * 1024 * 1024) {
+    setSayuriAvatarMessage('Файл больше 8 МБ.', 'error');
+    return;
+  }
+  setSayuriAvatarMessage(`Загружаю «${file.name}»…`);
+  try {
+    const response = await fetch(`/api/sayuri/avatar/upload?slot=${encodeURIComponent(slot)}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': file.type || 'application/octet-stream',
+        'X-Sayuri-Filename': encodeURIComponent(file.name)
+      },
+      body: file
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data?.error?.message || `HTTP ${response.status}`);
+    if (!sayuriState.profile) sayuriState.profile = {};
+    sayuriState.profile.avatars = data.slots;
+    renderSayuriAvatarManager(data.slots);
+    applySayuriAvatarImages();
+    renderSayuriMessages();
+    setSayuriAvatarMessage('Аватар сохранён локально и применён.', 'ready');
+  } catch (error) {
+    setSayuriAvatarMessage(`Ошибка: ${error instanceof Error ? error.message : String(error)}`, 'error');
+  }
+}
+
+async function resetSayuriAvatar(slot) {
+  if (!window.confirm('Вернуть для этого размера стандартный образ Sayuri?')) return;
+  try {
+    const response = await fetch(`/api/sayuri/avatar/${encodeURIComponent(slot)}`, {method: 'DELETE'});
+    const data = await response.json();
+    if (!response.ok) throw new Error(data?.error?.message || `HTTP ${response.status}`);
+    if (!sayuriState.profile) sayuriState.profile = {};
+    sayuriState.profile.avatars = data.slots;
+    renderSayuriAvatarManager(data.slots);
+    applySayuriAvatarImages();
+    renderSayuriMessages();
+    setSayuriAvatarMessage('Для этого размера восстановлен стандартный образ.', 'ready');
+  } catch (error) {
+    setSayuriAvatarMessage(`Ошибка: ${error instanceof Error ? error.message : String(error)}`, 'error');
+  }
 }
 
 async function loadSayuriProfile() {
@@ -1679,7 +1935,7 @@ function renderSayuriMessages() {
     const welcome = document.createElement('article');
     welcome.className = 'sayuri-message assistant';
     const avatar = document.createElement('img');
-    avatar.src = '/assets/sayuri-avatar.svg';
+    avatar.src = avatarUrl('chat');
     avatar.alt = '';
     const bubble = document.createElement('div');
     bubble.textContent = 'Я рядом, Господин. Откройте любой раздел проекта — я буду учитывать текущий экран в разговоре.';
@@ -1693,7 +1949,7 @@ function renderSayuriMessages() {
     row.className = `sayuri-message ${message.role}`;
     if (message.role === 'assistant') {
       const avatar = document.createElement('img');
-      avatar.src = '/assets/sayuri-avatar.svg';
+      avatar.src = avatarUrl('chat');
       avatar.alt = '';
       row.append(avatar);
     }
@@ -1736,8 +1992,19 @@ async function sendSayuriMessage(text) {
       history,
       context: currentSayuriContext()
     });
-    addSayuriMessage('assistant', result.answer, {model: result.model, usage: result.usage});
-    byId('sayuri-chat-status').textContent = 'DeepSeek-V4-Flash · Cloud.ru · готово';
+    addSayuriMessage('assistant', result.answer, {
+      model: result.model,
+      usage: result.usage,
+      memory_used: result.memory_used,
+      memory_saved: result.memory_saved
+    });
+    if (result.memory_saved) {
+      loadSayuriMemory().catch(() => {});
+      loadSayuriProfile().catch(() => {});
+    }
+    byId('sayuri-chat-status').textContent = result.model === 'local-memory'
+      ? 'Память Sayuri · сохранено локально'
+      : `DeepSeek-V4-Flash · Cloud.ru · память ${result.memory_used || 0}`;
   } catch (error) {
     const text = error instanceof Error ? error.message : String(error);
     addSayuriMessage('assistant', `Не удалось получить ответ: ${text}`);
@@ -1974,6 +2241,15 @@ function initializeSayuri() {
     persistSayuriHistory();
   });
   byId('sayuri-reset-layout').addEventListener('click', resetSayuriLayout);
+
+  byId('sayuri-memory-form').addEventListener('submit', saveSayuriMemory);
+  byId('sayuri-memory-filter').addEventListener('change', () => loadSayuriMemory().catch(showSayuriProviderError));
+  byId('sayuri-memory-refresh').addEventListener('click', () => loadSayuriMemory().catch(showSayuriProviderError));
+  byId('sayuri-memory-search').addEventListener('input', () => {
+    if (sayuriMemorySearchTimer) window.clearTimeout(sayuriMemorySearchTimer);
+    sayuriMemorySearchTimer = window.setTimeout(() => loadSayuriMemory().catch(showSayuriProviderError), 250);
+  });
+  byId('sayuri-avatar-refresh').addEventListener('click', () => loadSayuriProfile().catch(showSayuriProviderError));
 
   document.querySelectorAll('[data-sayuri-action]').forEach((button) => {
     button.addEventListener('click', () => runSayuriAction(button.dataset.sayuriAction));

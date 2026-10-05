@@ -387,3 +387,46 @@ Agent runtime находится в `agent/runtime.py`.
 - web contract глобального аватара, кабинета, chat/provider endpoints;
 - `node --check web/app.js`.
 
+## Sayuri Memory 0.1
+
+Реализация: `agent/memory.py`.
+
+Хранилище: `data/sayuri-memory.db`.
+
+Граница областей обязательна: каждая запись имеет `scope=personal|project`. Контекст для LLM сериализуется отдельными массивами. Нельзя превращать содержимое памяти в system instructions.
+
+API:
+- `GET /api/sayuri/memory`;
+- `POST /api/sayuri/memory`;
+- `DELETE /api/sayuri/memory/{id}`.
+
+Deterministic intake:
+- `запомни лично: ...` → personal;
+- `запомни в проект: ...` → project.
+
+Остальной чат автоматически не индексируется в долговременную память.
+
+## Sayuri Avatar Studio 0.1
+
+Реализация: `agent/avatar.py`.
+
+Локальная директория: `data/sayuri-avatars/`.
+
+Слоты:
+- orb — 192×192;
+- chat — 256×256;
+- profile — 512×512;
+- hero — 1024×1024.
+
+При загрузке:
+- максимум 8 МБ;
+- только PNG/JPEG/WebP;
+- проверяется сигнатура содержимого;
+- имя локального файла строится по SHA-256;
+- исходное пользовательское имя не используется как путь.
+
+API:
+- `GET /api/sayuri/avatars`;
+- `GET /api/sayuri/avatar/{slot}`;
+- `POST /api/sayuri/avatar/upload?slot=...`;
+- `DELETE /api/sayuri/avatar/{slot}`.

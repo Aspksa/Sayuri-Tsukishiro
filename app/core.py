@@ -11,7 +11,7 @@ from disk import DiskService
 
 from .config import Settings
 from .database import Database
-from .errors import ProviderError
+from .errors import BadRequestError, ProviderError
 from .system_settings import SystemSettings
 
 
@@ -28,6 +28,7 @@ class SayuriCore:
     def initialize(self, *, record_event: bool = True) -> None:
         self.database.initialize()
         self.system_settings.initialize()
+        self.agent.initialize()
         self.disk.initialize()
         if not record_event:
             return
@@ -78,6 +79,92 @@ class SayuriCore:
     def sayuri_profile(self) -> dict[str, Any]:
         return self.agent.profile()
 
+    def sayuri_memory(self, *, scope: str | None = None, query: str = "", limit: int = 100) -> dict[str, Any]:
+        try:
+            return self.agent.memory_payload(scope=scope, query=query, limit=limit)
+        except AgentRuntimeError as exc:
+            raise BadRequestError(str(exc)) from exc
+
+    def remember_sayuri(
+        self,
+        *,
+        scope: str,
+        kind: str,
+        content: str,
+        importance: int = 3,
+    ) -> dict[str, Any]:
+        try:
+            result = self.agent.remember(
+                scope=scope,
+                kind=kind,
+                content=content,
+                importance=importance,
+                source="personal_cabinet",
+            )
+        except AgentRuntimeError as exc:
+            raise BadRequestError(str(exc)) from exc
+        self.database.record_event(
+            "Sayuri",
+            "Память сохранена",
+            details={"scope": result["entry"]["scope"], "kind": result["entry"]["kind"]},
+        )
+        return result
+
+    def forget_sayuri(self, entry_id: str) -> dict[str, Any]:
+        result = self.agent.forget(entry_id)
+        if result["deleted"]:
+            self.database.record_event(
+                "Sayuri",
+                "Запись памяти удалена",
+                details={"memory_id": entry_id},
+            )
+        return result
+
+    def sayuri_avatars(self) -> dict[str, Any]:
+        return self.agent.avatar_payload()
+
+    def save_sayuri_avatar(
+        self,
+        *,
+        slot: str,
+        filename: str,
+        content_type: str | None,
+        data: bytes,
+    ) -> dict[str, Any]:
+        try:
+            result = self.agent.save_avatar(
+                slot=slot,
+                filename=filename,
+                content_type=content_type,
+                data=data,
+            )
+        except AgentRuntimeError as exc:
+            raise BadRequestError(str(exc)) from exc
+        self.database.record_event(
+            "Sayuri",
+            "Аватар обновлён",
+            details={
+                "slot": slot,
+                "width": result["avatar"].get("width"),
+                "height": result["avatar"].get("height"),
+            },
+        )
+        return result
+
+    def reset_sayuri_avatar(self, slot: str) -> dict[str, Any]:
+        try:
+            result = self.agent.reset_avatar(slot)
+        except AgentRuntimeError as exc:
+            raise BadRequestError(str(exc)) from exc
+        self.database.record_event("Sayuri", "Аватар сброшен", details={"slot": slot})
+        return result
+
+    def get_sayuri_avatar(self, slot: str) -> dict[str, Any]:
+        try:
+            return self.agent.get_avatar(slot)
+        except AgentRuntimeError as exc:
+            raise BadRequestError(str(exc)) from exc
+
     def configure_sayuri_provider(self, *, api_key: str | None, clear: bool = False) -> dict[str, Any]:
         try:
             result = self.agent.configure_provider(api_key=api_key, clear=clear)
@@ -109,8 +196,13 @@ class SayuriCore:
             raise ProviderError(str(exc), status=502) from exc
         self.database.record_event(
             "Sayuri",
-            "Ответ DeepSeek-V4-Flash получен",
-            details={"model": result["model"], "usage": result.get("usage", {})},
+            "Ответ Sayuri получен",
+            details={
+                "model": result["model"],
+                "usage": result.get("usage", {}),
+                "memory_used": result.get("memory_used", 0),
+                "memory_saved": bool(result.get("memory_saved")),
+            },
         )
         return result
 

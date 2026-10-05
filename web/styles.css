@@ -3772,3 +3772,260 @@ footer {
   }
 }
 
+/* ==========================================================================
+   SAYURI UI 0.15 — Long-term Memory & Avatar Studio
+   ========================================================================== */
+
+.sayuri-wide-card {
+  grid-column: 1 / -1;
+}
+
+.sayuri-memory-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  justify-content: flex-end;
+}
+
+.sayuri-memory-stats span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid #e0e5ec;
+  border-radius: 999px;
+  background: #f8f9fb;
+  color: var(--ui-muted, #6f7b8c);
+  font-size: 11px;
+}
+
+.sayuri-memory-stats strong {
+  color: var(--ui-text, #171b24);
+  font-size: 12px;
+}
+
+.sayuri-memory-form {
+  display: grid;
+  grid-template-columns: 150px 170px 150px minmax(280px, 1fr) auto;
+  gap: 9px;
+  align-items: stretch;
+  margin: 16px 0 12px;
+}
+
+.sayuri-memory-form select,
+.sayuri-memory-form textarea,
+.sayuri-memory-toolbar select,
+.sayuri-memory-toolbar input {
+  min-width: 0;
+  border: 1px solid #dfe4ea;
+  border-radius: 11px;
+  background: #fff;
+  color: var(--ui-text, #171b24);
+  font: inherit;
+}
+
+.sayuri-memory-form select,
+.sayuri-memory-toolbar select,
+.sayuri-memory-toolbar input {
+  min-height: 42px;
+  padding: 0 10px;
+}
+
+.sayuri-memory-form textarea {
+  min-height: 42px;
+  max-height: 150px;
+  padding: 10px 11px;
+  resize: vertical;
+  line-height: 1.4;
+}
+
+.sayuri-memory-toolbar {
+  display: grid;
+  grid-template-columns: 170px minmax(220px, 1fr) auto;
+  gap: 9px;
+  margin: 10px 0 12px;
+}
+
+.sayuri-memory-message,
+.sayuri-avatar-message {
+  min-height: 20px;
+  margin: 6px 0 10px;
+  color: var(--ui-muted, #6f7b8c);
+  font-size: 12px;
+}
+
+.sayuri-memory-message.ready,
+.sayuri-avatar-message.ready {
+  color: #2f7a51;
+}
+
+.sayuri-memory-message.error,
+.sayuri-avatar-message.error {
+  color: #a33d3d;
+}
+
+.sayuri-memory-list {
+  display: grid;
+  gap: 9px;
+  max-height: 560px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.sayuri-memory-entry {
+  display: grid;
+  gap: 8px;
+  padding: 13px 14px;
+  border: 1px solid #e5e8ed;
+  border-radius: 14px;
+  background: #fafbfc;
+}
+
+.sayuri-memory-entry p {
+  margin: 0;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.sayuri-memory-entry-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.sayuri-memory-entry-meta span {
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: #f0f2f5;
+  color: #687180;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.sayuri-memory-entry-meta .memory-scope.personal {
+  background: #f1eafa;
+  color: #72548f;
+}
+
+.sayuri-memory-entry-meta .memory-scope.project {
+  background: #eaf3fb;
+  color: #376c94;
+}
+
+.sayuri-memory-entry-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sayuri-memory-entry-footer small {
+  min-width: 0;
+  color: var(--ui-muted, #6f7b8c);
+  overflow-wrap: anywhere;
+}
+
+.sayuri-memory-entry-footer button {
+  flex: 0 0 auto;
+}
+
+.sayuri-avatar-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.sayuri-avatar-slot {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 13px;
+  align-items: center;
+  padding: 13px;
+  border: 1px solid #e3e7ed;
+  border-radius: 16px;
+  background: #fafbfc;
+}
+
+.sayuri-avatar-slot > img {
+  width: 92px;
+  height: 92px;
+  display: block;
+  grid-row: 1 / 3;
+  border-radius: 18px;
+  border: 1px solid #dddfe6;
+  object-fit: cover;
+  background: #fff;
+}
+
+.sayuri-avatar-slot > div:not(.sayuri-avatar-slot-actions) {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.sayuri-avatar-slot strong {
+  font-size: 13px;
+}
+
+.sayuri-avatar-slot span {
+  color: #5e6876;
+  font-size: 11px;
+}
+
+.sayuri-avatar-slot small {
+  color: var(--ui-muted, #6f7b8c);
+  font-size: 10.5px;
+  overflow-wrap: anywhere;
+}
+
+.sayuri-avatar-slot-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.sayuri-avatar-slot-actions .secondary-button {
+  min-height: 34px;
+  padding: 0 10px;
+}
+
+@media (max-width: 1180px) {
+  .sayuri-memory-form {
+    grid-template-columns: repeat(3, minmax(130px, 1fr));
+  }
+
+  .sayuri-memory-form textarea {
+    grid-column: 1 / -2;
+  }
+}
+
+@media (max-width: 780px) {
+  .sayuri-memory-form,
+  .sayuri-memory-toolbar,
+  .sayuri-avatar-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .sayuri-memory-form textarea {
+    grid-column: auto;
+  }
+
+  .sayuri-memory-entry-footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .sayuri-avatar-slot {
+    grid-template-columns: 76px minmax(0, 1fr);
+  }
+
+  .sayuri-avatar-slot > img {
+    width: 76px;
+    height: 76px;
+  }
+}
+
