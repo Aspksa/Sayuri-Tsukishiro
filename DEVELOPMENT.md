@@ -812,3 +812,148 @@ Graph extraction дополнительно создаёт company nodes для 
 AI-context открытого конфликта содержит ограниченные old/new значения и отдельный точный `open_conflicts` count.
 
 Graph source-memory nodes всегда сохраняют реальный label исходной записи. Технические fallback-подписи вроде «Источник знания» не могут перезаписать существующий содержательный label.
+
+## Memory 4.0
+
+Реализация: `agent/memory_v4.py`.
+
+Memory 4.0 использует существующую `data/sayuri-memory.db` и не вводит внешнюю vector DB, embedding API или вторую LLM.
+
+### Таблицы
+
+- `memory_v4_state` — trust/freshness/utility/tier/sensitivity per memory;
+- `memory_source_trust` — эмпирическое и ручное доверие к источникам;
+- `memory_goals`;
+- `memory_tasks`;
+- `memory_decision_records`;
+- `memory_failures`;
+- `memory_causal_links`;
+- `memory_questions`;
+- `memory_recall_audit`;
+- `memory_response_recall`;
+- `memory_audit_log`;
+- `memory_snapshots`;
+- `memory_v4_meta`.
+
+### Recall pipeline
+
+```text
+query
+-> Semantic Memory candidates
+-> Memory 4.0 state
+-> source trust
+-> freshness
+-> utility
+-> hot/warm/cold tier
+-> sensitivity/cloud policy
+-> final score
+-> explanation
+-> recall audit
+```
+
+Cloud recall использует `for_cloud=True`. Secret/sensitive memories отбрасываются до формирования JSON для DeepSeek.
+
+Локальный поиск Личного кабинета использует `for_cloud=False` и поэтому может показывать защищённую запись с badge `LOCAL ONLY`.
+
+### Utility feedback
+
+Каждый chat response связывается с конкретным `recall_id`.
+
+Feedback корректирует:
+- helpful/unhelpful counters выбранных memories;
+- utility score;
+- evidence/correction counters source profile;
+- bounded empirical source trust.
+
+При пересмотре rating предыдущий вклад сначала вычитается.
+
+### Goals / Tasks
+
+Goal и Task — структурированные состояния, а не обычные notes.
+
+Task хранит `next_action` и `blocked_reason`.
+
+Goal/task nodes синхронизируются с Memory 3 Knowledge Graph.
+
+### Decision Memory
+
+`kind=decision` создаёт decision record.
+
+Rationale/alternatives извлекаются только из явных языковых маркеров. Если причины нет — поле остаётся пустым.
+
+### Failure / Causal Memory
+
+Safe Action failure создаёт fingerprint по strategy/tool + symptom.
+
+Повтор усиливает occurrences.
+
+Поздний успешный action той же strategy закрывает последний open failure и создаёт causal relation `resolved_by` с evidence/confidence.
+
+Это не является общим causal inference engine: связь создаётся только по наблюдаемому outcome pipeline.
+
+### Question Memory
+
+Open conflict Memory 3 создаёт вопрос с old/new memory IDs.
+
+Question закрывается после явного conflict resolution пользователя.
+
+### Snapshots
+
+Snapshot создаётся через SQLite online backup API в:
+
+`data/memory-snapshots/`
+
+Manifest хранит SHA-256.
+
+Restore:
+- требует exact string `RESTORE MEMORY`;
+- проверяет hash;
+- создаёт automatic pre-restore snapshot;
+- восстанавливает SQLite через backup API;
+- повторно инициализирует schemas;
+- запускает integrity check.
+
+### Integrity
+
+Проверяются:
+- SQLite `PRAGMA integrity_check`;
+- orphan graph edges;
+- dangling task → goal;
+- confirmed knowledge с отсутствующим memory source;
+- orphan response → recall.
+
+### API
+
+- `GET /api/sayuri/memory/v4`;
+- `POST /api/sayuri/memory/v4/maintenance`;
+- `POST /api/sayuri/memory/v4/goals`;
+- `POST /api/sayuri/memory/v4/goals/{id}/update`;
+- `POST /api/sayuri/memory/v4/tasks`;
+- `POST /api/sayuri/memory/v4/tasks/{id}/update`;
+- `POST /api/sayuri/memory/v4/sources/trust`;
+- `POST /api/sayuri/memory/v4/questions/{id}/resolve`;
+- `POST /api/sayuri/memory/v4/integrity`;
+- `POST /api/sayuri/memory/v4/snapshots`;
+- `POST /api/sayuri/memory/v4/snapshots/{id}/restore`.
+
+### Invariants
+
+- trust/freshness/utility affect ranking, not stored truth;
+- secrets cannot be re-enabled for Cloud through Source Trust;
+- personal/project scopes remain separated;
+- question is not knowledge;
+- failure evidence is not generalized into unsupported causality;
+- snapshots remain local under `data/`;
+- restore never happens implicitly;
+- Memory 4.0 cannot extend Action Broker permissions.
+
+### Verification
+
+Required release checks:
+- `python3 -m unittest discover -s scripts/tests -v`;
+- `python3 -m unittest discover -s app/tests -v`;
+- `node --check web/app.js`;
+- `python3 -m app.preflight`;
+- `python3 scripts/versioning.py check --each-commit` on atomic release commit;
+- Windows launcher workflow.
+
