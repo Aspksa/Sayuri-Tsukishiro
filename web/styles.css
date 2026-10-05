@@ -5517,3 +5517,22 @@ footer {
   text-overflow: ellipsis;
 }
 
+
+
+/* ==========================================================================
+   SAYURI UI 0.23 — Reasoning Planner + Result Verifier
+   ========================================================================== */
+.sayuri-reasoning-summary {
+  margin-top: 8px;
+  border: 1px solid var(--ui-line);
+  border-radius: 12px;
+  padding: 7px 9px;
+  background: rgba(255, 255, 255, 0.72);
+  font-size: 12px;
+}
+.sayuri-reasoning-summary summary { cursor: pointer; font-weight: 650; }
+.sayuri-reasoning-summary ol { margin: 8px 0 6px; padding-left: 20px; }
+.sayuri-reasoning-summary li + li { margin-top: 4px; }
+.sayuri-reasoning-goal,
+.sayuri-reasoning-issues { margin: 7px 0; color: var(--ui-muted); }
+.sayuri-reasoning-summary small { display: block; margin-top: 6px; color: var(--ui-muted); }

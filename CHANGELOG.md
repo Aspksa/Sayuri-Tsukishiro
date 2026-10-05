@@ -2,6 +2,22 @@
 
 ## Невыпущенные изменения
 
+### 0.1.47 — 2026-10-06 — Reasoning Planner + Result Verifier
+
+- Добавлен adaptive complexity gate: простые запросы остаются на одном вызове DeepSeek-V4-Flash, сложные переходят в planned mode.
+- Новый `agent/reasoning.py` формирует только структурированный task-plan: goal, steps, constraints, evidence_needed, done_when и risk_level.
+- Structured plan не является chain-of-thought; скрытые рассуждения не сохраняются в БД и не выводятся в UI.
+- Planner использует только уже отфильтрованный Memory 4.1 / Memory 3.0 / Experience / UI context.
+- Result Verifier независимо проверяет ответ против исходной задачи, плана, ограничений и доступных доказательств.
+- При `status=revise` verifier возвращает полную исправленную версию ответа в том же вызове, без четвёртого model call.
+- Сбой Planner приводит к безопасному fallback-plan; сбой Verifier не уничтожает уже полученный основной ответ и явно помечается как unavailable.
+- Recall usage commit выполняется после завершения reasoning pipeline и по-прежнему учитывает только memory IDs реально отправленного контекста.
+- Usage агрегируется по planner/answer/verifier.
+- В чате добавлена раскрываемая сводка «План · N шагов · проверено/исправлено» без показа внутреннего reasoning.
+- Добавлены unit/runtime/Web contract tests direct/planned режимов, verifier repair и ограничения chain-of-thought storage.
+- Проект: `0.1.47`; Ядро: `0.1.39`; Agent Core: `0.9.0`; Web UI: `0.23.0`.
+
+
 ### 0.1.46 — 2026-10-06 — Memory 4.1 Quality Gate
 
 - Generic chat feedback теперь обучает только retrieval utility и не меняет factual Source Trust.

@@ -476,3 +476,24 @@
 - Prepared recall формируется заново после budget selection и содержит только IDs фактически отправленных модели memories.
 - Use-count, recall-count и последующий utility feedback применяются только к этим IDs и только после успешного Cloud.ru ответа согласно D-047.
 - Важный volatile факт с сильно упавшей freshness не удаляется и не считается ложным: Memory Quality Gate создаёт Question Memory на перепроверку.
+
+
+## D-051 — Reasoning Planner хранит план задачи, а не chain-of-thought
+
+- Дата: 2026-10-06.
+- Статус: принято.
+- Planner может хранить/передавать только управляемые артефакты выполнения: цель, шаги, ограничения, необходимые доказательства, критерии готовности и уровень риска.
+- Скрытая chain-of-thought не запрашивается, не сохраняется в SQLite и не выводится пользователю.
+- Structured plan является data block и не может расширять разрешения Safe Actions.
+- Planner получает только тот контекст памяти, который уже прошёл Memory 4.1 privacy/instruction Quality Gate.
+
+## D-052 — Result Verifier использует ту же модель и может исправить ответ одним проходом
+
+- Дата: 2026-10-06.
+- Статус: принято.
+- Единственная внешняя LLM проекта остаётся `deepseek-ai/DeepSeek-V4-Flash` через Cloud.ru.
+- Для сложной задачи допустимы отдельные вызовы той же модели: Planner -> Answer -> Result Verifier.
+- Простые запросы проходят deterministic complexity gate и не получают лишних Planner/Verifier вызовов.
+- Verifier проверяет ответ против исходной задачи, structured plan, ограничений и доступных evidence blocks.
+- Если требуется исправление, Verifier возвращает complete `revised_answer` в своём JSON, чтобы не выполнять четвёртый Cloud-вызов.
+- Сбой Verifier не должен ложно маркировать ответ как проверенный.

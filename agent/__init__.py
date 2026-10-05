@@ -10,6 +10,7 @@ from .runtime import (
     SayuriAgent,
 )
 from .memory_v4 import MemorySystemV4, MemorySystemV4Error
+from .reasoning import ReasoningDecision, ReasoningEngine, ReasoningError
 from .semantic_memory import SemanticMemoryIndex
 
 __all__ = [
@@ -25,6 +26,9 @@ __all__ = [
     "MemorySystemV3",
     "MemorySystemV4",
     "MemorySystemV4Error",
+    "ReasoningDecision",
+    "ReasoningEngine",
+    "ReasoningError",
     "SemanticMemoryIndex",
     "SayuriAgent",
 ]

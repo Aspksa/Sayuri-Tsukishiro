@@ -235,3 +235,21 @@
 - Личный кабинет показывает Quarantine и количество записей к перепроверке.
 - Добавлены regression tests для quarantine, adjacent-layer firewall, diversified recall, stale review queue и context budget attribution.
 - Приёмка: один атомарный release commit `0.1.46` от `main 0.1.45`, полный зелёный workflow Versions, merge через PR и зелёный финальный CI на `main`.
+
+
+## AI-005 — Reasoning Planner + Result Verifier
+
+- Статус: `implemented`; релиз считается проверенным только после зелёного atomic/main CI.
+- Версия проекта: `0.1.47`.
+- Добавлен adaptive complexity gate: простой чат не получает лишние модельные вызовы.
+- Для сложных задач Planner формирует structured task-plan без хранения chain-of-thought.
+- План включает goal, steps, constraints, evidence_needed, done_when и risk_level.
+- Planner получает только Cloud-safe/quality-gated контекст Memory 4.1, Memory 3.0, Experience и UI.
+- Основной ответ получает structured plan как контрольный data block.
+- Result Verifier отдельным вызовом той же `deepseek-ai/DeepSeek-V4-Flash` проверяет цель, ограничения и evidence.
+- Verifier может вернуть полную revised_answer в том же вызове; отдельная вторая модель не добавляется.
+- Ошибка Planner использует локальный fallback-plan; ошибка Verifier помечается `unavailable` и не стирает основной ответ.
+- Recall usage/feedback остаются связаны только с фактически отправленной Memory 4.1.
+- Web chat показывает компактную раскрываемую сводку плана и результата проверки.
+- Chain-of-thought не сохраняется и не показывается.
+- Приёмка: один атомарный commit от `main 0.1.46`, полный workflow Versions, merge через PR и зелёный финальный main CI.
