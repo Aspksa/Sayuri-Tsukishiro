@@ -221,7 +221,7 @@
 
 
 ## PHONE-005A — Sayuri Companion
-- Статус: `implemented; Android CI повторный прогон pending`.
+- Статус: `done`; основной CI и Android APK build/release success.
 - Реализовано:
   - Android companion source;
   - явное pairing confirmation;
@@ -235,3 +235,19 @@
   - Android APK build/release workflow;
   - Python/API/web/source contract tests.
 - Следующий шаг: PHONE-005B — после успешной сборки закрепить digest APK и сделать кнопку автоматической установки.
+
+
+## PHONE-005B — Verified Companion Installer
+- Статус: `implemented; CI pending`.
+- Реальный APK `companion-v0.1.1` собран GitHub Actions.
+- Закреплено:
+  - size `878630`;
+  - SHA-256 `ead6509b330a397bb88556f0af8b92f0efb92b1db92627111bbd996441f56f43`.
+- Реализовано:
+  - verified release download;
+  - size/hash gate;
+  - atomic cache;
+  - explicit-user `adb install -r`;
+  - post-install package verification;
+  - UI install → pair lifecycle;
+  - automatic ADB reverse restore после временного reconnect.

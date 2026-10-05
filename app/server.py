@@ -593,6 +593,23 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
                     )
                 return
 
+            if parsed.path == "/api/phone/companion/install":
+                payload = self._read_json()
+                result = self.server.core.phone.install_companion(
+                    payload.get("serial")
+                )
+                self.server.core.database.record_event(
+                    "Телефон Sayuri",
+                    "Sayuri Companion установлен",
+                    details={
+                        "serial": result.get("serial"),
+                        "version": result.get("version"),
+                        "sha256": result.get("sha256"),
+                    },
+                )
+                self._json(result)
+                return
+
             if parsed.path == "/api/phone/companion/enable":
                 payload = self._read_json()
                 result = self.server.core.phone.enable_companion(

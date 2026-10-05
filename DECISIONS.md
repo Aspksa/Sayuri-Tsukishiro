@@ -364,3 +364,16 @@
 - Notification content не пишется в обычный журнал Sayuri; он живёт в ограниченной ephemeral queue.
 - Доступ к уведомлениям выдаётся только через штатные Android Notification Listener Settings.
 - APK не загружается/устанавливается до фактической CI-сборки и получения проверяемого digest.
+
+
+## D-025 — Companion APK устанавливается только после release-build и digest verification
+
+- Дата: 2026-10-05.
+- Статус: принято.
+- Источник доверия: собственный GitHub Release `companion-v0.1.1`, созданный успешным Android CI.
+- APK SHA-256:
+  `ead6509b330a397bb88556f0af8b92f0efb92b1db92627111bbd996441f56f43`.
+- Desktop не использует latest-release lookup и не принимает URL от browser.
+- Версия, URL, размер и digest являются константами PHONE backend.
+- Установка не выполняется автоматически при старте/подключении телефона: требуется явное действие пользователя.
+- ADB reverse может быть автоматически восстановлен после транспортного reconnect, потому что это восстановление уже одобренного локального pairing, а не новое разрешение Notification Access.

@@ -781,3 +781,39 @@ Preflight теперь отдельно выводит `диск_sayuri`, что
   - SDK packages: platform-tools, Android 36, build-tools 36.0.0;
   - Gradle 9.6.1 и его SHA-256 остаются закреплены.
 - Следующий Android CI должен впервые дойти до AGP/Java compile.
+
+
+## PHONE-005B — проверяемая установка Companion
+
+- Дата: 2026-10-05.
+- Android CI для `companion-v0.1.1` завершён успешно.
+- GitHub Release:
+  - tag: `companion-v0.1.1`;
+  - APK: `Sayuri-Companion-v0.1.1.apk`;
+  - размер: `878630` байт;
+  - SHA-256: `ead6509b330a397bb88556f0af8b92f0efb92b1db92627111bbd996441f56f43`.
+- Версии PHONE-005B:
+  - проект `0.1.32`;
+  - Ядро Саюри `0.1.25`;
+  - Телефон Sayuri `0.7.1`;
+  - Web UI `0.10.1`;
+  - Sayuri Companion остаётся `0.1.1`.
+- Desktop installer:
+  - URL release APK зафиксирован в коде;
+  - максимальный download ограничен 8 MiB;
+  - ожидаемый размер проверяется;
+  - SHA-256 проверяется до установки;
+  - загрузка идёт во временный `.part`;
+  - только прошедший проверку файл атомарно становится локальным APK;
+  - установка выполняется только после явного нажатия пользователя;
+  - команда установки фиксирована: `adb -s <serial> install -r <verified-apk>`;
+  - после install дополнительно проверяется наличие package.
+- UI:
+  - если Companion отсутствует — основная кнопка становится «Установить Companion 0.1.1»;
+  - после установки — «Сопрячь Companion»;
+  - токен сопряжения браузеру не раскрывается.
+- Reconnect:
+  - в текущем desktop-процессе запоминается host port companion-туннеля;
+  - после ADB reconnect статус Companion проверяет reverse list;
+  - отсутствующий `adb reverse tcp:8766 tcp:<Sayuri port>` восстанавливается автоматически;
+  - pairing token не пересоздаётся при таком восстановлении.

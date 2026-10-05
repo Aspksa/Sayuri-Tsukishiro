@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import json
 from pathlib import Path
 import subprocess
@@ -16,6 +17,13 @@ from app.logging_setup import configure_logging
 from app.server import create_server
 
 from phone import PhoneService
+from phone.service import (
+    COMPANION_APK_NAME,
+    COMPANION_APK_SHA256,
+    COMPANION_APK_SIZE,
+    COMPANION_APK_URL,
+    COMPANION_RELEASE_VERSION,
+)
 from phone.companion import (
     COMPANION_DEVICE_PORT,
     COMPANION_PACKAGE,
@@ -141,6 +149,129 @@ class CompanionServiceTests(unittest.TestCase):
             self.assertIn("sayuri_serial", launch)
             self.assertNotIn("token", result)
 
+    def test_companion_release_is_exactly_pinned(self):
+        self.assertEqual(COMPANION_RELEASE_VERSION, "0.1.1")
+        self.assertEqual(COMPANION_APK_NAME, "Sayuri-Companion-v0.1.1.apk")
+        self.assertEqual(
+            COMPANION_APK_URL,
+            "https://github.com/Aspksa/Sayuri-Tsukishiro/releases/download/"
+            "companion-v0.1.1/Sayuri-Companion-v0.1.1.apk",
+        )
+        self.assertEqual(
+            COMPANION_APK_SHA256,
+            "ead6509b330a397bb88556f0af8b92f0efb92b1db92627111bbd996441f56f43",
+        )
+        self.assertEqual(COMPANION_APK_SIZE, 878630)
+
+    def test_download_rejects_unverified_companion_apk(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            service = PhoneService(Path(tmp))
+            service.initialize()
+            bad = io.BytesIO(b"not-the-release-apk")
+            with patch("phone.service.urllib.request.urlopen", return_value=bad):
+                with self.assertRaises(OSError):
+                    service._download_companion_apk()
+            self.assertFalse(service.companion_apk_path.exists())
+            self.assertFalse(
+                service.companion_apk_path.with_suffix(".apk.part").exists()
+            )
+
+    def test_install_companion_uses_verified_local_apk_and_adb_install(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            service = PhoneService(Path(tmp))
+            service.initialize()
+            apk = service.companion_apk_path
+            apk.write_bytes(b"verified-fixture")
+            completed = subprocess.CompletedProcess(
+                args=[],
+                returncode=0,
+                stdout="Success\n",
+                stderr="",
+            )
+            with patch.object(
+                service,
+                "_select_authorized_device",
+                return_value={"serial": "R58M123ABC", "authorized": True},
+            ), patch.object(
+                service,
+                "_resolve_adb",
+                return_value=Path("adb.exe"),
+            ), patch.object(
+                service,
+                "_download_companion_apk",
+                return_value=apk,
+            ), patch.object(
+                service,
+                "_companion_apk_verified",
+                return_value=True,
+            ), patch.object(
+                service,
+                "_companion_installed",
+                return_value=True,
+            ), patch.object(
+                service,
+                "_run",
+                return_value=completed,
+            ) as run:
+                result = service.install_companion("R58M123ABC")
+
+            self.assertEqual(result["version"], "0.1.1")
+            self.assertEqual(result["sha256"], COMPANION_APK_SHA256)
+            run.assert_called_once_with(
+                [
+                    "adb.exe",
+                    "-s",
+                    "R58M123ABC",
+                    "install",
+                    "-r",
+                    str(apk),
+                ],
+                timeout=120,
+            )
+
+    def test_companion_reverse_is_restored_after_adb_reconnect(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            service = PhoneService(Path(tmp))
+            service.initialize()
+            token = service.companion.issue("R58M123ABC")
+            self.assertTrue(token)
+            service._companion_host_ports["R58M123ABC"] = 8765
+
+            listing = subprocess.CompletedProcess(
+                args=[],
+                returncode=0,
+                stdout="",
+                stderr="",
+            )
+            restored = subprocess.CompletedProcess(
+                args=[],
+                returncode=0,
+                stdout="",
+                stderr="",
+            )
+            with patch.object(
+                service,
+                "_run",
+                side_effect=[listing, restored],
+            ) as run:
+                ready = service._ensure_companion_reverse(
+                    Path("adb.exe"),
+                    "R58M123ABC",
+                )
+
+            self.assertTrue(ready)
+            self.assertEqual(
+                run.call_args_list[1].args[0],
+                [
+                    "adb.exe",
+                    "-s",
+                    "R58M123ABC",
+                    "reverse",
+                    f"tcp:{COMPANION_DEVICE_PORT}",
+                    "tcp:8765",
+                ],
+            )
+
     def test_missing_companion_is_explicit(self):
         with tempfile.TemporaryDirectory() as tmp:
             service = PhoneService(Path(tmp))
@@ -203,6 +334,14 @@ class CompanionSourceContractTests(unittest.TestCase):
             workflow,
         )
         self.assertIn("platforms;android-36", workflow)
+        self.assertIn(
+            "android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd",
+            workflow,
+        )
+        app_build = (ROOT / "companion" / "app" / "build.gradle").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('versionName "0.1.1"', app_build)
 
 
 class CompanionApiTests(unittest.TestCase):
@@ -274,6 +413,21 @@ class CompanionApiTests(unittest.TestCase):
         ) as response:
             events = json.loads(response.read().decode("utf-8"))
         self.assertEqual(events["count"], 0)
+
+        self.core.phone.install_companion = MagicMock(
+            return_value={
+                "status": "Companion установлен",
+                "serial": "R58M123ABC",
+                "version": "0.1.1",
+                "sha256": COMPANION_APK_SHA256,
+            }
+        )
+        installed = self.post_json(
+            "/api/phone/companion/install",
+            {"serial": "R58M123ABC"},
+        )
+        self.assertEqual(installed["version"], "0.1.1")
+        self.core.phone.install_companion.assert_called_once_with("R58M123ABC")
 
         self.core.phone.enable_companion = MagicMock(
             return_value={

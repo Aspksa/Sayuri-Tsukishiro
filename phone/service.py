@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, BinaryIO, Iterator
+from hashlib import sha256
 import os
 import re
 import secrets
@@ -11,6 +12,7 @@ import subprocess
 import threading
 import time
 import uuid
+import urllib.request
 
 from .audio import AUDIO_BRIDGE_VERSION, iter_opus_bridge_records
 from .control import (
@@ -30,7 +32,7 @@ from .companion import (
 from .h264 import iter_h264_bridge_records
 
 
-PHONE_BACKEND_VERSION = "0.7.0"
+PHONE_BACKEND_VERSION = "0.7.1"
 SCRCPY_VERSION = "4.1"
 COMMAND_TIMEOUT_SECONDS = 20
 FRAME_TIMEOUT_SECONDS = 8
@@ -38,6 +40,15 @@ FRAME_CACHE_SECONDS = 0.35
 MAX_SWIPE_DURATION_MS = 1500
 MAX_TEXT_INPUT_CHARS = 250
 MAX_PHONE_PUSH_BYTES = 512 * 1024 * 1024
+COMPANION_RELEASE_VERSION = "0.1.1"
+COMPANION_APK_NAME = "Sayuri-Companion-v0.1.1.apk"
+COMPANION_APK_URL = (
+    "https://github.com/Aspksa/Sayuri-Tsukishiro/releases/download/"
+    "companion-v0.1.1/Sayuri-Companion-v0.1.1.apk"
+)
+COMPANION_APK_SHA256 = "ead6509b330a397bb88556f0af8b92f0efb92b1db92627111bbd996441f56f43"
+COMPANION_APK_SIZE = 878630
+COMPANION_APK_MAX_BYTES = 8 * 1024 * 1024
 QUALITY_PROFILES = {
     "economy": {"label": "Эконом", "max_size": "1024", "max_fps": "30", "video_bit_rate": "4M"},
     "balanced": {"label": "Баланс", "max_size": "1600", "max_fps": "60", "video_bit_rate": "8M"},
@@ -75,12 +86,14 @@ class PhoneService:
         self.scrcpy_root = self.runtime_root / "scrcpy"
         self.recordings_root = self.runtime_root / "recordings"
         self.uploads_root = self.runtime_root / "uploads"
+        self.companion_root = self.runtime_root / "companion"
         self._sessions: dict[str, subprocess.Popen] = {}
         self._recordings: dict[str, dict[str, Any]] = {}
         self._frame_cache: dict[str, dict[str, Any]] = {}
         self._h264_streams: set[str] = set()
         self._audio_streams: set[str] = set()
         self.companion = CompanionRegistry()
+        self._companion_host_ports: dict[str, int] = {}
         self._lock = threading.RLock()
         self._frame_lock = threading.Lock()
 
@@ -88,6 +101,7 @@ class PhoneService:
         self.runtime_root.mkdir(parents=True, exist_ok=True)
         self.recordings_root.mkdir(parents=True, exist_ok=True)
         self.uploads_root.mkdir(parents=True, exist_ok=True)
+        self.companion_root.mkdir(parents=True, exist_ok=True)
 
     @staticmethod
     def _creationflags() -> int:
@@ -1267,6 +1281,113 @@ class PhoneService:
             raise OSError((result.stderr or result.stdout or "Не удалось открыть приложение.").strip())
         return {"status": "приложение открыто", "serial": device_serial, "package": requested}
 
+    @property
+    def companion_apk_path(self) -> Path:
+        return self.companion_root / COMPANION_APK_NAME
+
+    @staticmethod
+    def _sha256_file(path: Path) -> str:
+        digest = sha256()
+        with path.open("rb") as source:
+            while True:
+                chunk = source.read(1024 * 1024)
+                if not chunk:
+                    break
+                digest.update(chunk)
+        return digest.hexdigest()
+
+    def _companion_apk_verified(self) -> bool:
+        path = self.companion_apk_path
+        if not path.is_file():
+            return False
+        try:
+            size = path.stat().st_size
+        except OSError:
+            return False
+        if size != COMPANION_APK_SIZE:
+            return False
+        return secrets.compare_digest(
+            self._sha256_file(path),
+            COMPANION_APK_SHA256,
+        )
+
+    def _download_companion_apk(self) -> Path:
+        self.companion_root.mkdir(parents=True, exist_ok=True)
+        target = self.companion_apk_path
+        if self._companion_apk_verified():
+            return target
+        target.unlink(missing_ok=True)
+
+        temporary = target.with_suffix(".apk.part")
+        temporary.unlink(missing_ok=True)
+        total = 0
+        digest = sha256()
+        try:
+            request = urllib.request.Request(
+                COMPANION_APK_URL,
+                headers={"User-Agent": "Sayuri-Tsukishiro/CompanionInstaller"},
+                method="GET",
+            )
+            with urllib.request.urlopen(request, timeout=30) as response, temporary.open("wb") as output:
+                while True:
+                    chunk = response.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    total += len(chunk)
+                    if total > COMPANION_APK_MAX_BYTES:
+                        raise ValueError("Sayuri Companion APK превышает допустимый размер.")
+                    digest.update(chunk)
+                    output.write(chunk)
+
+            actual = digest.hexdigest()
+            if total != COMPANION_APK_SIZE:
+                raise OSError(
+                    f"Размер Sayuri Companion APK не совпал: {total} вместо {COMPANION_APK_SIZE}."
+                )
+            if not secrets.compare_digest(actual, COMPANION_APK_SHA256):
+                raise OSError("SHA-256 Sayuri Companion APK не совпал.")
+            temporary.replace(target)
+            return target
+        finally:
+            temporary.unlink(missing_ok=True)
+
+    def install_companion(self, serial: Any) -> dict[str, Any]:
+        device = self._select_authorized_device(serial)
+        device_serial = device["serial"]
+        adb = self._resolve_adb()
+        if adb is None:
+            raise OSError("ADB runtime не установлен.")
+
+        apk = self._download_companion_apk()
+        if not self._companion_apk_verified():
+            raise OSError("Проверка Sayuri Companion APK перед установкой не пройдена.")
+
+        result = self._run(
+            [
+                str(adb), "-s", device_serial,
+                "install", "-r", str(apk),
+            ],
+            timeout=120,
+        )
+        combined = "\n".join(
+            part.strip()
+            for part in (result.stdout or "", result.stderr or "")
+            if part and part.strip()
+        )
+        if result.returncode != 0 or "Success" not in combined:
+            raise OSError(combined or "Android отклонил установку Sayuri Companion.")
+        if not self._companion_installed(adb, device_serial):
+            raise OSError("Sayuri Companion не обнаружен после установки.")
+
+        return {
+            "status": "Companion установлен",
+            "serial": device_serial,
+            "package": COMPANION_PACKAGE,
+            "version": COMPANION_RELEASE_VERSION,
+            "sha256": COMPANION_APK_SHA256,
+            "size_bytes": COMPANION_APK_SIZE,
+        }
+
     def _companion_installed(self, adb: Path, serial: str) -> bool:
         result = self._run(
             [str(adb), "-s", serial, "shell", "pm", "path", COMPANION_PACKAGE],
@@ -1287,6 +1408,39 @@ class PhoneService:
         enabled = (result.stdout or "").strip()
         return COMPANION_PACKAGE in enabled or COMPANION_LISTENER in enabled
 
+    def _ensure_companion_reverse(
+        self,
+        adb: Path,
+        serial: str,
+    ) -> bool:
+        with self._lock:
+            host_port = self._companion_host_ports.get(serial)
+        if host_port is None or not self.companion.paired(serial):
+            return False
+
+        listing = self._run(
+            [str(adb), "-s", serial, "reverse", "--list"],
+            timeout=5,
+        )
+        expected_device = f"tcp:{COMPANION_DEVICE_PORT}"
+        expected_host = f"tcp:{host_port}"
+        if listing.returncode == 0:
+            for raw in (listing.stdout or "").splitlines():
+                parts = raw.strip().split()
+                if expected_device in parts and expected_host in parts:
+                    return True
+
+        reverse = self._run(
+            [
+                str(adb), "-s", serial,
+                "reverse",
+                expected_device,
+                expected_host,
+            ],
+            timeout=COMMAND_TIMEOUT_SECONDS,
+        )
+        return reverse.returncode == 0
+
     def companion_status(self, serial: Any = None) -> dict[str, Any]:
         device = self._select_authorized_device(serial)
         device_serial = device["serial"]
@@ -1301,17 +1455,28 @@ class PhoneService:
             else False
         )
         registry = self.companion.status(device_serial)
+        tunnel_ready = self._ensure_companion_reverse(
+            adb,
+            device_serial,
+        ) if registry["paired"] else False
         return {
             "serial": device_serial,
             "package": COMPANION_PACKAGE,
             "installed": installed,
             "notification_access": notification_access,
             "paired": registry["paired"],
+            "tunnel_ready": tunnel_ready,
             "last_seen_at": registry["last_seen_at"],
             "events": registry["events"],
             "last_sequence": registry["last_sequence"],
             "protocol_version": COMPANION_PROTOCOL_VERSION,
             "device_port": COMPANION_DEVICE_PORT,
+            "release": {
+                "version": COMPANION_RELEASE_VERSION,
+                "apk_sha256": COMPANION_APK_SHA256,
+                "apk_size_bytes": COMPANION_APK_SIZE,
+                "cached_verified": self._companion_apk_verified(),
+            },
         }
 
     def enable_companion(self, serial: Any, *, host_port: int) -> dict[str, Any]:
@@ -1348,6 +1513,8 @@ class PhoneService:
                 (reverse.stderr or reverse.stdout or "Не удалось создать Companion tunnel.").strip()
             )
 
+        with self._lock:
+            self._companion_host_ports[device_serial] = port
         token = self.companion.issue(device_serial)
         launch = self._run(
             [
@@ -1362,6 +1529,8 @@ class PhoneService:
         )
         if launch.returncode != 0 or "Error type" in (launch.stdout or ""):
             self.companion.revoke(device_serial)
+            with self._lock:
+                self._companion_host_ports.pop(device_serial, None)
             try:
                 self._run(
                     [
@@ -1395,6 +1564,8 @@ class PhoneService:
         if adb is None:
             raise OSError("ADB runtime не установлен.")
         self.companion.revoke(device_serial)
+        with self._lock:
+            self._companion_host_ports.pop(device_serial, None)
         result = self._run(
             [
                 str(adb), "-s", device_serial,

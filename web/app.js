@@ -2982,16 +2982,19 @@ function renderPhoneCompanionStatus(status) {
   }
 
   if (!status?.installed) {
-    copy.textContent = 'Sayuri Companion ещё не установлен на телефоне.';
-    enable.textContent = 'Companion не установлен';
-    enable.disabled = true;
+    const version = status?.release?.version || '0.1.1';
+    copy.textContent = 'Sayuri Companion ещё не установлен. APK будет скачан из закреплённого GitHub Release и проверен по SHA-256.';
+    enable.textContent = `Установить Companion ${version}`;
+    enable.disabled = false;
+    enable.dataset.companionAction = 'install';
     disable.classList.add('hidden');
-    live.textContent = 'Нужен Sayuri Companion';
+    live.textContent = 'Companion не установлен';
     notificationButton.disabled = true;
     return;
   }
 
   enable.disabled = false;
+  enable.dataset.companionAction = 'pair';
   notificationButton.disabled = !status.paired;
   disable.classList.toggle('hidden', !status.paired);
 
@@ -2999,6 +3002,13 @@ function renderPhoneCompanionStatus(status) {
     copy.textContent = 'Companion установлен. Нажмите «Сопрячь Companion» и подтвердите подключение на телефоне.';
     enable.textContent = 'Сопрячь Companion';
     live.textContent = 'Готов к сопряжению';
+    return;
+  }
+
+  if (!status.tunnel_ready) {
+    copy.textContent = 'Companion сопряжён, но ADB-туннель сейчас недоступен. Sayuri попробует восстановить его автоматически.';
+    enable.textContent = 'Пересопрячь';
+    live.textContent = 'Восстанавливаю канал';
     return;
   }
 
@@ -3127,6 +3137,36 @@ async function loadPhoneCompanion() {
     } catch {}
   }
   schedulePhoneCompanionPolling(data.last_seen_at ? 2200 : 1600);
+}
+
+async function installPhoneCompanion() {
+  if (!phoneState.selectedSerial) return;
+  const button = byId('phone-companion-enable');
+  button.disabled = true;
+  const previous = button.textContent;
+  button.textContent = 'Проверка и установка…';
+  try {
+    const result = await postJson('/api/phone/companion/install', {
+      serial: phoneState.selectedSerial
+    });
+    showPhoneMessage(
+      `${result.status || 'Companion установлен'} · версия ${result.version || ''}`.trim()
+    );
+    await loadPhoneCompanion();
+  } catch (error) {
+    showPhoneError(error);
+    button.textContent = previous;
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function handlePhoneCompanionPrimary() {
+  if (byId('phone-companion-enable').dataset.companionAction === 'install') {
+    await installPhoneCompanion();
+    return;
+  }
+  await enablePhoneCompanion();
 }
 
 async function enablePhoneCompanion() {
@@ -3356,7 +3396,7 @@ byId('phone-file-picker').addEventListener('change', async (event) => {
 byId('phone-apps').addEventListener('click', loadPhoneApps);
 byId('phone-app-close').addEventListener('click', () => byId('phone-app-drawer').classList.add('hidden'));
 byId('phone-app-search').addEventListener('input', renderPhoneApps);
-byId('phone-companion-enable').addEventListener('click', enablePhoneCompanion);
+byId('phone-companion-enable').addEventListener('click', handlePhoneCompanionPrimary);
 byId('phone-companion-disable').addEventListener('click', disablePhoneCompanion);
 byId('phone-notifications').addEventListener('click', togglePhoneNotifications);
 byId('phone-notification-close').addEventListener('click', () => {

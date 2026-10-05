@@ -2,6 +2,20 @@
 
 ## Невыпущенные изменения
 
+### 0.1.32 — 2026-10-05 — Verified Sayuri Companion installer
+
+- Телефон Sayuri повышен до `0.7.1`, Web UI до `0.10.1`.
+- Закреплён реально собранный APK Sayuri Companion 0.1.1.
+- APK download привязан к точному versioned GitHub Release.
+- До `adb install -r` проверяются размер и SHA-256.
+- Непроверенный/оборванный download удаляется.
+- Установка запускается только явной кнопкой пользователя.
+- После установки проверяется Android package.
+- UI автоматически переключается с «Установить» на «Сопрячь».
+- ADB reverse Companion автоматически восстанавливается после reconnect в пределах текущего desktop-процесса.
+- Добавлены installer/reverse/API/web regression tests.
+
+
 ### 0.1.31 — 2026-10-05 — Companion Android CI bootstrap
 
 - Sayuri Companion повышен до `0.1.1`.

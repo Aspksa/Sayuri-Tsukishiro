@@ -836,3 +836,43 @@ Notification content is not copied into the standard system log.
 - builds debug APK;
 - uploads Actions artifact;
 - publishes `companion-v0.1.0` release with APK + sha256 file.
+
+
+## Телефон Sayuri 0.7.1 — Verified Companion Installer
+
+Pinned artifact:
+```text
+release: companion-v0.1.1
+file: Sayuri-Companion-v0.1.1.apk
+size: 878630
+sha256: ead6509b330a397bb88556f0af8b92f0efb92b1db92627111bbd996441f56f43
+```
+
+Install pipeline:
+```text
+user click
+  → POST /api/phone/companion/install
+  → authorized current ADB device
+  → exact hardcoded GitHub Release URL
+  → .apk.part
+  → max 8 MiB gate
+  → exact size gate
+  → SHA-256 gate
+  → atomic rename
+  → adb install -r
+  → pm path com.sayuri.tsukishiro.companion
+```
+
+Reconnect:
+```text
+paired session + known Sayuri host port
+  → adb reverse --list
+  → missing mapping
+  → recreate tcp:8766 → tcp:<Sayuri port>
+```
+
+Browser never receives:
+- APK URL as configurable input;
+- pairing token;
+- arbitrary adb install path;
+- arbitrary reverse mapping.
