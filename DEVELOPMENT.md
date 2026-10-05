@@ -507,3 +507,47 @@ Viewer flow:
 Spatial diagnostics использует `capabilities.pdfium_available`. Старое имя `pymupdf_available` для текущего PDFium engine некорректно.
 
 Следующее архитектурное улучшение — вынести тяжёлый OCR в persisted background queue с page-level progress. Это не входит в `0.1.40`.
+
+## Memory Intelligence 2.0
+
+Реализация: `agent/memory_intelligence.py`.
+
+Хранилище использует ту же локальную SQLite БД `data/sayuri-memory.db`.
+
+Таблицы:
+- `memory_candidates`;
+- `memory_intelligence_settings`.
+
+Дополнительные поля `memory_entries`:
+- `source_context_json`;
+- `confidence`;
+- `supersedes_id`.
+
+Pipeline:
+
+```text
+user message
+-> deterministic classifier
+-> scope/kind/confidence
+-> duplicate/conflict comparison
+-> candidate
+-> user review
+-> SayuriMemory.add()
+```
+
+По умолчанию:
+- `candidate_generation=true`;
+- `conflict_detection=true`;
+- `context_linking=true`;
+- `auto_save_high_confidence=false`;
+- `auto_save_threshold=0.96`.
+
+High-confidence autosave intentionally разрешён только для `scope=project`, `kind=fact`. Он не применяется к personal, preference, decision или task.
+
+API:
+- `GET /api/sayuri/memory/candidates`;
+- `POST /api/sayuri/memory/candidates/{id}/review`;
+- `GET /api/sayuri/memory/intelligence`;
+- `POST /api/sayuri/memory/intelligence`.
+
+Memory context для LLM остаётся разделённым на personal/project и передаётся как недоверенные справочные данные.
