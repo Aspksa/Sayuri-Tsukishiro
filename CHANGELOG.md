@@ -2,6 +2,16 @@
 
 ## Невыпущенные изменения
 
+### 0.1.36 — 2026-10-05 — удаление Android/device-интеграции
+
+- Полностью удалён ненужный Android/device-контур.
+- Удалены backend-модуль, приложение-компаньон, HTTP API, media/control bridge и ADB/scrcpy runtime.
+- Удалены связанный Web UI, стили, тесты и отдельный Android workflow.
+- `MODULES.json` очищен от удалённых модулей.
+- Ядро Саюри повышено до `0.1.28`, Web UI до `0.13.0`, dev-tools до `0.1.6`.
+- Диск Sayuri, ДНК, OCR и Agent Core не изменены функционально.
+
+
 ### 0.1.35 — 2026-10-05 — Unified Sayuri UI 0.12
 
 - Web UI повышен до `0.12.0`.
