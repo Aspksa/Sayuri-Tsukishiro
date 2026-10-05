@@ -32,7 +32,7 @@ from .companion import (
 from .h264 import iter_h264_bridge_records
 
 
-PHONE_BACKEND_VERSION = "0.8.0"
+PHONE_BACKEND_VERSION = "0.8.1"
 SCRCPY_VERSION = "4.1"
 COMMAND_TIMEOUT_SECONDS = 20
 FRAME_TIMEOUT_SECONDS = 8
@@ -1281,9 +1281,9 @@ class PhoneService:
         *,
         location: Any = "downloads",
     ) -> dict[str, Any]:
+        root, label = self._phone_import_root(location)
         device = self._select_authorized_device(serial)
         device_serial = device["serial"]
-        root, label = self._phone_import_root(location)
         adb = self._resolve_adb()
         if adb is None:
             raise OSError("ADB runtime не установлен.")
@@ -1336,10 +1336,10 @@ class PhoneService:
         location: Any,
         name: Any,
     ) -> dict[str, Any]:
-        device = self._select_authorized_device(serial)
-        device_serial = device["serial"]
         root, label = self._phone_import_root(location)
         safe_name = self._phone_import_name(name)
+        device = self._select_authorized_device(serial)
+        device_serial = device["serial"]
         remote = f"{root.rstrip('/')}/{safe_name}"
         adb = self._resolve_adb()
         if adb is None:

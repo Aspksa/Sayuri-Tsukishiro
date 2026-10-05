@@ -254,7 +254,7 @@
 
 
 ## PHONE-006 — Final Workspace Polish
-- Статус: `implemented; current CI pending`.
+- Статус: `implemented`; финальная проверка отслеживается по latest main CI.
 - Реализовано:
   - MAX quality 2560 / 60 FPS / 24 Mbit/s;
   - fullscreen;
