@@ -848,64 +848,65 @@ class MemorySystemV3:
 
         created = 0
         seen_pairs: set[tuple[str, str]] = set()
-        with self._connect() as db:
-            for (scope, kind), items in groups.items():
-                items = items[:120]
-                for index, left in enumerate(items):
-                    cluster = [left]
-                    scores: list[float] = []
-                    for right in items[index + 1:]:
-                        pair = tuple(sorted((left["id"], right["id"])))
-                        if pair in seen_pairs:
-                            continue
-                        details = self.semantic.score(
-                            left["content"],
-                            right["content"],
-                            importance=max(left["importance"], right["importance"]),
-                            confidence=max(
-                                float(left.get("confidence") or 0.5),
-                                float(right.get("confidence") or 0.5),
-                            ),
-                        )
-                        similarity = float(details["score"])
-                        if similarity < self.CONSOLIDATION_THRESHOLD:
-                            continue
-                        seen_pairs.add(pair)
-                        cluster.append(right)
-                        scores.append(similarity)
-
-                    if len(cluster) < 2:
+        for (scope, kind), items in groups.items():
+            items = items[:120]
+            for index, left in enumerate(items):
+                cluster = [left]
+                scores: list[float] = []
+                for right in items[index + 1:]:
+                    pair = tuple(sorted((left["id"], right["id"])))
+                    if pair in seen_pairs:
                         continue
-                    source_ids = sorted({item["id"] for item in cluster})
-                    fingerprint = hashlib.sha256("|".join(source_ids).encode("utf-8")).hexdigest()
+                    details = self.semantic.score(
+                        left["content"],
+                        right["content"],
+                        importance=max(left["importance"], right["importance"]),
+                        confidence=max(
+                            float(left.get("confidence") or 0.5),
+                            float(right.get("confidence") or 0.5),
+                        ),
+                    )
+                    similarity = float(details["score"])
+                    if similarity < self.CONSOLIDATION_THRESHOLD:
+                        continue
+                    seen_pairs.add(pair)
+                    cluster.append(right)
+                    scores.append(similarity)
+
+                if len(cluster) < 2:
+                    continue
+                source_ids = sorted({item["id"] for item in cluster})
+                fingerprint = hashlib.sha256("|".join(source_ids).encode("utf-8")).hexdigest()
+                with self._connect() as db:
                     exists = db.execute(
                         "SELECT id FROM memory_consolidations WHERE id = ?",
                         (fingerprint,),
                     ).fetchone()
-                    if exists:
-                        continue
+                if exists:
+                    continue
 
-                    canonical = max(
-                        cluster,
-                        key=lambda item: (
-                            int(item.get("importance") or 0),
-                            float(item.get("confidence") or 0.5),
-                            int(item.get("use_count") or 0),
-                            item.get("updated_at") or "",
-                        ),
-                    )
-                    confidence = min(
-                        0.99,
-                        max(float(item.get("confidence") or 0.6) for item in cluster)
-                        + min(0.10, 0.02 * (len(cluster) - 1)),
-                    )
-                    knowledge = self._promote_if_ready(
-                        canonical,
-                        source_ids=source_ids,
-                        confidence_override=confidence,
-                    )
-                    if not knowledge:
-                        continue
+                canonical = max(
+                    cluster,
+                    key=lambda item: (
+                        int(item.get("importance") or 0),
+                        float(item.get("confidence") or 0.5),
+                        int(item.get("use_count") or 0),
+                        item.get("updated_at") or "",
+                    ),
+                )
+                confidence = min(
+                    0.99,
+                    max(float(item.get("confidence") or 0.6) for item in cluster)
+                    + min(0.10, 0.02 * (len(cluster) - 1)),
+                )
+                knowledge = self._promote_if_ready(
+                    canonical,
+                    source_ids=source_ids,
+                    confidence_override=confidence,
+                )
+                if not knowledge:
+                    continue
+                with self._connect() as db:
                     db.execute(
                         """
                         INSERT INTO memory_consolidations(
@@ -923,7 +924,7 @@ class MemorySystemV3:
                             self._now(),
                         ),
                     )
-                    created += 1
+                created += 1
 
         if created:
             self._timeline(
@@ -1011,6 +1012,28 @@ class MemorySystemV3:
             ).fetchall()
         return [self._conflict_row(row) for row in rows]
 
+    def _close_knowledge_for_memory(self, memory_id: str, *, status: str = "superseded") -> int:
+        now = self._now()
+        changed = 0
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT id, source_memory_ids_json FROM knowledge_items WHERE status = 'confirmed'"
+            ).fetchall()
+            for row in rows:
+                source_ids = self._decode(row["source_memory_ids_json"], [])
+                if memory_id not in source_ids:
+                    continue
+                db.execute(
+                    """
+                    UPDATE knowledge_items
+                    SET status = ?, valid_to = ?, updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (status, now, now, row["id"]),
+                )
+                changed += 1
+        return changed
+
     def resolve_conflict(self, conflict_id: str, resolution: str) -> dict[str, Any]:
         resolution = (resolution or "").strip().lower()
         if resolution not in {"prefer_new", "prefer_old", "keep_both"}:
@@ -1025,9 +1048,11 @@ class MemorySystemV3:
 
         if resolution == "prefer_new":
             self.memory.delete(conflict["old_memory_id"])
+            self._close_knowledge_for_memory(conflict["old_memory_id"])
             selected = self.memory.get(conflict["new_memory_id"], include_inactive=True)
         elif resolution == "prefer_old":
             self.memory.delete(conflict["new_memory_id"])
+            self._close_knowledge_for_memory(conflict["new_memory_id"])
             selected = self.memory.get(conflict["old_memory_id"], include_inactive=True)
         else:
             selected = None
