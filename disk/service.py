@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -7,6 +8,7 @@ import hashlib
 import json
 import mimetypes
 import os
+import re
 import sqlite3
 import zipfile
 import xml.etree.ElementTree as ET
@@ -14,9 +16,10 @@ from typing import BinaryIO, Any, Iterable
 import uuid
 
 from .dna import DNA_ANALYZER_VERSION, DocumentDNAAnalyzer
+from .dna_advanced import ADVANCED_DNA_VERSION, AdvancedDNAEngine
 
 
-DISK_SCHEMA_VERSION = 4
+DISK_SCHEMA_VERSION = 5
 CHUNK_SIZE = 1024 * 1024
 MAX_FILE_SIZE = 1024 * 1024 * 1024  # 1 ГБ
 MAX_PREVIEW_XML_BYTES = 16 * 1024 * 1024
@@ -30,6 +33,7 @@ class DiskService:
         self.objects_dir = storage_root / "objects"
         self.temp_dir = storage_root / "temp"
         self.dna_analyzer = DocumentDNAAnalyzer()
+        self.advanced_dna = AdvancedDNAEngine()
 
     def _connect(self) -> sqlite3.Connection:
         db = sqlite3.connect(self.database_path, timeout=5.0)
@@ -222,6 +226,41 @@ class DiskService:
                 """
                 CREATE INDEX IF NOT EXISTS ix_disk_dna_feedback_file
                 ON disk_dna_feedback(file_id, id)
+                """
+            )
+            db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS disk_dna_ledger (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    file_id TEXT NOT NULL REFERENCES disk_files(id) ON DELETE CASCADE,
+                    sequence_no INTEGER NOT NULL,
+                    event_type TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    payload_sha256 TEXT NOT NULL,
+                    previous_chain_hash TEXT,
+                    chain_hash TEXT NOT NULL,
+                    details_json TEXT NOT NULL DEFAULT '{}',
+                    UNIQUE(file_id, sequence_no)
+                )
+                """
+            )
+            db.execute(
+                """
+                CREATE INDEX IF NOT EXISTS ix_disk_dna_ledger_file
+                ON disk_dna_ledger(file_id, sequence_no)
+                """
+            )
+            db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS disk_dna_correction_rules (
+                    fact_type TEXT NOT NULL,
+                    original_canonical TEXT NOT NULL,
+                    corrected_json TEXT NOT NULL,
+                    supporting_files_json TEXT NOT NULL DEFAULT '[]',
+                    support_count INTEGER NOT NULL DEFAULT 0,
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY(fact_type, original_canonical, corrected_json)
+                )
                 """
             )
             db.execute(
@@ -1426,6 +1465,587 @@ class DiskService:
                 digest.update(chunk)
         return digest.hexdigest()
 
+    def _feedback_calibration(self, db: sqlite3.Connection) -> dict[str, Any]:
+        rows = db.execute(
+            """
+            SELECT f.fact_id, f.action, d.dna_json
+            FROM disk_dna_feedback f
+            JOIN disk_dna d ON d.file_id = f.file_id
+            ORDER BY f.id
+            """
+        ).fetchall()
+        stats: dict[str, dict[str, int]] = {}
+        for row in rows:
+            try:
+                dna = json.loads(row["dna_json"])
+            except (TypeError, json.JSONDecodeError):
+                continue
+            fact = next(
+                (
+                    item for item in dna.get("molecules", {}).get("facts", [])
+                    if item.get("id") == row["fact_id"]
+                ),
+                None,
+            )
+            if fact is None:
+                continue
+            fact_type = str(fact.get("type") or "unknown")
+            bucket = stats.setdefault(
+                fact_type,
+                {"samples": 0, "positive": 0, "negative": 0},
+            )
+            bucket["samples"] += 1
+            if row["action"] in {"confirm", "correct"}:
+                bucket["positive"] += 1
+            elif row["action"] == "reject":
+                bucket["negative"] += 1
+
+        result: dict[str, Any] = {}
+        for fact_type, bucket in stats.items():
+            samples = bucket["samples"]
+            reliability = (bucket["positive"] + 1) / (samples + 2)
+            result[fact_type] = {
+                **bucket,
+                "reliability": round(reliability, 4),
+            }
+        return result
+
+    @staticmethod
+    def _learned_correction_rules(db: sqlite3.Connection) -> list[dict[str, Any]]:
+        rows = db.execute(
+            """
+            SELECT fact_type, original_canonical, corrected_json, support_count
+            FROM disk_dna_correction_rules
+            WHERE support_count >= 3
+            ORDER BY support_count DESC, fact_type, original_canonical
+            """
+        ).fetchall()
+        result = []
+        for row in rows:
+            try:
+                corrected = json.loads(row["corrected_json"])
+            except json.JSONDecodeError:
+                continue
+            result.append(
+                {
+                    "fact_type": row["fact_type"],
+                    "original_canonical": row["original_canonical"],
+                    "corrected": corrected,
+                    "support_count": row["support_count"],
+                }
+            )
+        return result
+
+    def _register_correction_rule(
+        self,
+        db: sqlite3.Connection,
+        *,
+        file_id: str,
+        fact: dict[str, Any],
+        corrected_value: str,
+    ) -> None:
+        fact_type = str(fact.get("type") or "")
+        original = str((fact.get("normalized") or {}).get("canonical") or fact.get("value") or "")
+        if not fact_type or not original:
+            return
+        corrected = self.dna_analyzer._normalize_fact(fact_type, corrected_value)
+        corrected_json = json.dumps(corrected, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        row = db.execute(
+            """
+            SELECT supporting_files_json
+            FROM disk_dna_correction_rules
+            WHERE fact_type = ? AND original_canonical = ? AND corrected_json = ?
+            """,
+            (fact_type, original, corrected_json),
+        ).fetchone()
+        files: list[str] = []
+        if row is not None:
+            try:
+                files = [str(value) for value in json.loads(row["supporting_files_json"])]
+            except (TypeError, json.JSONDecodeError):
+                files = []
+        if file_id not in files:
+            files.append(file_id)
+        files = sorted(set(files))
+        db.execute(
+            """
+            INSERT INTO disk_dna_correction_rules(
+                fact_type, original_canonical, corrected_json,
+                supporting_files_json, support_count, updated_at
+            ) VALUES(?, ?, ?, ?, ?, ?)
+            ON CONFLICT(fact_type, original_canonical, corrected_json) DO UPDATE SET
+                supporting_files_json = excluded.supporting_files_json,
+                support_count = excluded.support_count,
+                updated_at = excluded.updated_at
+            """,
+            (
+                fact_type,
+                original,
+                corrected_json,
+                json.dumps(files, ensure_ascii=False),
+                len(files),
+                self._now(),
+            ),
+        )
+
+    def _append_dna_ledger(
+        self,
+        db: sqlite3.Connection,
+        *,
+        file_id: str,
+        event_type: str,
+        details: dict[str, Any],
+    ) -> dict[str, Any]:
+        previous = db.execute(
+            """
+            SELECT sequence_no, chain_hash
+            FROM disk_dna_ledger
+            WHERE file_id = ?
+            ORDER BY sequence_no DESC
+            LIMIT 1
+            """,
+            (file_id,),
+        ).fetchone()
+        sequence_no = int(previous["sequence_no"] if previous else 0) + 1
+        previous_hash = previous["chain_hash"] if previous else None
+        created_at = self._now()
+        details_json = json.dumps(
+            details,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        payload_sha256 = hashlib.sha256(details_json.encode("utf-8")).hexdigest()
+        chain_material = "|".join(
+            [
+                file_id,
+                str(sequence_no),
+                event_type,
+                created_at,
+                payload_sha256,
+                str(previous_hash or ""),
+            ]
+        )
+        chain_hash = hashlib.sha256(chain_material.encode("utf-8")).hexdigest()
+        db.execute(
+            """
+            INSERT INTO disk_dna_ledger(
+                file_id, sequence_no, event_type, created_at,
+                payload_sha256, previous_chain_hash, chain_hash, details_json
+            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                file_id,
+                sequence_no,
+                event_type,
+                created_at,
+                payload_sha256,
+                previous_hash,
+                chain_hash,
+                details_json,
+            ),
+        )
+        return {
+            "sequence_no": sequence_no,
+            "event_type": event_type,
+            "created_at": created_at,
+            "payload_sha256": payload_sha256,
+            "previous_chain_hash": previous_hash,
+            "chain_hash": chain_hash,
+        }
+
+    def dna_ledger(self, file_id: str, limit: int = 100) -> dict[str, Any]:
+        self.get_file(file_id, allow_trashed=True)
+        safe_limit = min(max(int(limit), 1), 500)
+        with self._session() as db:
+            rows = db.execute(
+                """
+                SELECT sequence_no, event_type, created_at, payload_sha256,
+                       previous_chain_hash, chain_hash, details_json
+                FROM disk_dna_ledger
+                WHERE file_id = ?
+                ORDER BY sequence_no
+                """,
+                (file_id,),
+            ).fetchall()
+
+        valid = True
+        previous_hash = None
+        entries = []
+        for row in rows:
+            details_json = row["details_json"]
+            payload_sha256 = hashlib.sha256(details_json.encode("utf-8")).hexdigest()
+            chain_material = "|".join(
+                [
+                    file_id,
+                    str(row["sequence_no"]),
+                    row["event_type"],
+                    row["created_at"],
+                    payload_sha256,
+                    str(previous_hash or ""),
+                ]
+            )
+            expected_chain = hashlib.sha256(chain_material.encode("utf-8")).hexdigest()
+            entry_valid = (
+                payload_sha256 == row["payload_sha256"]
+                and row["previous_chain_hash"] == previous_hash
+                and expected_chain == row["chain_hash"]
+            )
+            valid = valid and entry_valid
+            if len(entries) < safe_limit:
+                entries.append(
+                    {
+                        "sequence_no": row["sequence_no"],
+                        "event_type": row["event_type"],
+                        "created_at": row["created_at"],
+                        "payload_sha256": row["payload_sha256"],
+                        "previous_chain_hash": row["previous_chain_hash"],
+                        "chain_hash": row["chain_hash"],
+                        "valid": entry_valid,
+                        "details": json.loads(details_json),
+                    }
+                )
+            previous_hash = row["chain_hash"]
+        return {
+            "file_id": file_id,
+            "valid": valid,
+            "entries": entries,
+            "total": len(rows),
+            "chain_head": previous_hash,
+        }
+
+    @staticmethod
+    def _median(values: list[float]) -> float | None:
+        if not values:
+            return None
+        ordered = sorted(values)
+        middle = len(ordered) // 2
+        if len(ordered) % 2:
+            return float(ordered[middle])
+        return float((ordered[middle - 1] + ordered[middle]) / 2)
+
+    def _enrich_corpus_intelligence(
+        self,
+        db: sqlite3.Connection,
+        file_id: str,
+        dna: dict[str, Any],
+    ) -> None:
+        rows = db.execute(
+            """
+            SELECT d.file_id, d.dna_json, f.name, f.size_bytes
+            FROM disk_dna d
+            JOIN disk_files f ON f.id = d.file_id
+            WHERE d.file_id <> ? AND f.trashed_at IS NULL
+            """,
+            (file_id,),
+        ).fetchall()
+        corpus: list[dict[str, Any]] = []
+        for row in rows:
+            try:
+                other = json.loads(row["dna_json"])
+            except (TypeError, json.JSONDecodeError):
+                continue
+            corpus.append(
+                {
+                    "file_id": row["file_id"],
+                    "name": row["name"],
+                    "size_bytes": int(row["size_bytes"]),
+                    "dna": other,
+                }
+            )
+
+        dependencies = dna.setdefault("dependencies", {"items": [], "count": 0, "unresolved_count": 0})
+        graph = dna.setdefault("graph_ready", {"nodes": [], "edges": [], "ready_for_merge": True})
+        document_node = f"document:{file_id}"
+        comparison_rows = []
+
+        for dependency in dependencies.get("items", []):
+            number = str(dependency.get("document_number") or "")
+            expected_type = dependency.get("expected_type")
+            matches = []
+            for candidate in corpus:
+                other = candidate["dna"]
+                other_type = other.get("classification", {}).get("document_type")
+                if expected_type and other_type != expected_type:
+                    continue
+                other_numbers = self._dna_fact_values(other, "document_number")
+                if number and number in other_numbers:
+                    matches.append(candidate)
+
+            dependency["resolved_file_ids"] = [item["file_id"] for item in matches]
+            dependency["status"] = "resolved" if matches else "missing"
+            for match in matches:
+                edge = {
+                    "from": document_node,
+                    "to": f"document:{match['file_id']}",
+                    "type": "depends_on",
+                    "dependency_id": dependency.get("id"),
+                    "evidence_fact_ids": [dependency.get("source_fact_id")],
+                    "inferred": False,
+                }
+                if edge not in graph.setdefault("edges", []):
+                    graph["edges"].append(edge)
+
+                current_amounts = self._dna_fact_values(dna, "amount", role="total_amount")
+                other_amounts = self._dna_fact_values(match["dna"], "amount", role="total_amount")
+                if current_amounts and other_amounts:
+                    comparison_rows.append(
+                        {
+                            "other_file_id": match["file_id"],
+                            "other_name": match["name"],
+                            "dependency_id": dependency.get("id"),
+                            "current_total": sorted(current_amounts),
+                            "other_total": sorted(other_amounts),
+                            "matches": current_amounts == other_amounts,
+                            "note": "Сравнение сумм связанных документов; различие само по себе не считается ошибкой.",
+                        }
+                    )
+        dependencies["unresolved_count"] = sum(
+            1 for item in dependencies.get("items", []) if item.get("status") != "resolved"
+        )
+        dna["cross_document_arithmetic"] = comparison_rows[:60]
+
+        current_type = dna.get("classification", {}).get("document_type")
+        current_numbers = self._dna_fact_values(dna, "document_number")
+        family_members = []
+        for candidate in corpus:
+            other = candidate["dna"]
+            if other.get("classification", {}).get("document_type") != current_type:
+                continue
+            other_numbers = self._dna_fact_values(other, "document_number")
+            if current_numbers and other_numbers and current_numbers & other_numbers:
+                family_members.append(candidate)
+
+        family_material = "|".join(
+            [str(current_type or "document"), ",".join(sorted(current_numbers)) or file_id]
+        )
+        family_id = "family-" + hashlib.sha1(family_material.encode("utf-8")).hexdigest()[:16]
+        dna["document_family"] = {
+            "id": family_id,
+            "document_type": current_type,
+            "identity_numbers": sorted(current_numbers),
+            "members": [
+                {
+                    "file_id": item["file_id"],
+                    "name": item["name"],
+                    "sha256": item["dna"].get("identity", {}).get("sha256"),
+                    "analyzed_at": item["dna"].get("analyzed_at"),
+                }
+                for item in family_members[:40]
+            ],
+            "member_count": len(family_members) + 1,
+        }
+
+        template_sha = dna.get("template_fingerprint", {}).get("sha256")
+        template_matches = [
+            {
+                "file_id": item["file_id"],
+                "name": item["name"],
+            }
+            for item in corpus
+            if template_sha
+            and item["dna"].get("template_fingerprint", {}).get("sha256") == template_sha
+        ]
+        dna["template_fingerprint"]["matching_documents"] = template_matches[:40]
+        dna["template_fingerprint"]["matching_count"] = len(template_matches)
+
+        same_type = [
+            item for item in corpus
+            if item["dna"].get("classification", {}).get("document_type") == current_type
+        ]
+        anomalies = []
+        if len(same_type) >= 3:
+            size_values = [float(item["size_bytes"]) for item in same_type if item["size_bytes"] >= 0]
+            word_values = [
+                float(item["dna"].get("anatomy", {}).get("words") or 0)
+                for item in same_type
+            ]
+            profile_values = [
+                float(item["dna"].get("profile", {}).get("completeness_percent") or 0)
+                for item in same_type
+            ]
+            metrics = {
+                "size_bytes": (
+                    float(dna.get("identity", {}).get("size_bytes") or 0),
+                    self._median(size_values),
+                ),
+                "words": (
+                    float(dna.get("anatomy", {}).get("words") or 0),
+                    self._median(word_values),
+                ),
+                "profile_completeness": (
+                    float(dna.get("profile", {}).get("completeness_percent") or 0),
+                    self._median(profile_values),
+                ),
+            }
+            for metric, (current, median) in metrics.items():
+                if median is None or median <= 0:
+                    continue
+                ratio = current / median
+                if ratio < 0.25 or ratio > 4.0:
+                    anomalies.append(
+                        {
+                            "metric": metric,
+                            "current": current,
+                            "median": median,
+                            "ratio": round(ratio, 3),
+                            "level": "attention",
+                            "message": "Значение сильно отличается от медианы документов того же типа.",
+                        }
+                    )
+                elif metric == "profile_completeness" and current + 35 < median:
+                    anomalies.append(
+                        {
+                            "metric": metric,
+                            "current": current,
+                            "median": median,
+                            "ratio": round(ratio, 3),
+                            "level": "attention",
+                            "message": "Полнота профиля заметно ниже обычной для этого типа документов.",
+                        }
+                    )
+        dna["anomalies"] = {
+            "items": anomalies,
+            "count": len(anomalies),
+            "corpus_size": len(same_type),
+            "method": "robust_median_baseline",
+        }
+
+    def package_dna(
+        self,
+        folder_id: str | None = None,
+        *,
+        analyze_missing: bool = False,
+    ) -> dict[str, Any]:
+        with self._session() as db:
+            self._require_folder(db, folder_id)
+            if folder_id is None:
+                rows = db.execute(
+                    """
+                    SELECT id, name FROM disk_files
+                    WHERE trashed_at IS NULL
+                    ORDER BY name_key, id
+                    """
+                ).fetchall()
+                folder_name = "Диск Sayuri"
+            else:
+                rows = db.execute(
+                    """
+                    WITH RECURSIVE descendants(id) AS (
+                        SELECT ?
+                        UNION ALL
+                        SELECT f.id
+                        FROM disk_folders f
+                        JOIN descendants d ON f.parent_id = d.id
+                        WHERE f.trashed_at IS NULL
+                    )
+                    SELECT id, name FROM disk_files
+                    WHERE trashed_at IS NULL
+                      AND folder_id IN (SELECT id FROM descendants)
+                    ORDER BY name_key, id
+                    """,
+                    (folder_id,),
+                ).fetchall()
+                folder_name = self._require_folder(db, folder_id)["name"]
+            file_refs = [dict(row) for row in rows]
+
+        documents = []
+        pending = []
+        for item in file_refs:
+            if analyze_missing:
+                try:
+                    dna = self.document_dna(item["id"])
+                    documents.append(dna)
+                    continue
+                except (FileNotFoundError, ValueError, zipfile.BadZipFile, ET.ParseError):
+                    pending.append({"file_id": item["id"], "name": item["name"], "status": "analysis_failed"})
+                    continue
+            with self._session() as db:
+                row = db.execute(
+                    "SELECT dna_json FROM disk_dna WHERE file_id = ?",
+                    (item["id"],),
+                ).fetchone()
+            if row is None:
+                pending.append({"file_id": item["id"], "name": item["name"], "status": "not_analyzed"})
+                continue
+            try:
+                documents.append(json.loads(row["dna_json"]))
+            except json.JSONDecodeError:
+                pending.append({"file_id": item["id"], "name": item["name"], "status": "invalid_dna"})
+
+        type_counts = Counter(
+            str(dna.get("classification", {}).get("document_type") or "Документ")
+            for dna in documents
+        )
+        entity_counts = Counter(
+            str(entity.get("canonical_key"))
+            for dna in documents
+            for entity in dna.get("entities", [])
+            if entity.get("canonical_key")
+        )
+        shared_entities = [
+            {"canonical_key": key, "documents": count}
+            for key, count in entity_counts.most_common(100)
+            if count >= 2
+        ]
+        contradiction_count = sum(
+            len(dna.get("contradictions", {}).get("internal") or [])
+            + len(dna.get("contradictions", {}).get("cross_document") or [])
+            + len(dna.get("contradictions", {}).get("temporal") or [])
+            for dna in documents
+        )
+        obligation_count = sum(
+            int(dna.get("obligations", {}).get("count") or 0)
+            for dna in documents
+        )
+        memory_ready = sum(
+            1 for dna in documents
+            if dna.get("quality_gate", {}).get("memory_ready")
+        )
+        package_material = json.dumps(
+            {
+                "folder_id": folder_id,
+                "file_ids": sorted(
+                    str(dna.get("identity", {}).get("file_id"))
+                    for dna in documents
+                    if dna.get("identity", {}).get("file_id")
+                ),
+                "sha256": sorted(
+                    str(dna.get("identity", {}).get("sha256"))
+                    for dna in documents
+                    if dna.get("identity", {}).get("sha256")
+                ),
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        return {
+            "schema_version": 1,
+            "package_id": "package-" + hashlib.sha256(package_material.encode("utf-8")).hexdigest()[:20],
+            "folder_id": folder_id,
+            "folder_name": folder_name,
+            "files_total": len(file_refs),
+            "analyzed": len(documents),
+            "pending": pending,
+            "document_types": dict(type_counts),
+            "shared_entities": shared_entities,
+            "obligations": obligation_count,
+            "contradictions": contradiction_count,
+            "memory_ready_documents": memory_ready,
+            "documents": [
+                {
+                    "file_id": dna.get("identity", {}).get("file_id"),
+                    "name": dna.get("identity", {}).get("name"),
+                    "document_type": dna.get("classification", {}).get("document_type"),
+                    "coverage_percent": dna.get("coverage_percent"),
+                    "family_id": dna.get("document_family", {}).get("id"),
+                    "memory_ready": dna.get("quality_gate", {}).get("memory_ready"),
+                }
+                for dna in documents
+            ],
+        }
+
     @staticmethod
     def _dna_fact_values(
         dna: dict[str, Any],
@@ -1473,15 +2093,33 @@ class DiskService:
                 "changed_types": [],
                 "classification_changed": False,
                 "profile_completeness_delta": current.get("profile", {}).get("completeness_percent", 0),
+                "value_changes": [],
+                "semantic_changes": {
+                    "template_changed": False,
+                    "obligation_delta": int(current.get("obligations", {}).get("count") or 0),
+                    "risk_delta": len(current.get("risks") or []),
+                },
             }
 
-        def keyed(dna: dict[str, Any]) -> set[tuple[str, str]]:
-            result: set[tuple[str, str]] = set()
+        def keyed(dna: dict[str, Any]) -> set[tuple[str, str, str]]:
+            result: set[tuple[str, str, str]] = set()
             for fact in dna.get("molecules", {}).get("facts", []):
                 normalized = fact.get("normalized") or {}
                 canonical = normalized.get("canonical") or fact.get("value")
                 if canonical is not None:
-                    result.add((str(fact.get("type")), str(canonical)))
+                    result.add(
+                        (
+                            str(fact.get("type")),
+                            str(fact.get("role") or ""),
+                            str(canonical),
+                        )
+                    )
+            return result
+
+        def grouped(dna: dict[str, Any]) -> dict[tuple[str, str], set[str]]:
+            result: dict[tuple[str, str], set[str]] = {}
+            for fact_type, role, canonical in keyed(dna):
+                result.setdefault((fact_type, role), set()).add(canonical)
             return result
 
         before = keyed(previous)
@@ -1490,6 +2128,45 @@ class DiskService:
         removed = before - after
         added_types = {item[0] for item in added}
         removed_types = {item[0] for item in removed}
+        before_grouped = grouped(previous)
+        after_grouped = grouped(current)
+
+        value_changes = []
+        for key in sorted(set(before_grouped) | set(after_grouped)):
+            old_values = before_grouped.get(key, set())
+            new_values = after_grouped.get(key, set())
+            if old_values == new_values:
+                continue
+            fact_type, role = key
+            change: dict[str, Any] = {
+                "type": fact_type,
+                "role": role,
+                "before": sorted(old_values),
+                "after": sorted(new_values),
+            }
+            if fact_type == "amount" and len(old_values) == 1 and len(new_values) == 1:
+                def parse_money(value: str) -> float | None:
+                    match = re.search(r"-?\d+(?:\.\d+)?", value.replace(" ", ""))
+                    if not match:
+                        return None
+                    try:
+                        return float(match.group(0))
+                    except ValueError:
+                        return None
+
+                old_number = parse_money(next(iter(old_values)))
+                new_number = parse_money(next(iter(new_values)))
+                if old_number is not None and new_number is not None:
+                    change["numeric_delta"] = round(new_number - old_number, 2)
+                    if old_number:
+                        change["percent_delta"] = round(
+                            ((new_number - old_number) / old_number) * 100,
+                            2,
+                        )
+            value_changes.append(change)
+
+        before_template = previous.get("template_fingerprint", {}).get("sha256")
+        after_template = current.get("template_fingerprint", {}).get("sha256")
         return {
             "reason": reason,
             "added_facts": len(added),
@@ -1503,6 +2180,17 @@ class DiskService:
                 int(current.get("profile", {}).get("completeness_percent", 0))
                 - int(previous.get("profile", {}).get("completeness_percent", 0))
             ),
+            "value_changes": value_changes[:120],
+            "semantic_changes": {
+                "template_changed": bool(
+                    before_template and after_template and before_template != after_template
+                ),
+                "obligation_delta": (
+                    int(current.get("obligations", {}).get("count") or 0)
+                    - int(previous.get("obligations", {}).get("count") or 0)
+                ),
+                "risk_delta": len(current.get("risks") or []) - len(previous.get("risks") or []),
+            },
         }
 
     def _refresh_dna_metadata(
@@ -1759,6 +2447,19 @@ class DiskService:
         if applied:
             dna["feedback"] = {"applied": applied}
             self._recompute_feedback_gate(dna)
+            dna["knowledge_promotion"] = self.advanced_dna._knowledge_promotion(dna)
+            security = dna.get("security") or {
+                "trust_domain": "document_content",
+                "prompt_injection": {"detected": False},
+            }
+            sensitive = dna.get("sensitive_data") or {"findings": []}
+            obligations = dna.get("obligations") or {"items": []}
+            dna["ai_context"] = self.advanced_dna._selective_ai_context(
+                dna,
+                security=security,
+                sensitive=sensitive,
+                obligations=obligations,
+            )
 
     def dna_history(self, file_id: str, limit: int = 20) -> list[dict[str, Any]]:
         self.get_file(file_id, allow_trashed=True)
@@ -1810,11 +2511,14 @@ class DiskService:
             for fact in dna.get("molecules", {}).get("facts", [])
             if fact.get("id")
         }
-        if fact_id not in facts:
+        fact = facts.get(fact_id)
+        if fact is None:
             raise FileNotFoundError("Факт ДНК не найден.")
-        if action == "correct" and not str(corrected_value or "").strip():
+        corrected_clean = str(corrected_value or "").strip()
+        if action == "correct" and not corrected_clean:
             raise ValueError("Для исправления нужно новое значение.")
 
+        created_at = self._now()
         with self._session() as db:
             db.execute(
                 """
@@ -1826,10 +2530,30 @@ class DiskService:
                     file_id,
                     fact_id,
                     action,
-                    json.dumps({"value": corrected_value}, ensure_ascii=False) if action == "correct" else None,
+                    json.dumps({"value": corrected_clean}, ensure_ascii=False) if action == "correct" else None,
                     str(note or "").strip() or None,
-                    self._now(),
+                    created_at,
                 ),
+            )
+            if action == "correct":
+                self._register_correction_rule(
+                    db,
+                    file_id=file_id,
+                    fact=fact,
+                    corrected_value=corrected_clean,
+                )
+            ledger = self._append_dna_ledger(
+                db,
+                file_id=file_id,
+                event_type=f"feedback:{action}",
+                details={
+                    "fact_id": fact_id,
+                    "fact_type": fact.get("type"),
+                    "original_canonical": (fact.get("normalized") or {}).get("canonical"),
+                    "corrected_value": corrected_clean if action == "correct" else None,
+                    "note": str(note or "").strip() or None,
+                    "created_at": created_at,
+                },
             )
             self._record_action(
                 db,
@@ -1837,9 +2561,18 @@ class DiskService:
                 "file",
                 file_id,
                 dna.get("identity", {}).get("name", file_id),
-                {"fact_id": fact_id, "action": action},
+                {
+                    "fact_id": fact_id,
+                    "action": action,
+                    "ledger_sequence": ledger["sequence_no"],
+                },
             )
-        return {"status": "сохранено", "fact_id": fact_id, "action": action}
+        return {
+            "status": "сохранено",
+            "fact_id": fact_id,
+            "action": action,
+            "ledger_sequence": ledger["sequence_no"],
+        }
 
     def document_dna(self, file_id: str, *, force: bool = False) -> dict[str, Any]:
         item = self.get_file(file_id)
@@ -1863,11 +2596,26 @@ class DiskService:
                 ):
                     cached = json.loads(row["dna_json"])
                     self._refresh_dna_metadata(cached, item, properties)
-                    self._enrich_cross_document(db, file_id, cached)
                     self._apply_dna_feedback(db, file_id, cached)
+                    self._enrich_cross_document(db, file_id, cached)
+                    self._enrich_corpus_intelligence(db, file_id, cached)
                     cached["analyzed_at"] = row["analyzed_at"]
                     cached["cached"] = True
                     cached["content_reused"] = row["source_updated_at"] != source_updated_at
+                    ledger_row = db.execute(
+                        """
+                        SELECT sequence_no, chain_hash
+                        FROM disk_dna_ledger
+                        WHERE file_id = ?
+                        ORDER BY sequence_no DESC
+                        LIMIT 1
+                        """,
+                        (file_id,),
+                    ).fetchone()
+                    cached["evidence_ledger"] = {
+                        "sequence_no": int(ledger_row["sequence_no"]) if ledger_row else 0,
+                        "chain_head": ledger_row["chain_hash"] if ledger_row else None,
+                    }
                     if row["source_updated_at"] != source_updated_at:
                         db.execute(
                             """
@@ -1879,7 +2627,6 @@ class DiskService:
                         )
                     return cached
 
-        previous_row = None
         with self._session() as db:
             previous_row = db.execute(
                 """
@@ -1889,6 +2636,8 @@ class DiskService:
                 """,
                 (file_id,),
             ).fetchone()
+            calibration = self._feedback_calibration(db)
+            learned_rules = self._learned_correction_rules(db)
 
         previous_dna: dict[str, Any] | None = None
         if previous_row is not None:
@@ -1925,6 +2674,16 @@ class DiskService:
             reason = "reanalyzed"
 
         with self._session() as db:
+            self._apply_dna_feedback(db, file_id, dna)
+            self.advanced_dna.enrich(
+                dna,
+                preview=preview,
+                calibration=calibration,
+                learned_rules=learned_rules,
+            )
+            self._enrich_cross_document(db, file_id, dna)
+            self._enrich_corpus_intelligence(db, file_id, dna)
+
             version_row = db.execute(
                 "SELECT COALESCE(MAX(version_no), 0) AS version_no FROM disk_dna_history WHERE file_id = ?",
                 (file_id,),
@@ -1935,7 +2694,26 @@ class DiskService:
                 "previous_version": next_version - 1 if next_version > 1 else None,
             }
             dna["version_delta"] = self._dna_delta(previous_dna, dna, reason=reason)
-            self._enrich_cross_document(db, file_id, dna)
+
+            ledger = self._append_dna_ledger(
+                db,
+                file_id=file_id,
+                event_type="analysis",
+                details={
+                    "version": next_version,
+                    "reason": reason,
+                    "sha256": item["sha256"],
+                    "analyzer_version": DNA_ANALYZER_VERSION,
+                    "advanced_engine_version": ADVANCED_DNA_VERSION,
+                    "semantic_sha256": dna.get("fingerprint", {}).get("semantic_sha256"),
+                    "facts": dna.get("molecules", {}).get("total", 0),
+                    "memory_ready": dna.get("quality_gate", {}).get("memory_ready", False),
+                },
+            )
+            dna["evidence_ledger"] = {
+                "sequence_no": ledger["sequence_no"],
+                "chain_head": ledger["chain_hash"],
+            }
 
             dna_json = json.dumps(dna, ensure_ascii=False)
             db.execute(
@@ -1989,9 +2767,9 @@ class DiskService:
                     "version": next_version,
                     "reason": reason,
                     "memory_ready": dna.get("quality_gate", {}).get("memory_ready", False),
+                    "ledger_sequence": ledger["sequence_no"],
                 },
             )
-            self._apply_dna_feedback(db, file_id, dna)
         return dna
 
     def recent_actions(self, limit: int = 30) -> list[dict[str, Any]]:
@@ -2019,6 +2797,7 @@ class DiskService:
             "status_code": "ready",
             "schema_version": DISK_SCHEMA_VERSION,
             "dna_analyzer_version": DNA_ANALYZER_VERSION,
+            "dna_advanced_version": ADVANCED_DNA_VERSION,
             "files": listing["stats"]["files"],
             "folders": listing["stats"]["folders"],
             "bytes": listing["stats"]["bytes"],

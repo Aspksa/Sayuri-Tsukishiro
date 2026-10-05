@@ -212,5 +212,54 @@ class DiskApiTests(unittest.TestCase):
         self.assertEqual(history[0]["version"], 1)
 
 
+    def test_dna_05_ledger_and_package_api(self):
+        folder = self.post_json("/api/disk/folders", {"name": "Комплект ДНК"})["folder"]
+        payload = (
+            "ДОГОВОР № 501\n"
+            "Дата: 05.10.2026\n"
+            "ООО Ромашка ИНН 1234567890\n"
+            "Итого 50 000 руб.\n"
+        ).encode("utf-8")
+        upload_request = urllib.request.Request(
+            self.base + f"/api/disk/upload?folder_id={folder['id']}",
+            data=payload,
+            headers={
+                "Content-Type": "text/plain",
+                "X-Sayuri-Filename": quote("договор 501.txt"),
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(upload_request, timeout=3) as response:
+            uploaded = json.loads(response.read().decode("utf-8"))["file"]
+
+        with urllib.request.urlopen(
+            self.base + f"/api/disk/files/{uploaded['id']}/dna",
+            timeout=3,
+        ) as response:
+            dna = json.loads(response.read().decode("utf-8"))
+        self.assertEqual(dna["analyzer_version"], "0.5.0")
+        self.assertEqual(dna["advanced_engine_version"], "0.5.0")
+        self.assertIn("document_schema", dna)
+        self.assertIn("ai_context", dna)
+
+        with urllib.request.urlopen(
+            self.base + f"/api/disk/files/{uploaded['id']}/dna/ledger",
+            timeout=3,
+        ) as response:
+            ledger = json.loads(response.read().decode("utf-8"))
+        self.assertTrue(ledger["valid"])
+        self.assertGreaterEqual(ledger["total"], 1)
+
+        with urllib.request.urlopen(
+            self.base + f"/api/disk/package-dna?folder_id={folder['id']}",
+            timeout=3,
+        ) as response:
+            package = json.loads(response.read().decode("utf-8"))
+        self.assertEqual(package["files_total"], 1)
+        self.assertEqual(package["analyzed"], 1)
+        self.assertEqual(package["pending"], [])
+        self.assertEqual(package["documents"][0]["file_id"], uploaded["id"])
+
+
 if __name__ == "__main__":
     unittest.main()

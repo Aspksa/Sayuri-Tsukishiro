@@ -2,163 +2,90 @@
 
 Актуальная точка — [PROJECT_STATE.md](PROJECT_STATE.md). Правила версий — [VERSIONING.md](VERSIONING.md).
 
-## Диск Sayuri 0.4 — ДНК Evidence Engine
+## Диск Sayuri 0.5 — ДНК Structural Intelligence & Safety
 
 ### Версии
 
-- схема Диска: `4`;
-- версия анализатора ДНК: `0.4.0`;
-- JSON-схема ДНК: `2`.
+- схема Диска: `5`;
+- базовый анализатор ДНК: `0.5.0`;
+- advanced engine: `0.5.0`;
+- JSON-схема базовой ДНК: `3`.
 
-### Таблицы
+### Файлы
+
+- `disk/dna.py` — базовый Evidence Engine;
+- `disk/dna_advanced.py` — внутренние слои 0.5;
+- `disk/service.py` — кэш, версии, междокументный корпус, ledger, correction memory и package DNA;
+- `app/server.py` — локальные API.
+
+### Новые таблицы схемы 5
 
 ```text
-disk_dna
-  current snapshot
-
-disk_dna_history
+disk_dna_ledger
   file_id
-  version_no
-  sha256
-  source_updated_at
-  analyzer_version
-  analyzed_at
-  dna_json
-
-disk_dna_feedback
-  file_id
-  fact_id
-  action
-  corrected_value_json
-  note
+  sequence_no
+  event_type
   created_at
+  payload_sha256
+  previous_chain_hash
+  chain_hash
+  details_json
+
+disk_dna_correction_rules
+  fact_type
+  original_canonical
+  corrected_json
+  supporting_files_json
+  support_count
+  updated_at
 ```
 
-При миграции существующий current snapshot автоматически становится первой исторической версией, если история для файла ещё отсутствует.
+Существующие `disk_dna`, `disk_dna_history` и `disk_dna_feedback` сохраняются.
 
-### Evidence model
-
-Каждый факт имеет:
+### Advanced pipeline
 
 ```text
-id
-type
-label
-role
-value
-normalized
-confidence
-confidence_breakdown
-status
-quality_gate
-source.line
-source.excerpt
-source.evidence_hash
+base evidence
+→ spatial locator
+→ learned correction (>=3 distinct files)
+→ calibration
+→ document schema
+→ entity resolution
+→ obligations
+→ temporal checks
+→ dependencies
+→ security
+→ sensitive classification
+→ template fingerprint
+→ knowledge promotion
+→ selective AI context
+→ dynamic cross-document/corpus enrichment
+→ history + ledger
 ```
 
-Stable ID строится из типа, канонического значения, роли, строки и хэша доказательства.
+### Trust boundary
 
-### Нормализация
+Содержимое документа всегда имеет `trust_domain=document_content`.
 
-Поддерживается канонизация:
+Фраза внутри файла не может:
+- изменить системные инструкции;
+- включить инструмент;
+- заставить раскрыть секрет;
+- повысить свой уровень доверия.
 
-- дат;
-- денежных сумм;
-- процентов;
-- пробега;
-- количества и единиц;
-- ИНН;
-- КПП;
-- ОГРН/ОГРНИП;
-- БИК;
-- расчётного/корреспондентского счёта;
-- VIN;
-- госномера;
-- e-mail;
-- телефона;
-- времени;
-- организации;
-- ФИО;
-- номера документа.
+### Ledger
 
-### Document Profiles
+Каждый анализ и feedback создают элемент hash-chain. `dna_ledger()` пересчитывает payload hash и цепочку и возвращает `valid`.
 
-Профили определяют `required`, `expected` и `singleton_roles`.
+Это tamper-evident журнал, а не WORM-хранилище.
 
-Профили есть для служебной записки, путевого листа, договора, счёта-оферты, счёта, приказа, распоряжения, выписки ГСМ, акта, накладной и общего документа.
+### Correction Memory
 
-### Arithmetic Engine
-
-Для preview mode `table` ищутся колонки:
-
-- количество;
-- цена;
-- сумма/стоимость/итого.
-
-Для строк с числовыми значениями проверяется:
-
-```text
-quantity * price == total
-```
-
-с небольшим допуском. Несовпадение является критическим риском.
-
-### Fingerprint
-
-ДНК хранит:
-
-- `semantic_sha256`;
-- `simhash64`;
-- до 256 token hashes;
-- количество токенов и уникальных токенов.
-
-Fingerprint не заменяет физический SHA-256.
-
-### Междокументная сверка
-
-При чтении ДНК current snapshot динамически сравнивается с другими активными ДНК:
-
-- exact duplicate;
-- near duplicate;
-- related;
-- shared canonical entities.
-
-Для документов одного типа с одинаковым номером сравниваются итоговая сумма, дата документа, ИНН, VIN и госномер.
-
-### Quality Gate
-
-`memory_ready` может быть true только если:
-
-- физическая целостность подтверждена;
-- есть accepted facts;
-- нет критических рисков;
-- нет внутренних противоречий;
-- нет междокументного противоречия.
-
-### Версионность
-
-Каждый полный анализ создаёт `version_no` и `version_delta`.
-
-Delta содержит:
-
-- added facts;
-- removed facts;
-- changed types;
-- classification changed;
-- profile completeness delta;
-- reason: initial/content_changed/analyzer_upgrade/reanalyzed.
-
-Переименование и перемещение при неизменном SHA-256 переиспользуют контентный анализ.
-
-### Feedback API
-
-Движок уже умеет хранить и применять:
-
-- `confirm`;
-- `reject`;
-- `correct`.
-
-Это backend-возможность; визуальный интерфейс в DISK-004 не добавлялся.
+Правило автокоррекции применяется только при:
+- одинаковом типе факта;
+- одинаковом исходном canonical value;
+- одинаковом исправленном значении;
+- поддержке минимум трёх различных file_id.
 
 ### API
 
@@ -166,15 +93,15 @@ Delta содержит:
 - `POST /api/disk/files/{id}/dna/analyze`
 - `GET /api/disk/files/{id}/dna/history?limit=N`
 - `POST /api/disk/files/{id}/dna/feedback`
+- `GET /api/disk/files/{id}/dna/ledger?limit=N`
+- `GET /api/disk/package-dna?folder_id=...&analyze_missing=0|1`
 
-### Безопасность и ограничения
+### Ограничения
 
-- исходный файл не изменяется;
-- Office/ODF XML ограничен существующим безопасным лимитом;
-- макро-форматы DOCM/XLSM/PPTM помечаются risk rule;
-- PDF/изображение без текста требует OCR;
-- inference между сущностями не создаётся без семантического слоя;
-- отдельный background worker пока не реализован: pipeline выполняется синхронно.
+- координаты PDF/изображения требуют OCR;
+- semantic AI не подключён;
+- package DNA при `analyze_missing=1` выполняется синхронно;
+- background worker в DISK-005 намеренно не включён.
 
 ## Проверки
 
@@ -184,3 +111,5 @@ python -m unittest discover -s scripts/tests -v
 python -m app.preflight
 python scripts/versioning.py check
 ```
+
+Windows launcher отдельно проверяется GitHub Actions.

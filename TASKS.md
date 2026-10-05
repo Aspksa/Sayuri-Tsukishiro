@@ -16,40 +16,37 @@
 - DISK-002.1 — центральный просмотр и свойства.
 - DISK-002.2 — drag-and-drop, плитки/список и широкий интерфейс.
 - DISK-003 — базовая «ДНК документа».
+- DISK-004 — Evidence Engine, нормализация, quality gate, версии и междокументная сверка.
 
-## DISK-004 — ДНК Evidence Engine
+## DISK-005 — ДНК 0.5 Structural Intelligence & Safety
 - Статус: `done` после успешного CI.
-- Источник: прямой запрос пользователя «Делай все» по внутреннему усилению ДНК без добавления интерфейса.
+- Источник: прямой запрос пользователя «Делай все профессионально» после списка внутренних улучшений ДНК.
 - UI: новых визуальных элементов нет.
 - Реализовано:
-  - стабильные fact ID;
-  - provenance/evidence hash;
-  - нормализация фактов;
-  - confidence breakdown;
-  - fact/hypothesis policy;
-  - профили документов;
-  - проверка обязательных полей;
-  - реквизиты и канонизация сущностей;
-  - временная модель;
-  - доказуемые действия;
-  - арифметика XLSX;
-  - внутренние противоречия;
-  - семантический fingerprint;
-  - точные/почти дубли;
-  - междокументные связи и противоречия;
-  - quality gate;
-  - document quality;
-  - risk engine;
-  - graph-ready слой;
-  - версии ДНК и delta;
-  - metadata-only reuse;
-  - feedback/corrections backend;
-  - динамическое снятие междокументного конфликта после исправления.
-- Версии: проект `0.1.12`, ядро `0.1.9`, Диск Sayuri `0.4.0`, веб остаётся `0.3.0`.
+  - source locator / spatial-ready evidence;
+  - Document Schema Engine;
+  - Entity Resolution 2.0;
+  - Obligation Engine;
+  - temporal contradictions;
+  - dependency resolution;
+  - template fingerprint;
+  - document family;
+  - corpus anomaly engine;
+  - semantic version diff;
+  - confidence calibration;
+  - conservative correction memory;
+  - tamper-evident DNA ledger;
+  - prompt-injection shield;
+  - sensitive-data classification;
+  - selective AI context;
+  - knowledge promotion pipeline;
+  - package DNA для папки.
+- Версии: проект `0.1.14`, ядро `0.1.11`, Диск Sayuri `0.5.0`, веб `0.3.0`.
 
-## DISK-005 — OCR и семантический слой
+## DISK-006 — OCR и Spatial Evidence 2.0
 - Статус: `proposed`.
-- Цель: OCR сканов/PDF, координаты доказательств, сложные роли, семантические связи и междокументные выводы.
+- Цель: OCR сканов/PDF, страница + реальные координаты блоков/таблиц/подписей и качество OCR.
 
 ## AI-003 — Подключение ИИ-провайдера
 - Статус: `proposed`.
+- Цель: семантические роли, сложные причинные связи и проверяемые выводы поверх ДНК.

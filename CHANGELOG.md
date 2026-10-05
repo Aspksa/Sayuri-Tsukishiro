@@ -2,6 +2,26 @@
 
 ## Невыпущенные изменения
 
+### 0.1.14 — 2026-10-05 — ДНК 0.5 Structural Intelligence & Safety
+
+- Диск Sayuri повышен до `0.5.0`.
+- Интерфейс ДНК не расширялся.
+- Добавлен отдельный `dna_advanced.py`.
+- Добавлены spatial-ready locators фактов.
+- Добавлены Document Schema Engine и Entity Resolution 2.0.
+- Добавлены Obligation Engine, временные проверки и зависимости документов.
+- Добавлены нормализованный template fingerprint и семейства документов.
+- Добавлен корпусный anomaly engine.
+- Version delta теперь хранит изменения значений и проценты изменения сумм.
+- Добавлены confidence calibration и conservative correction memory.
+- Схема Диска повышена до 5.
+- Добавлен tamper-evident `disk_dna_ledger`.
+- Добавлена защита от prompt injection внутри документов.
+- Добавлена классификация чувствительных данных и selective AI context.
+- Добавлен knowledge promotion pipeline.
+- Добавлена пакетная ДНК папки и внутренние API ledger/package DNA.
+
+
 ### 0.1.13 — 2026-10-05 — Исправление теста ДНК 0.4
 
 - Исправлено устаревшее ожидание версии анализатора в `test_disk.py`: `0.1.0` → `0.4.0`.

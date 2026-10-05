@@ -252,11 +252,32 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
             if parsed.path == "/api/disk/folders-tree":
                 self._json({"folders": self.server.core.disk.folder_tree()})
                 return
+            if parsed.path == "/api/disk/package-dna":
+                folder_id = query.get("folder_id", [None])[0] or None
+                analyze_missing = query.get("analyze_missing", ["0"])[0] in {"1", "true", "yes"}
+                self._json(
+                    self.server.core.disk.package_dna(
+                        folder_id,
+                        analyze_missing=analyze_missing,
+                    )
+                )
+                return
             if parsed.path.startswith("/api/disk/items/"):
                 parts = parsed.path.strip("/").split("/")
                 if len(parts) != 5 or parts[:3] != ["api", "disk", "items"]:
                     raise FileNotFoundError("Объект не найден.")
                 self._json(self.server.core.disk.properties(parts[3], parts[4]))
+                return
+            if parsed.path.startswith("/api/disk/files/") and parsed.path.endswith("/dna/ledger"):
+                file_id = parsed.path[len("/api/disk/files/"):-len("/dna/ledger")].strip("/")
+                if not file_id:
+                    raise FileNotFoundError("Файл не найден.")
+                raw_limit = query.get("limit", ["100"])[0]
+                try:
+                    limit = int(raw_limit)
+                except ValueError:
+                    limit = 100
+                self._json(self.server.core.disk.dna_ledger(file_id, limit))
                 return
             if parsed.path.startswith("/api/disk/files/") and parsed.path.endswith("/dna/history"):
                 file_id = parsed.path[len("/api/disk/files/"):-len("/dna/history")].strip("/")
