@@ -190,7 +190,7 @@ class DiskServiceTests(unittest.TestCase):
             listing = service.list_entries("f1")
             self.assertEqual(listing["files"][0]["name"], "старый.txt")
             self.assertFalse(listing["files"][0]["favorite"])
-            self.assertEqual(service.health()["schema_version"], 6)
+            self.assertEqual(service.health()["schema_version"], 7)
 
     def test_office_and_text_previews(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -306,8 +306,8 @@ class DiskServiceTests(unittest.TestCase):
             forced = service.document_dna(item["id"], force=True, bypass_cooldown=True)
             self.assertFalse(forced["cached"])
             self.assertEqual(forced["molecules"]["total"], dna["molecules"]["total"])
-            self.assertEqual(service.health()["dna_analyzer_version"], "0.5.0")
-            self.assertEqual(service.health()["dna_evolution_version"], "0.6.0")
+            self.assertEqual(service.health()["dna_analyzer_version"], "0.7.0")
+            self.assertEqual(service.health()["dna_evolution_version"], "0.6.0")\n            self.assertEqual(service.health()["dna_spatial_version"], "0.7.0")
 
 
     def test_dna_04_normalization_profile_fingerprint_graph_and_feedback(self):
@@ -333,8 +333,8 @@ class DiskServiceTests(unittest.TestCase):
             )
 
             dna = service.document_dna(item["id"])
-            self.assertEqual(dna["analyzer_version"], "0.5.0")
-            self.assertEqual(dna["schema_version"], 3)
+            self.assertEqual(dna["analyzer_version"], "0.7.0")
+            self.assertEqual(dna["schema_version"], 4)
             self.assertEqual(dna["classification"]["document_type"], "Служебная записка")
             self.assertEqual(dna["profile"]["missing_required"], [])
             self.assertTrue(dna["fingerprint"]["semantic_sha256"])
@@ -509,7 +509,7 @@ class DiskServiceTests(unittest.TestCase):
             )
 
             dna = service.document_dna(item["id"])
-            self.assertEqual(dna["advanced_engine_version"], "0.5.0")
+            self.assertEqual(dna["advanced_engine_version"], "0.5.1")
             self.assertIn("document_schema", dna)
             self.assertIn("entity_resolution", dna)
             self.assertGreaterEqual(dna["obligations"]["count"], 1)

@@ -18,9 +18,10 @@ import uuid
 from .dna import DNA_ANALYZER_VERSION, DocumentDNAAnalyzer
 from .dna_advanced import ADVANCED_DNA_VERSION, AdvancedDNAEngine
 from .dna_evolution import EVOLUTION_ENGINE_VERSION, DNAEvolutionEngine
+from .dna_spatial import SPATIAL_ENGINE_VERSION, SpatialDNAEngine
 
 
-DISK_SCHEMA_VERSION = 6
+DISK_SCHEMA_VERSION = 7
 CHUNK_SIZE = 1024 * 1024
 MAX_FILE_SIZE = 1024 * 1024 * 1024  # 1 ГБ
 MAX_PREVIEW_XML_BYTES = 16 * 1024 * 1024
@@ -37,6 +38,10 @@ class DiskService:
         self.dna_analyzer = DocumentDNAAnalyzer()
         self.advanced_dna = AdvancedDNAEngine()
         self.evolution_dna = DNAEvolutionEngine()
+        project_root = database_path.parent.parent
+        self.spatial_dna = SpatialDNAEngine(
+            tessdata_path=project_root / ".runtime" / "tessdata",
+        )
 
     def _connect(self) -> sqlite3.Connection:
         db = sqlite3.connect(self.database_path, timeout=5.0)
@@ -189,6 +194,23 @@ class DiskService:
                     analyzed_at TEXT NOT NULL,
                     dna_json TEXT NOT NULL
                 )
+                """
+            )
+            db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS disk_dna_spatial (
+                    file_id TEXT PRIMARY KEY REFERENCES disk_files(id) ON DELETE CASCADE,
+                    sha256 TEXT NOT NULL,
+                    engine_version TEXT NOT NULL,
+                    analyzed_at TEXT NOT NULL,
+                    spatial_json TEXT NOT NULL
+                )
+                """
+            )
+            db.execute(
+                """
+                CREATE INDEX IF NOT EXISTS ix_disk_dna_spatial_sha
+                ON disk_dna_spatial(sha256, engine_version)
                 """
             )
             db.execute(
@@ -1503,6 +1525,123 @@ class DiskService:
                 digest.update(chunk)
         return digest.hexdigest()
 
+    def _spatial_snapshot(
+        self,
+        item: dict[str, Any],
+        *,
+        force: bool = False,
+        force_ocr: bool = False,
+    ) -> dict[str, Any]:
+        file_id = str(item["id"])
+        with self._session() as db:
+            row = db.execute(
+                """
+                SELECT sha256, engine_version, analyzed_at, spatial_json
+                FROM disk_dna_spatial
+                WHERE file_id = ?
+                """,
+                (file_id,),
+            ).fetchone()
+            if (
+                row is not None
+                and row["sha256"] == item["sha256"]
+                and row["engine_version"] == SPATIAL_ENGINE_VERSION
+                and not force
+            ):
+                cached = json.loads(row["spatial_json"])
+                if not force_ocr or bool(cached.get("force_ocr")):
+                    cached["cached"] = True
+                    cached["analyzed_at"] = row["analyzed_at"]
+                    return cached
+
+        path = Path(item["path"])
+        suffix = path.suffix.lower() if path.suffix else Path(item["name"]).suffix.lower()
+        spatial = self.spatial_dna.extract(
+            path,
+            content_type=str(item["content_type"]),
+            suffix=suffix,
+            force_ocr=force_ocr,
+        )
+        analyzed_at = self._now()
+        spatial["analyzed_at"] = analyzed_at
+        spatial["cached"] = False
+        with self._session() as db:
+            db.execute(
+                """
+                INSERT INTO disk_dna_spatial(
+                    file_id, sha256, engine_version, analyzed_at, spatial_json
+                ) VALUES(?, ?, ?, ?, ?)
+                ON CONFLICT(file_id) DO UPDATE SET
+                    sha256 = excluded.sha256,
+                    engine_version = excluded.engine_version,
+                    analyzed_at = excluded.analyzed_at,
+                    spatial_json = excluded.spatial_json
+                """,
+                (
+                    file_id,
+                    item["sha256"],
+                    SPATIAL_ENGINE_VERSION,
+                    analyzed_at,
+                    json.dumps(spatial, ensure_ascii=False),
+                ),
+            )
+        return spatial
+
+    def spatial_document(
+        self,
+        file_id: str,
+        *,
+        force: bool = False,
+        force_ocr: bool = False,
+    ) -> dict[str, Any]:
+        item = self.get_file(file_id)
+        return self._spatial_snapshot(
+            item,
+            force=force,
+            force_ocr=force_ocr,
+        )
+
+    def spatial_status(self) -> dict[str, Any]:
+        capabilities = self.spatial_dna.capabilities()
+        with self._session() as db:
+            rows = db.execute(
+                """
+                SELECT spatial_json
+                FROM disk_dna_spatial
+                """
+            ).fetchall()
+
+        ready = 0
+        pages = 0
+        ocr_pages = 0
+        ocr_failures = 0
+        table_count = 0
+        for row in rows:
+            try:
+                spatial = json.loads(row["spatial_json"])
+            except (TypeError, json.JSONDecodeError):
+                continue
+            if spatial.get("status") == "ready":
+                ready += 1
+            pages += int(spatial.get("page_count") or 0)
+            ocr = spatial.get("ocr") or {}
+            ocr_pages += int(ocr.get("used_pages") or 0)
+            ocr_failures += len(ocr.get("failures") or [])
+            table_count += int((spatial.get("tables") or {}).get("count") or 0)
+
+        return {
+            "status": "готово" if capabilities.get("pymupdf_available") else "ограничено",
+            "engine_version": SPATIAL_ENGINE_VERSION,
+            "capabilities": capabilities,
+            "cached_documents": len(rows),
+            "ready_documents": ready,
+            "pages": pages,
+            "ocr_pages": ocr_pages,
+            "ocr_failures": ocr_failures,
+            "tables": table_count,
+            "policy": "Координаты берутся только из движка документа; отсутствие OCR не маскируется.",
+        }
+
     def _feedback_calibration(self, db: sqlite3.Connection) -> dict[str, Any]:
         rows = db.execute(
             """
@@ -2412,6 +2551,9 @@ class DiskService:
             if dna.get("evolution", {}).get("engine_version") != EVOLUTION_ENGINE_VERSION:
                 reasons.append("evolution_engine_version")
                 priority += 35
+            if dna.get("spatial", {}).get("engine_version") != SPATIAL_ENGINE_VERSION:
+                reasons.append("spatial_engine_version")
+                priority += 55
             if dna.get("evolution", {}).get("self_review", {}).get("passed") is False:
                 reasons.append("self_review_failed")
                 priority += 70
@@ -2491,6 +2633,13 @@ class DiskService:
                     "obligation_delta": int(current.get("obligations", {}).get("count") or 0),
                     "risk_delta": len(current.get("risks") or []),
                 },
+                "spatial_changes": {
+                    "spatial_changed": bool(current.get("spatial", {}).get("spatial_sha256")),
+                    "page_delta": int(current.get("spatial", {}).get("page_count") or 0),
+                    "table_delta": int(current.get("spatial", {}).get("tables", {}).get("count") or 0),
+                    "ocr_page_delta": int(current.get("spatial", {}).get("ocr", {}).get("used_pages") or 0),
+                    "quality_delta": int(current.get("spatial", {}).get("quality", {}).get("score") or 0),
+                },
             }
 
         def keyed(dna: dict[str, Any]) -> set[tuple[str, str, str]]:
@@ -2559,6 +2708,8 @@ class DiskService:
 
         before_template = previous.get("template_fingerprint", {}).get("sha256")
         after_template = current.get("template_fingerprint", {}).get("sha256")
+        before_spatial = previous.get("spatial", {})
+        after_spatial = current.get("spatial", {})
         return {
             "reason": reason,
             "added_facts": len(added),
@@ -2582,6 +2733,28 @@ class DiskService:
                     - int(previous.get("obligations", {}).get("count") or 0)
                 ),
                 "risk_delta": len(current.get("risks") or []) - len(previous.get("risks") or []),
+            },
+            "spatial_changes": {
+                "spatial_changed": (
+                    before_spatial.get("spatial_sha256")
+                    != after_spatial.get("spatial_sha256")
+                ),
+                "page_delta": (
+                    int(after_spatial.get("page_count") or 0)
+                    - int(before_spatial.get("page_count") or 0)
+                ),
+                "table_delta": (
+                    int(after_spatial.get("tables", {}).get("count") or 0)
+                    - int(before_spatial.get("tables", {}).get("count") or 0)
+                ),
+                "ocr_page_delta": (
+                    int(after_spatial.get("ocr", {}).get("used_pages") or 0)
+                    - int(before_spatial.get("ocr", {}).get("used_pages") or 0)
+                ),
+                "quality_delta": (
+                    int(after_spatial.get("quality", {}).get("score") or 0)
+                    - int(before_spatial.get("quality", {}).get("score") or 0)
+                ),
             },
         }
 
@@ -2972,6 +3145,7 @@ class DiskService:
         *,
         force: bool = False,
         bypass_cooldown: bool = False,
+        force_ocr: bool = False,
     ) -> dict[str, Any]:
         item = self.get_file(file_id)
         properties = self.properties("file", file_id)
@@ -2993,7 +3167,7 @@ class DiskService:
                 and current_row["analyzer_version"] == DNA_ANALYZER_VERSION
             )
             cooldown_hit = False
-            if force and same_analysis and not bypass_cooldown:
+            if force and same_analysis and not bypass_cooldown and not force_ocr:
                 try:
                     last_analyzed = datetime.fromisoformat(current_row["analyzed_at"])
                     now = datetime.now(timezone.utc)
@@ -3069,12 +3243,19 @@ class DiskService:
             "matches": actual_sha256 == item["sha256"],
         }
         preview = self.preview(file_id)
+        spatial = self._spatial_snapshot(
+            item,
+            force=bypass_cooldown or force_ocr,
+            force_ocr=force_ocr,
+        )
+        analysis_preview = self.spatial_dna.analysis_preview(preview, spatial)
         dna = self.dna_analyzer.analyze(
             item={**item, "duplicate_count": properties.get("duplicate_count", 0)},
             properties=properties,
-            preview=preview,
+            preview=analysis_preview,
             integrity=integrity,
         )
+        dna["spatial"] = self.spatial_dna.compact_summary(spatial)
         analyzed_at = self._now()
         dna["analyzed_at"] = analyzed_at
         dna["cached"] = False
@@ -3082,12 +3263,25 @@ class DiskService:
         dna["reanalysis_deduplicated"] = False
         dna["reanalysis_cooldown_seconds"] = REANALYZE_COOLDOWN_SECONDS
 
+        ocr_failures = list((spatial.get("ocr") or {}).get("failures") or [])
+        if ocr_failures:
+            dna.setdefault("risks", []).append(
+                {
+                    "code": "ocr-partial",
+                    "severity": "attention",
+                    "title": "OCR выполнен не полностью",
+                    "reason": f"Страниц с ошибкой OCR: {len(ocr_failures)}.",
+                }
+            )
+
         if current_row is None:
             reason = "initial"
         elif current_row["sha256"] != item["sha256"]:
             reason = "content_changed"
         elif current_row["analyzer_version"] != DNA_ANALYZER_VERSION:
             reason = "analyzer_upgrade"
+        elif force_ocr:
+            reason = "forced_ocr"
         elif bypass_cooldown:
             reason = "deep_reanalysis"
         else:
@@ -3097,10 +3291,11 @@ class DiskService:
             self._apply_dna_feedback(db, file_id, dna)
             self.advanced_dna.enrich(
                 dna,
-                preview=preview,
+                preview=analysis_preview,
                 calibration=calibration,
                 learned_rules=learned_rules,
             )
+            self.spatial_dna.attach_fact_locations(dna, spatial)
             self._enrich_cross_document(db, file_id, dna)
             self._enrich_corpus_intelligence(db, file_id, dna)
             self._enrich_evolution(
@@ -3132,6 +3327,9 @@ class DiskService:
                     "analyzer_version": DNA_ANALYZER_VERSION,
                     "advanced_engine_version": ADVANCED_DNA_VERSION,
                     "evolution_engine_version": EVOLUTION_ENGINE_VERSION,
+                    "spatial_engine_version": SPATIAL_ENGINE_VERSION,
+                    "spatial_sha256": dna.get("spatial", {}).get("spatial_sha256"),
+                    "ocr_pages": dna.get("spatial", {}).get("ocr", {}).get("used_pages", 0),
                     "semantic_sha256": dna.get("fingerprint", {}).get("semantic_sha256"),
                     "facts": dna.get("molecules", {}).get("total", 0),
                     "memory_ready": dna.get("quality_gate", {}).get("memory_ready", False),
@@ -3198,6 +3396,8 @@ class DiskService:
                     "memory_ready": dna.get("quality_gate", {}).get("memory_ready", False),
                     "ledger_sequence": ledger["sequence_no"],
                     "evolution_engine_version": EVOLUTION_ENGINE_VERSION,
+                    "spatial_engine_version": SPATIAL_ENGINE_VERSION,
+                    "ocr_pages": dna.get("spatial", {}).get("ocr", {}).get("used_pages", 0),
                 },
             )
         return dna
@@ -3229,6 +3429,8 @@ class DiskService:
             "dna_analyzer_version": DNA_ANALYZER_VERSION,
             "dna_advanced_version": ADVANCED_DNA_VERSION,
             "dna_evolution_version": EVOLUTION_ENGINE_VERSION,
+            "dna_spatial_version": SPATIAL_ENGINE_VERSION,
+            "spatial": self.spatial_status(),
             "files": listing["stats"]["files"],
             "folders": listing["stats"]["folders"],
             "bytes": listing["stats"]["bytes"],

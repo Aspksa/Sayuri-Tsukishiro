@@ -7,7 +7,7 @@ import re
 from typing import Any
 
 
-ADVANCED_DNA_VERSION = "0.5.0"
+ADVANCED_DNA_VERSION = "0.5.1"
 MAX_AI_CONTEXT_FACTS = 80
 MAX_EVIDENCE_CHAINS = 180
 
@@ -810,6 +810,7 @@ class AdvancedDNAEngine:
                     "source": {
                         "line": (fact.get("source") or {}).get("line"),
                         "evidence_hash": (fact.get("source") or {}).get("evidence_hash"),
+                        "locator": (fact.get("source") or {}).get("locator"),
                     },
                 }
             )

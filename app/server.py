@@ -265,6 +265,9 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
             if parsed.path == "/api/disk/dna/evolution":
                 self._json(self.server.core.disk.evolution_status())
                 return
+            if parsed.path == "/api/disk/dna/spatial":
+                self._json(self.server.core.disk.spatial_status())
+                return
             if parsed.path == "/api/disk/dna/reanalysis-plan":
                 raw_limit = query.get("limit", ["100"])[0]
                 try:
@@ -278,6 +281,19 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
                 if len(parts) != 5 or parts[:3] != ["api", "disk", "items"]:
                     raise FileNotFoundError("Объект не найден.")
                 self._json(self.server.core.disk.properties(parts[3], parts[4]))
+                return
+            if parsed.path.startswith("/api/disk/files/") and parsed.path.endswith("/dna/spatial"):
+                file_id = parsed.path[len("/api/disk/files/"):-len("/dna/spatial")].strip("/")
+                if not file_id:
+                    raise FileNotFoundError("Файл не найден.")
+                force_ocr = query.get("ocr", ["0"])[0] in {"1", "true", "yes"}
+                self._json(
+                    self.server.core.disk.spatial_document(
+                        file_id,
+                        force=force_ocr,
+                        force_ocr=force_ocr,
+                    )
+                )
                 return
             if parsed.path.startswith("/api/disk/files/") and parsed.path.endswith("/dna/ledger"):
                 file_id = parsed.path[len("/api/disk/files/"):-len("/dna/ledger")].strip("/")
@@ -411,10 +427,12 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
                     raise FileNotFoundError("Файл не найден.")
                 payload = self._read_json()
                 deep = payload.get("deep") is True
+                force_ocr = payload.get("ocr") is True
                 dna = self.server.core.disk.document_dna(
                     file_id,
                     force=True,
                     bypass_cooldown=deep,
+                    force_ocr=force_ocr,
                 )
                 self.server.core.database.record_event(
                     "ДНК документа",
@@ -423,6 +441,8 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
                         "file_id": file_id,
                         "coverage_percent": dna["coverage_percent"],
                         "facts": dna["molecules"]["total"],
+                        "spatial_engine_version": dna.get("spatial", {}).get("engine_version"),
+                        "ocr_pages": dna.get("spatial", {}).get("ocr", {}).get("used_pages", 0),
                     },
                 )
                 self._json(dna)

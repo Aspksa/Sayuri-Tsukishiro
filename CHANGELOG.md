@@ -2,6 +2,23 @@
 
 ## Невыпущенные изменения
 
+### 0.1.19 — 2026-10-05 — Spatial Intelligence & OCR 0.7
+
+- Диск Sayuri повышен до `0.7.0`.
+- Evidence Engine повышен до `0.7.0`, DNA schema до 4.
+- Добавлен `SpatialDNAEngine 0.7.0`.
+- PDF spatial extraction переведён на permissive PDFium/pypdfium2.
+- Добавлен локальный Tesseract OCR rus+eng с TSV confidence и координатами.
+- Факты ДНК получают page/line/bbox locator, когда источник предоставляет реальную геометрию.
+- Добавлены spatial quality, OCR page budget и timeout.
+- Добавлены table/signature/stamp candidates без автоматического объявления их фактами.
+- Схема Диска повышена до 7 и добавлен `disk_dna_spatial`.
+- Добавлены internal API spatial status/snapshot и OCR reanalysis.
+- Windows bootstrap умеет optional PDFium/Pillow/Tesseract runtime без pip и без блокировки основного запуска при ошибке optional-компонента.
+- Preflight отдельно показывает состояние Диск Sayuri.
+- Веб-меню не изменялось.
+
+
 ### 0.1.18 — 2026-10-05 — Финальная корректировка старого теста reanalysis
 
 - Исправлен второй оставшийся старый unit-тест, который ожидал безусловный новый анализ от `force=True`.

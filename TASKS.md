@@ -62,9 +62,28 @@
   - deep reanalysis override.
 - Версии: проект `0.1.16`, ядро `0.1.12`, Диск Sayuri `0.6.0`, веб `0.3.0`.
 
-## DISK-007 — OCR и Spatial Evidence 2.0
-- Статус: `proposed`.
-- Цель: OCR сканов/PDF, страница + реальные координаты блоков/таблиц/подписей и качество OCR.
+## DISK-007 — Spatial Intelligence & OCR 0.7
+- Статус: `implemented; CI pending`.
+- Источник: прямой запрос пользователя на следующий эволюционный скачок ДНК 0.7.
+- UI: без новых пунктов меню и постоянных визуальных блоков.
+- Реализовано:
+  - PDFium spatial engine;
+  - native PDF text + geometry;
+  - Tesseract OCR rus+eng;
+  - реальные bbox и нормализованные координаты;
+  - fact → page/line/bbox evidence;
+  - OCR confidence;
+  - spatial quality;
+  - OCR page budget и timeout;
+  - table candidates;
+  - signature/stamp candidates без ложного подтверждения;
+  - spatial cache;
+  - spatial status/snapshot API;
+  - OCR reanalysis;
+  - portable Windows runtime без pip;
+  - отдельный preflight-блок Диска.
+- Версии: проект `0.1.19`, ядро `0.1.15`, Диск Sayuri `0.7.0`, dev-tools `0.1.4`, веб `0.3.0`.
+- Критерий готовности: полный CI должен пройти после публикации.
 
 ## AI-003 — Подключение ИИ-провайдера
 - Статус: `proposed`.

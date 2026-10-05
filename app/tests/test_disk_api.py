@@ -249,8 +249,8 @@ class DiskApiTests(unittest.TestCase):
             timeout=3,
         ) as response:
             dna = json.loads(response.read().decode("utf-8"))
-        self.assertEqual(dna["analyzer_version"], "0.5.0")
-        self.assertEqual(dna["advanced_engine_version"], "0.5.0")
+        self.assertEqual(dna["analyzer_version"], "0.7.0")
+        self.assertEqual(dna["advanced_engine_version"], "0.5.1")
         self.assertIn("document_schema", dna)
         self.assertIn("ai_context", dna)
 
@@ -331,6 +331,45 @@ class DiskApiTests(unittest.TestCase):
         )
         self.assertFalse(deep["reanalysis_deduplicated"])
         self.assertEqual(deep["version_delta"]["reason"], "deep_reanalysis")
+
+
+    def test_dna_07_spatial_status_and_document_api(self):
+        payload = "Договор № 707\nДата: 05.10.2026".encode("utf-8")
+        upload_request = urllib.request.Request(
+            self.base + "/api/disk/upload",
+            data=payload,
+            headers={
+                "Content-Type": "text/plain",
+                "X-Sayuri-Filename": quote("договор 707.txt"),
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(upload_request, timeout=3) as response:
+            uploaded = json.loads(response.read().decode("utf-8"))["file"]
+
+        with urllib.request.urlopen(
+            self.base + f"/api/disk/files/{uploaded['id']}/dna",
+            timeout=3,
+        ) as response:
+            dna = json.loads(response.read().decode("utf-8"))
+        self.assertEqual(dna["analyzer_version"], "0.7.0")
+        self.assertEqual(dna["spatial"]["engine_version"], "0.7.0")
+        self.assertIn(dna["spatial"]["status"], {"not_applicable", "unavailable"})
+
+        with urllib.request.urlopen(
+            self.base + "/api/disk/dna/spatial",
+            timeout=3,
+        ) as response:
+            status = json.loads(response.read().decode("utf-8"))
+        self.assertEqual(status["engine_version"], "0.7.0")
+        self.assertIn("capabilities", status)
+
+        with urllib.request.urlopen(
+            self.base + f"/api/disk/files/{uploaded['id']}/dna/spatial",
+            timeout=3,
+        ) as response:
+            spatial = json.loads(response.read().decode("utf-8"))
+        self.assertEqual(spatial["engine_version"], "0.7.0")
 
 
 if __name__ == "__main__":

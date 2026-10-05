@@ -176,7 +176,7 @@ class DNAEvolutionServiceTests(unittest.TestCase):
             self.assertIn("regression_guard", first["evolution"])
             self.assertIn("active_learning", first["evolution"])
             self.assertGreater(first["global_entities"]["count"], 0)
-            self.assertEqual(service.health()["schema_version"], 6)
+            self.assertEqual(service.health()["schema_version"], 7)
             self.assertEqual(service.health()["dna_evolution_version"], "0.6.0")
 
             history_before = service.dna_history(item["id"])

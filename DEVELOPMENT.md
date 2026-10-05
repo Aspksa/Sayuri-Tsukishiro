@@ -186,3 +186,81 @@ HTTP:
 - Он не запускает автоматический массовый переанализ.
 - Он не меняет пользовательские документы.
 - OCR и реальный AI остаются отдельными слоями.
+
+
+## Диск Sayuri 0.7 — Spatial Intelligence
+
+### Версии
+
+- схема Диска: `7`;
+- DNA schema: `4`;
+- Evidence Engine: `0.7.0`;
+- Advanced DNA: `0.5.1`;
+- Evolution Core: `0.6.0`;
+- Spatial DNA: `0.7.0`.
+
+### Runtime
+
+Windows bootstrap закрепляет:
+- `pypdfium2==5.13.0`;
+- `Pillow==12.3.0`;
+- Tesseract OCR `5.5.3` для автоматического AMD64 runtime;
+- tessdata `4.1.0` `rus+eng`.
+
+Wheel/binary/language files проверяются SHA-256.
+
+Python embeddable получает дополнительный путь:
+`..\\packages`.
+
+### Spatial storage
+
+```text
+disk_dna_spatial
+  file_id PK/FK
+  sha256
+  engine_version
+  analyzed_at
+  spatial_json
+```
+
+### Spatial limits
+
+- MAX_PAGES = 120
+- MAX_OCR_PAGES = 24
+- OCR_DPI = 220
+- OCR_TIMEOUT_SECONDS = 75
+- MAX_NATIVE_CHARS_PER_PAGE = 120000
+- MAX_LINES_PER_PAGE = 4000
+
+### API
+
+- `GET /api/disk/dna/spatial`
+- `GET /api/disk/files/{id}/dna/spatial`
+- `GET /api/disk/files/{id}/dna/spatial?ocr=1`
+- `POST /api/disk/files/{id}/dna/analyze`:
+  - `{"ocr": true}`
+  - `{"deep": true}`
+
+### Evidence
+
+Spatial locator:
+```json
+{
+  "page": 1,
+  "line_id": "p1-ocr-l4",
+  "line": 4,
+  "bbox": {
+    "space": "points",
+    "values": [40, 120, 280, 142],
+    "normalized": [0.066, 0.15, 0.466, 0.177]
+  },
+  "extraction_method": "ocr",
+  "coordinate_status": "exact_from_document_engine"
+}
+```
+
+### Ограничения
+
+- Tesseract auto-install в bootstrap предусмотрен только для AMD64; ARM64 использует найденный внешний OCR либо работает без OCR.
+- table/signature/stamp detection 0.7 создаёт кандидаты, а не подтверждённые semantic entities.
+- реальный vision/LLM слой не подключён.

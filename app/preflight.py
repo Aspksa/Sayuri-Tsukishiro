@@ -20,6 +20,7 @@ def main() -> int:
             "python": platform.python_version(),
             "sqlite": sqlite3.sqlite_version,
             "база_данных": core.database.health(),
+            "диск_sayuri": core.disk.health(),
         }
         print(json.dumps(report, ensure_ascii=False, indent=2))
         return 0

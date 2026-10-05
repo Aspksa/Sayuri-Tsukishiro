@@ -16,7 +16,7 @@
     {
       "id": "sayuri-disk",
       "display_name": "Диск Sayuri",
-      "description": "Файловый менеджер и ДНК 0.6: Evolution Core, глобальные сущности, самопроверка, регрессионная защита, адаптивные профили и безопасное обучение на проверенном опыте.",
+      "description": "Файловый менеджер и ДНК 0.7: PDFium spatial geometry, Tesseract OCR, координатные доказательства, spatial quality и Evolution Core.",
       "path": "disk"
     },
     {
@@ -28,7 +28,7 @@
     {
       "id": "dev-tools",
       "display_name": "Инструменты разработки",
-      "description": "Версионирование, тесты и переносимый Windows-запуск.",
+      "description": "Версионирование, тесты и переносимый Windows-запуск, включая optional Spatial/OCR runtime.",
       "path": "scripts"
     }
   ]
