@@ -232,6 +232,33 @@ class SemanticMemoryIndex:
             result[entry["scope"]].append(item)
         return result
 
+
+    def context(self, query: str, *, limit: int = 10) -> dict[str, Any]:
+        found = self.search(query, limit=limit)
+        return {
+            "retrieval": self.engine_id,
+            "personal": [
+                {
+                    "kind": item["kind"],
+                    "content": item["content"],
+                    "importance": item["importance"],
+                    "relevance": item["relevance"],
+                    "source_context": item.get("source_context"),
+                }
+                for item in found.get("personal", [])
+            ],
+            "project": [
+                {
+                    "kind": item["kind"],
+                    "content": item["content"],
+                    "importance": item["importance"],
+                    "relevance": item["relevance"],
+                    "source_context": item.get("source_context"),
+                }
+                for item in found.get("project", [])
+            ],
+        }
+
     def public_status(self) -> dict[str, Any]:
         return {
             "status": "готово",
