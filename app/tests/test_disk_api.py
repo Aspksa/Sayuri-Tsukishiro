@@ -15,94 +15,110 @@ from app.server import create_server
 
 
 class DiskApiTests(unittest.TestCase):
-    def test_create_upload_list_download_and_delete(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            (root / "VERSION").write_text("1.0.0\n", encoding="utf-8")
-            (root / "MODULES.json").write_text(
-                json.dumps({"schema_version": 1, "modules": []}),
-                encoding="utf-8",
-            )
-            (root / "web").mkdir()
-            (root / "web" / "index.html").write_text("<h1>Саюри</h1>", encoding="utf-8")
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        root = Path(self.temp.name)
+        (root / "VERSION").write_text("1.0.0\n", encoding="utf-8")
+        (root / "MODULES.json").write_text(
+            json.dumps({"schema_version": 1, "modules": []}),
+            encoding="utf-8",
+        )
+        (root / "web").mkdir()
+        (root / "web" / "index.html").write_text("<h1>Саюри</h1>", encoding="utf-8")
 
-            settings = Settings(
-                root=root,
-                host="127.0.0.1",
-                preferred_port=18100,
-                port_scan_limit=100,
-            )
-            core = SayuriCore(settings)
-            core.initialize()
-            server = create_server(core, configure_logging(settings.logs_dir))
-            thread = threading.Thread(target=server.serve_forever, daemon=True)
-            thread.start()
+        settings = Settings(
+            root=root,
+            host="127.0.0.1",
+            preferred_port=18100,
+            port_scan_limit=100,
+        )
+        core = SayuriCore(settings)
+        core.initialize()
+        self.server = create_server(core, configure_logging(settings.logs_dir))
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+        self.base = f"http://127.0.0.1:{self.server.server_port}"
 
-            try:
-                base = f"http://127.0.0.1:{server.server_port}"
+    def tearDown(self):
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join(timeout=3)
+        self.temp.cleanup()
 
-                folder_request = urllib.request.Request(
-                    base + "/api/disk/folders",
-                    data=json.dumps({"name": "Работа"}).encode("utf-8"),
-                    headers={"Content-Type": "application/json"},
-                    method="POST",
-                )
-                with urllib.request.urlopen(folder_request, timeout=3) as response:
-                    folder = json.loads(response.read().decode("utf-8"))["folder"]
+    def post_json(self, path: str, payload: dict):
+        request = urllib.request.Request(
+            self.base + path,
+            data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=3) as response:
+            return json.loads(response.read().decode("utf-8"))
 
-                payload = b"disk api test"
-                upload_request = urllib.request.Request(
-                    base + f"/api/disk/upload?folder_id={folder['id']}",
-                    data=payload,
-                    headers={
-                        "Content-Type": "text/plain",
-                        "X-Sayuri-Filename": quote("проверка.txt"),
-                    },
-                    method="POST",
-                )
-                with urllib.request.urlopen(upload_request, timeout=3) as response:
-                    uploaded = json.loads(response.read().decode("utf-8"))["file"]
+    def test_full_disk_02_api_flow(self):
+        folder = self.post_json("/api/disk/folders", {"name": "Работа"})["folder"]
 
-                with urllib.request.urlopen(
-                    base + f"/api/disk?folder_id={folder['id']}",
-                    timeout=3,
-                ) as response:
-                    listing = json.loads(response.read().decode("utf-8"))
-                    self.assertEqual(listing["files"][0]["name"], "проверка.txt")
+        payload = b"disk api 0.2"
+        upload_request = urllib.request.Request(
+            self.base + f"/api/disk/upload?folder_id={folder['id']}",
+            data=payload,
+            headers={
+                "Content-Type": "text/plain",
+                "X-Sayuri-Filename": quote("проверка.txt"),
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(upload_request, timeout=3) as response:
+            uploaded = json.loads(response.read().decode("utf-8"))["file"]
 
-                with urllib.request.urlopen(
-                    base + f"/api/disk/files/{uploaded['id']}/download",
-                    timeout=3,
-                ) as response:
-                    self.assertEqual(response.read(), payload)
-                    self.assertEqual(
-                        response.headers["X-Sayuri-SHA256"],
-                        uploaded["sha256"],
-                    )
+        self.post_json(
+            "/api/disk/favorite",
+            {"items": [{"kind": "file", "id": uploaded["id"]}], "favorite": True},
+        )
+        self.post_json(
+            "/api/disk/rename",
+            {"kind": "file", "id": uploaded["id"], "name": "готово.txt"},
+        )
 
-                delete_file = urllib.request.Request(
-                    base + f"/api/disk/files/{uploaded['id']}",
-                    method="DELETE",
-                )
-                with urllib.request.urlopen(delete_file, timeout=3) as response:
-                    self.assertEqual(
-                        json.loads(response.read().decode("utf-8"))["status"],
-                        "удалено",
-                    )
+        with urllib.request.urlopen(
+            self.base + f"/api/disk/items/file/{uploaded['id']}",
+            timeout=3,
+        ) as response:
+            properties = json.loads(response.read().decode("utf-8"))
+            self.assertEqual(properties["name"], "готово.txt")
+            self.assertTrue(properties["favorite"])
+            self.assertEqual(properties["size_bytes"], len(payload))
 
-                delete_folder = urllib.request.Request(
-                    base + f"/api/disk/folders/{folder['id']}",
-                    method="DELETE",
-                )
-                with urllib.request.urlopen(delete_folder, timeout=3) as response:
-                    self.assertEqual(
-                        json.loads(response.read().decode("utf-8"))["status"],
-                        "удалено",
-                    )
-            finally:
-                server.shutdown()
-                server.server_close()
-                thread.join(timeout=3)
+        with urllib.request.urlopen(self.base + "/api/disk?scope=favorites", timeout=3) as response:
+            favorites = json.loads(response.read().decode("utf-8"))
+            self.assertEqual(favorites["files"][0]["id"], uploaded["id"])
+
+        self.post_json(
+            "/api/disk/trash",
+            {"items": [{"kind": "file", "id": uploaded["id"]}]},
+        )
+        with urllib.request.urlopen(self.base + "/api/disk?scope=trash", timeout=3) as response:
+            trash = json.loads(response.read().decode("utf-8"))
+            self.assertEqual(trash["files"][0]["id"], uploaded["id"])
+
+        self.post_json(
+            "/api/disk/restore",
+            {"items": [{"kind": "file", "id": uploaded["id"]}]},
+        )
+
+        with urllib.request.urlopen(
+            self.base + f"/api/disk/files/{uploaded['id']}/download",
+            timeout=3,
+        ) as response:
+            self.assertEqual(response.read(), payload)
+
+        with urllib.request.urlopen(self.base + "/api/disk/actions?limit=20", timeout=3) as response:
+            actions = json.loads(response.read().decode("utf-8"))["actions"]
+            self.assertGreaterEqual(len(actions), 5)
+
+        with urllib.request.urlopen(self.base + "/api/disk/folders-tree", timeout=3) as response:
+            folders = json.loads(response.read().decode("utf-8"))["folders"]
+            self.assertEqual(folders[0]["name"], "Работа")
 
 
 if __name__ == "__main__":

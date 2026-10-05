@@ -89,7 +89,7 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
             )
             return False
 
-    def _json(self, payload: dict, status: int = 200) -> bool:
+    def _json(self, payload: dict | list, status: int = 200) -> bool:
         body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         return self._send(body, "application/json; charset=utf-8", status)
 
@@ -116,6 +116,22 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
     def _query_folder(query: dict[str, list[str]]) -> str | None:
         value = query.get("folder_id", [""])[0].strip()
         return value or None
+
+    @staticmethod
+    def _parse_items(payload: dict) -> list[dict[str, str]]:
+        items = payload.get("items")
+        if not isinstance(items, list) or not items:
+            raise BadRequestError("Нужно выбрать хотя бы один объект.")
+        normalized: list[dict[str, str]] = []
+        for item in items:
+            if not isinstance(item, dict):
+                raise BadRequestError("Некорректный список объектов.")
+            kind = item.get("kind")
+            object_id = item.get("id")
+            if kind not in {"file", "folder"} or not isinstance(object_id, str) or not object_id:
+                raise BadRequestError("Некорректный объект.")
+            normalized.append({"kind": kind, "id": object_id})
+        return normalized
 
     def _send_download(self, item: dict) -> None:
         path = item["path"]
@@ -192,9 +208,33 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
                 self._json(self.server.core.settings_payload())
                 return
             if parsed.path == "/api/disk":
-                folder_id = self._query_folder(query)
-                search = query.get("q", [""])[0]
-                self._json(self.server.core.disk.list_entries(folder_id, search))
+                self._json(
+                    self.server.core.disk.list_entries(
+                        self._query_folder(query),
+                        query.get("q", [""])[0],
+                        scope=query.get("scope", ["all"])[0],
+                        sort=query.get("sort", ["name"])[0],
+                        direction=query.get("direction", ["asc"])[0],
+                        category=query.get("category", ["all"])[0],
+                    )
+                )
+                return
+            if parsed.path == "/api/disk/actions":
+                raw_limit = query.get("limit", ["30"])[0]
+                try:
+                    limit = int(raw_limit)
+                except ValueError:
+                    limit = 30
+                self._json({"actions": self.server.core.disk.recent_actions(limit)})
+                return
+            if parsed.path == "/api/disk/folders-tree":
+                self._json({"folders": self.server.core.disk.folder_tree()})
+                return
+            if parsed.path.startswith("/api/disk/items/"):
+                parts = parsed.path.strip("/").split("/")
+                if len(parts) != 5 or parts[:3] != ["api", "disk", "items"]:
+                    raise FileNotFoundError("Объект не найден.")
+                self._json(self.server.core.disk.properties(parts[3], parts[4]))
                 return
             if parsed.path.startswith("/api/disk/files/") and parsed.path.endswith("/download"):
                 file_id = parsed.path[len("/api/disk/files/"):-len("/download")].strip("/")
@@ -246,7 +286,9 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
                 if not isinstance(name, str):
                     raise BadRequestError("Поле name должно содержать имя папки.")
                 folder = self.server.core.disk.create_folder(name, parent_id)
-                self.server.core.database.record_event("Диск Sayuri", "Папка создана", details={"name": folder["name"]})
+                self.server.core.database.record_event(
+                    "Диск Sayuri", "Папка создана", details={"name": folder["name"]}
+                )
                 self._json({"status": "создано", "folder": folder}, HTTPStatus.CREATED)
                 return
 
@@ -271,9 +313,73 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
                 self.server.core.database.record_event(
                     "Диск Sayuri",
                     "Файл загружен",
-                    details={"name": item["name"], "size_bytes": item["size_bytes"]},
+                    details={
+                        "name": item["name"],
+                        "size_bytes": item["size_bytes"],
+                        "duplicate_of": item.get("duplicate_of"),
+                    },
                 )
                 self._json({"status": "загружено", "file": item}, HTTPStatus.CREATED)
+                return
+
+            if parsed.path == "/api/disk/rename":
+                payload = self._read_json()
+                kind = payload.get("kind")
+                object_id = payload.get("id")
+                name = payload.get("name")
+                if kind not in {"file", "folder"} or not isinstance(object_id, str) or not isinstance(name, str):
+                    raise BadRequestError("Некорректные данные переименования.")
+                result = self.server.core.disk.rename(kind, object_id, name)
+                self.server.core.database.record_event("Диск Sayuri", "Объект переименован")
+                self._json(result)
+                return
+
+            if parsed.path == "/api/disk/move":
+                payload = self._read_json()
+                result = self.server.core.disk.move(
+                    self._parse_items(payload),
+                    payload.get("destination_id") or None,
+                )
+                self.server.core.database.record_event(
+                    "Диск Sayuri", f"Перемещено: {result['count']}"
+                )
+                self._json(result)
+                return
+
+            if parsed.path == "/api/disk/favorite":
+                payload = self._read_json()
+                favorite = payload.get("favorite")
+                if type(favorite) is not bool:
+                    raise BadRequestError("Поле favorite должно быть логическим.")
+                result = self.server.core.disk.set_favorite(self._parse_items(payload), favorite)
+                self._json(result)
+                return
+
+            if parsed.path == "/api/disk/trash":
+                payload = self._read_json()
+                result = self.server.core.disk.trash(self._parse_items(payload))
+                self.server.core.database.record_event(
+                    "Диск Sayuri", f"В корзину: {result['count']}"
+                )
+                self._json(result)
+                return
+
+            if parsed.path == "/api/disk/restore":
+                payload = self._read_json()
+                result = self.server.core.disk.restore(self._parse_items(payload))
+                self.server.core.database.record_event(
+                    "Диск Sayuri", f"Восстановлено: {result['count']}"
+                )
+                self._json(result)
+                return
+
+            if parsed.path == "/api/disk/delete-permanent":
+                payload = self._read_json()
+                result = self.server.core.disk.delete_permanently(self._parse_items(payload))
+                self.server.core.database.record_event(
+                    "Диск Sayuri", f"Удалено навсегда: {result['count']}"
+                )
+                self._json(result)
                 return
 
             raise StaticFileError(f"API не найден: {parsed.path}")
@@ -294,14 +400,12 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
             parsed = urlparse(self.path)
             if parsed.path.startswith("/api/disk/files/"):
                 file_id = parsed.path[len("/api/disk/files/"):].strip("/")
-                result = self.server.core.disk.delete_file(file_id)
-                self.server.core.database.record_event("Диск Sayuri", "Файл удалён")
+                result = self.server.core.disk.trash([{"kind": "file", "id": file_id}])
                 self._json(result)
                 return
             if parsed.path.startswith("/api/disk/folders/"):
                 folder_id = parsed.path[len("/api/disk/folders/"):].strip("/")
-                result = self.server.core.disk.delete_folder(folder_id)
-                self.server.core.database.record_event("Диск Sayuri", "Папка удалена")
+                result = self.server.core.disk.trash([{"kind": "folder", "id": folder_id}])
                 self._json(result)
                 return
             raise StaticFileError(f"API не найден: {parsed.path}")
@@ -324,7 +428,11 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
             raise StaticFileError(f"Файл не найден: {url_path}")
         body = candidate.read_bytes()
         content_type = mimetypes.guess_type(candidate.name)[0] or "application/octet-stream"
-        if content_type.startswith("text/") or content_type in {"application/javascript", "application/json", "image/svg+xml"}:
+        if content_type.startswith("text/") or content_type in {
+            "application/javascript",
+            "application/json",
+            "image/svg+xml",
+        }:
             content_type += "; charset=utf-8"
         self._send(body, content_type, HTTPStatus.OK)
 

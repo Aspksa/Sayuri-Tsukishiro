@@ -7,50 +7,56 @@
 | ID | Имя | Путь | Назначение |
 | --- | --- | --- | --- |
 | `sayuri-core` | Ядро Саюри | `app/` | SQLite, настройки, API, сервер, диагностика |
-| `agent-core` | Агентное ядро | `agent/` | контракт будущего ИИ/Memory/Tool исполнения |
-| `sayuri-disk` | Диск Sayuri | `disk/` | локальное файловое хранилище |
-| `web-ui` | Веб-интерфейс | `web/` | левое меню, главная, Диск Sayuri, настройки |
+| `agent-core` | Агентное ядро | `agent/` | контракт будущего ИИ/памяти/инструментов |
+| `sayuri-disk` | Диск Sayuri | `disk/` | профессиональный локальный файловый менеджер |
+| `web-ui` | Веб-интерфейс | `web/` | левое меню, Диск Sayuri, настройки |
 | `dev-tools` | Инструменты разработки | `scripts/` | версии, тесты, Windows bootstrap |
 
-## Системная база данных
+## Диск Sayuri 0.2
 
-Файл: `data/sayuri.db`.
+Схема модуля Диска: 2. Она живёт в общей `data/sayuri.db` и использует таблицы:
 
-Системная schema 2 содержит `schema_meta`, `system_events`, `error_events`, `system_settings`. Модуль «Диск Sayuri» хранит собственную схему версии 1 в таблицах `disk_meta`, `disk_folders`, `disk_files`.
+- `disk_meta`;
+- `disk_folders`;
+- `disk_files`;
+- `disk_actions`.
 
-## Хранилище «Диск Sayuri»
+Бинарные объекты находятся в `data/disk/objects/`, временные загрузки — в `data/disk/temp/`.
 
-- Объекты: `data/disk/objects/`.
-- Временные загрузки: `data/disk/temp/`.
-- Реальные имена файлов не используются как имена объектов на диске.
-- Идентификаторы файлов и папок — UUID.
-- Для каждого файла хранится SHA-256.
-- Максимальный размер одного файла в версии 0.1.6 — 1 ГБ.
-- Чтение/запись выполняются блоками по 1 МБ.
-- `data/` не коммитится в Git.
+### Основные свойства
 
-## API
+- UUID вместо пользовательского имени как физического имени файла;
+- SHA-256 каждого файла;
+- рекурсивный размер папки;
+- favorite/trashed/updated metadata;
+- мягкое удаление и восстановление;
+- история действий;
+- выявление дубликатов по SHA-256;
+- миграция схемы 1 → 2;
+- лимит одного файла 1 ГБ;
+- потоковая запись блоками 1 МБ.
 
-Система:
-- `GET /api/health`
-- `GET /api/system`
-- `GET /api/settings`
-- `POST /api/settings`
-- `GET /api/events?limit=N`
+### API Диска
 
-Диск Sayuri:
-- `GET /api/disk?folder_id=<id>&q=<поиск>`
+- `GET /api/disk?folder_id=&q=&scope=&sort=&direction=&category=`
+- `GET /api/disk/actions?limit=N`
+- `GET /api/disk/folders-tree`
+- `GET /api/disk/items/{file|folder}/{id}`
 - `POST /api/disk/folders`
-- `POST /api/disk/upload?folder_id=<id>`
+- `POST /api/disk/upload`
+- `POST /api/disk/rename`
+- `POST /api/disk/move`
+- `POST /api/disk/favorite`
+- `POST /api/disk/trash`
+- `POST /api/disk/restore`
+- `POST /api/disk/delete-permanent`
 - `GET /api/disk/files/{id}/download`
-- `DELETE /api/disk/files/{id}`
-- `DELETE /api/disk/folders/{id}`
 
-Загрузка использует тело запроса как поток файла; имя передаётся URL-кодированным в заголовке `X-Sayuri-Filename`.
+### Интерфейс
 
-## Запуск и проверки
+Веб-слой предоставляет «Мой диск», «Избранное», «Недавние», «Корзина», массовый выбор, фильтры, сортировки, очередь загрузки, свойства и окно перемещения. Для процента загрузки используется `XMLHttpRequest.upload.progress`, потому что стандартный Fetch API не даёт стабильный upload progress.
 
-На Windows: `Sayuri Tsukishiro.bat`.
+## Проверки
 
 ```sh
 python -m unittest discover -s app/tests -v
@@ -60,4 +66,4 @@ python -m app.main --no-browser
 python scripts/versioning.py check
 ```
 
-Windows launcher дополнительно проверяется GitHub Actions на `windows-latest`.
+Windows launcher отдельно проверяется в GitHub Actions на `windows-latest`.

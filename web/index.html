@@ -21,16 +21,13 @@
 
       <nav class="main-nav" aria-label="Главное меню">
         <button class="nav-item active" type="button" data-view="home">
-          <span class="nav-icon">⌂</span>
-          <span>Главная</span>
+          <span class="nav-icon">⌂</span><span>Главная</span>
         </button>
         <button class="nav-item" type="button" data-view="disk">
-          <span class="nav-icon">◫</span>
-          <span>Диск Sayuri</span>
+          <span class="nav-icon">◫</span><span>Диск Sayuri</span>
         </button>
         <button class="nav-item" type="button" data-view="settings">
-          <span class="nav-icon">⚙</span>
-          <span>Настройки</span>
+          <span class="nav-icon">⚙</span><span>Настройки</span>
         </button>
       </nav>
 
@@ -54,7 +51,7 @@
           <div>
             <p class="eyebrow">ЯДРО САЮРИ · ЭТАП 2</p>
             <h2>Локальная основа Саюри работает.</h2>
-            <p class="lead">Ядро, база данных, веб-интерфейс и системный контур готовы. Файлы и документы теперь можно хранить в отдельном модуле «Диск Sayuri».</p>
+            <p class="lead">Ядро, база данных, системные настройки и профессиональный файловый модуль работают локально внутри проекта.</p>
           </div>
           <div class="version-box">
             <span>Версия проекта</span>
@@ -85,9 +82,9 @@
       <section class="view" id="view-disk">
         <div class="disk-head">
           <div>
-            <p class="eyebrow">ЛОКАЛЬНОЕ ХРАНИЛИЩЕ</p>
+            <p class="eyebrow">ПРОФЕССИОНАЛЬНЫЙ ФАЙЛОВЫЙ МЕНЕДЖЕР</p>
             <h2>Диск Sayuri</h2>
-            <p>Файлы хранятся локально внутри проекта. Метаданные и контрольные суммы записываются в SQLite.</p>
+            <p>Файлы, папки, избранное, история действий и корзина — локально, с контролем целостности и подготовкой к умному документному слою.</p>
           </div>
           <div class="disk-actions">
             <button class="secondary-button" id="new-folder-button" type="button">Новая папка</button>
@@ -100,43 +97,155 @@
           <article><span>Файлов</span><strong id="disk-files-count">0</strong></article>
           <article><span>Папок</span><strong id="disk-folders-count">0</strong></article>
           <article><span>Занято</span><strong id="disk-bytes">0 Б</strong></article>
-          <article><span>Лимит файла</span><strong id="disk-max-file">1 ГБ</strong></article>
+          <article><span>Избранное</span><strong id="disk-favorites-count">0</strong></article>
+          <article><span>Корзина</span><strong id="disk-trash-count">0</strong></article>
         </section>
 
-        <section class="disk-panel">
-          <div class="disk-toolbar">
-            <nav class="breadcrumbs" id="disk-breadcrumbs" aria-label="Путь">
-              <button type="button" data-folder-id="">Диск Sayuri</button>
-            </nav>
-            <label class="disk-search">
-              <span>⌕</span>
-              <input id="disk-search-input" type="search" placeholder="Поиск в папке">
+        <div class="disk-manager">
+          <aside class="disk-rail">
+            <button class="disk-scope active" type="button" data-disk-scope="all">
+              <span>▦</span><strong>Мой диск</strong>
+            </button>
+            <button class="disk-scope" type="button" data-disk-scope="favorites">
+              <span>☆</span><strong>Избранное</strong><em id="disk-scope-favorites">0</em>
+            </button>
+            <button class="disk-scope" type="button" data-disk-scope="recent">
+              <span>◷</span><strong>Недавние</strong>
+            </button>
+            <button class="disk-scope" type="button" data-disk-scope="trash">
+              <span>⌫</span><strong>Корзина</strong><em id="disk-scope-trash">0</em>
+            </button>
+
+            <div class="disk-rail-note">
+              <span>Хранилище</span>
+              <strong id="disk-rail-used">0 Б</strong>
+              <small>локально на носителе</small>
+            </div>
+          </aside>
+
+          <section class="disk-panel">
+            <div class="disk-toolbar">
+              <nav class="breadcrumbs" id="disk-breadcrumbs" aria-label="Путь">
+                <button type="button">Диск Sayuri</button>
+              </nav>
+
+              <div class="disk-toolbar-controls">
+                <label class="disk-search">
+                  <span>⌕</span>
+                  <input id="disk-search-input" type="search" placeholder="Поиск">
+                </label>
+                <select id="disk-category-filter" class="disk-select" aria-label="Фильтр типа">
+                  <option value="all">Все типы</option>
+                  <option value="folders">Папки</option>
+                  <option value="documents">Документы</option>
+                  <option value="pdf">PDF</option>
+                  <option value="tables">Таблицы</option>
+                  <option value="presentations">Презентации</option>
+                  <option value="images">Изображения</option>
+                  <option value="video">Видео</option>
+                  <option value="audio">Аудио</option>
+                  <option value="archives">Архивы</option>
+                  <option value="other">Другое</option>
+                </select>
+                <select id="disk-sort" class="disk-select" aria-label="Сортировка">
+                  <option value="name:asc">Имя ↑</option>
+                  <option value="name:desc">Имя ↓</option>
+                  <option value="date:desc">Сначала новые</option>
+                  <option value="date:asc">Сначала старые</option>
+                  <option value="size:desc">Размер ↓</option>
+                  <option value="size:asc">Размер ↑</option>
+                  <option value="type:asc">По типу</option>
+                </select>
+              </div>
+            </div>
+
+            <form class="new-folder-form hidden" id="new-folder-form">
+              <input id="new-folder-name" type="text" maxlength="255" placeholder="Название папки" autocomplete="off">
+              <button class="primary-button" type="submit">Создать</button>
+              <button class="secondary-button" id="cancel-folder-button" type="button">Отмена</button>
+            </form>
+
+            <div class="bulk-toolbar hidden" id="disk-bulk-toolbar">
+              <strong id="disk-selected-count">Выбрано: 0</strong>
+              <div>
+                <button type="button" data-bulk-action="favorite">В избранное</button>
+                <button type="button" data-bulk-action="move">Переместить</button>
+                <button type="button" data-bulk-action="restore" class="trash-only">Восстановить</button>
+                <button type="button" data-bulk-action="trash" class="normal-only">В корзину</button>
+                <button type="button" data-bulk-action="delete" class="trash-only danger-action">Удалить навсегда</button>
+              </div>
+            </div>
+
+            <div class="upload-queue hidden" id="upload-queue">
+              <div class="upload-queue-head">
+                <strong>Загрузка файлов</strong>
+                <span id="upload-summary">0 из 0</span>
+              </div>
+              <div id="upload-items"></div>
+            </div>
+
+            <div class="drop-zone" id="disk-drop-zone">
+              <strong>Перетащите файлы сюда</strong>
+              <span>Можно загрузить несколько файлов одновременно · до 1 ГБ каждый</span>
+            </div>
+
+            <div class="disk-message" id="disk-message" aria-live="polite"></div>
+
+            <div class="disk-list-head">
+              <label class="disk-check"><input id="disk-select-all" type="checkbox"><span></span></label>
+              <span>Имя</span>
+              <span>Размер</span>
+              <span>Тип</span>
+              <span>Изменён</span>
+              <span></span>
+            </div>
+            <div class="disk-list" id="disk-list">
+              <p class="muted">Загрузка содержимого…</p>
+            </div>
+
+            <section class="disk-activity">
+              <div class="section-head">
+                <div>
+                  <p class="eyebrow">ИСТОРИЯ</p>
+                  <h3>Недавние действия</h3>
+                </div>
+                <button class="secondary-button" id="refresh-disk-actions" type="button">Обновить</button>
+              </div>
+              <div id="disk-actions-list" class="disk-actions-list">
+                <p class="muted">Загрузка истории…</p>
+              </div>
+            </section>
+          </section>
+        </div>
+
+        <aside class="properties-drawer" id="disk-properties" aria-hidden="true">
+          <div class="properties-head">
+            <div>
+              <p class="eyebrow">СВОЙСТВА</p>
+              <h3 id="properties-title">Объект</h3>
+            </div>
+            <button id="properties-close" type="button" aria-label="Закрыть">×</button>
+          </div>
+          <div id="properties-body" class="properties-body"></div>
+        </aside>
+
+        <div class="modal-backdrop hidden" id="move-modal">
+          <section class="move-dialog" role="dialog" aria-modal="true" aria-labelledby="move-dialog-title">
+            <div class="section-head">
+              <div><p class="eyebrow">ПЕРЕМЕЩЕНИЕ</p><h3 id="move-dialog-title">Куда переместить?</h3></div>
+              <button class="icon-button" id="move-close" type="button">×</button>
+            </div>
+            <label class="move-root-option">
+              <input type="radio" name="move-destination" value="" checked>
+              <span>Диск Sayuri</span>
             </label>
-          </div>
-
-          <form class="new-folder-form hidden" id="new-folder-form">
-            <input id="new-folder-name" type="text" maxlength="255" placeholder="Название папки" autocomplete="off">
-            <button class="primary-button" type="submit">Создать</button>
-            <button class="secondary-button" id="cancel-folder-button" type="button">Отмена</button>
-          </form>
-
-          <div class="drop-zone" id="disk-drop-zone">
-            <strong>Перетащите файлы сюда</strong>
-            <span>или нажмите «Загрузить файлы»</span>
-          </div>
-
-          <div class="disk-message" id="disk-message" aria-live="polite"></div>
-
-          <div class="disk-list-head">
-            <span>Имя</span>
-            <span>Размер</span>
-            <span>Изменён</span>
-            <span></span>
-          </div>
-          <div class="disk-list" id="disk-list">
-            <p class="muted">Загрузка содержимого…</p>
-          </div>
-        </section>
+            <div id="move-folder-list" class="move-folder-list"></div>
+            <div class="move-dialog-actions">
+              <button class="secondary-button" id="move-cancel" type="button">Отмена</button>
+              <button class="primary-button" id="move-confirm" type="button">Переместить</button>
+            </div>
+          </section>
+        </div>
       </section>
 
       <section class="view" id="view-settings">
@@ -161,9 +270,7 @@
             <div><p class="eyebrow">КОНФИГУРАЦИЯ</p><h3>Настройки системы</h3></div>
             <button class="primary-button" id="save-settings" type="button">Сохранить</button>
           </div>
-          <div class="settings-form" id="settings-form">
-            <p class="muted">Загрузка настроек…</p>
-          </div>
+          <div class="settings-form" id="settings-form"><p class="muted">Загрузка настроек…</p></div>
         </section>
 
         <section class="settings-section" id="system-state">
