@@ -2,6 +2,30 @@
 
 ## Невыпущенные изменения
 
+### 0.1.43 — 2026-10-06 — Memory 3.0
+
+- Добавлены Working Memory, Episodic Memory, Knowledge Memory и Temporal Memory.
+- Добавлен локальный Knowledge Graph памяти.
+- Добавлена консолидация похожих воспоминаний в устойчивые knowledge items без удаления источников.
+- Добавлен Retention/Forgetting Engine: устаревшие записи получают меньший semantic retrieval-вес вместо автоматического удаления.
+- Добавлен Contradiction Resolver с вариантами новое/старое/оба.
+- Knowledge items получили temporal validity: `valid_from/valid_to`.
+- Working Memory обновляется из чата и Safe Action planning и имеет TTL 24 часа.
+- Значимые action/feedback/review события записываются как эпизоды.
+- При старте выполняется bootstrap существующей памяти; opportunistic maintenance запускается не чаще одного раза в 6 часов.
+- DeepSeek-V4-Flash получает отдельный Memory 3.0 context block.
+- В Личном кабинете появился Memory 3.0 dashboard с графом, timeline, conflicts, retention и knowledge.
+- Добавлены `GET /api/sayuri/memory/v3`, `POST /maintenance`, `POST /conflicts/{id}/resolve`.
+- Episodic Memory дедуплицирует повторную обработку одного feedback/action по fingerprint; точный retry не засоряет timeline.
+- Semantic Memory сканирует активные записи по scope до лимита 5000, поэтому релевантная старая память не теряется после первых 300 записей.
+- Knowledge Graph сохраняет реальные подписи source-memory и помечает архивированные узлы через `active=false` / `archived_at`.
+- Contradiction Resolver гарантирует обе стороны конфликта в графе и связь `conflicts_with`.
+- Ручное архивирование исходной memory закрывает производное Knowledge, если не осталось других активных источников.
+- Открытые противоречия передаются в AI-context явно как old/new, а не только счётчиком.
+- Добавлены unit/API/Web contract tests Memory 3.0.
+- Проект: `0.1.43`; Ядро: `0.1.35`; Agent Core: `0.7.0`; Web UI: `0.20.0`.
+
+
 ### 0.1.42 — 2026-10-06 — Semantic Memory + Experience Learning
 
 - Добавлен локальный hybrid semantic поиск памяти `hybrid-semantic-v1`.
@@ -15,23 +39,6 @@
 - В Личном кабинете добавлены Semantic Memory status, relevance поиска и статистика Experience Learning.
 - Добавлены API `/api/sayuri/experience` и `/api/sayuri/experience/feedback`.
 - Добавлены тесты semantic retrieval, feedback idempotency, relevant experience context, calibration и action learning.
-- Проект: `0.1.42`; Ядро: `0.1.34`; Agent Core: `0.6.0`; Web UI: `0.19.0`.
-
-
-### 0.1.42 — 2026-10-05 — Semantic Memory + Experience Learning
-
-- Добавлен локальный `hybrid-semantic-v1` для смыслового поиска памяти без второй AI-модели.
-- Semantic Memory использует token overlap, лёгкую морфологию, локальные concepts, character n-grams и quality weighting.
-- Личная и проектная память остаются раздельными на этапе retrieval.
-- Поиск в Личном кабинете показывает semantic relevance.
-- Добавлен отдельный локальный `ExperienceStore` в `data/sayuri-experience.db`.
-- Experience Learning учитывает исходы Safe Actions, review кандидатов памяти и явную оценку ответов.
-- У ответов Sayuri появились «Полезно / Не помогло».
-- Обратная связь idempotent и может быть пересмотрена без создания дублей.
-- Memory Intelligence калибрует confidence по накопленному подтверждённому опыту в пределах ±8%.
-- Релевантный положительный/отрицательный опыт передаётся DeepSeek-V4-Flash отдельным недоверенным context block.
-- В Личном кабинете добавлены метрики опыта и success rate стратегий.
-- Добавлены API опыта и тесты Semantic Memory / Experience Learning.
 - Проект: `0.1.42`; Ядро: `0.1.34`; Agent Core: `0.6.0`; Web UI: `0.19.0`.
 
 
