@@ -4,13 +4,13 @@
     {
       "id": "sayuri-core",
       "display_name": "Ядро Саюри",
-      "description": "Системное ядро, SQLite, API, диагностика, Memory 4.1 Quality Gate, Memory 3.0, Semantic/Experience Learning и безопасное выполнение подтверждённых действий Sayuri.",
+      "description": "Системное ядро, SQLite, API, диагностика, Memory 4.1 Quality Gate, Reasoning Planner/Result Verifier и безопасное выполнение подтверждённых действий Sayuri.",
       "path": "app"
     },
     {
       "id": "agent-core",
       "display_name": "Агентное ядро",
-      "description": "Sayuri Agent Core: DeepSeek-V4-Flash через Cloud.ru, Memory 4.1 Quality Gate с instruction-risk quarantine, diversified recall, context budgets, freshness review, privacy firewall и доказательной Failure/Causal Memory.",
+      "description": "Sayuri Agent Core: DeepSeek-V4-Flash через Cloud.ru, adaptive Reasoning Planner + Result Verifier, Memory 4.1 Quality Gate, Experience Learning и confirmation-gated actions.",
       "path": "agent"
     },
     {
@@ -22,7 +22,7 @@
     {
       "id": "web-ui",
       "display_name": "Веб-интерфейс",
-      "description": "Единая оболочка Sayuri с Личным кабинетом, Memory 4.1 Quality Gate, quarantine/review metrics, explainable recall, goals/tasks, snapshots, чатом, действиями, аватарами, Диском и ДНК.",
+      "description": "Единая оболочка Sayuri с чатом, компактной сводкой Planner/Verifier, Memory 4.1 Quality Gate, Личным кабинетом, Диском, ДНК, действиями и аватарами.",
       "path": "web"
     },
     {

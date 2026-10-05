@@ -1007,3 +1007,67 @@ Required release checks:
 - `python3 scripts/versioning.py check --each-commit` on atomic release commit;
 - Windows launcher workflow.
 
+
+
+## Reasoning Planner + Result Verifier 0.1
+
+Реализация: `agent/reasoning.py`, интеграция runtime — `agent/runtime.py`.
+
+### Pipeline
+
+```text
+user task
+→ deterministic complexity gate
+→ [direct] answer
+→ или [planned] Planner JSON
+→ answer with structured plan
+→ Result Verifier JSON
+→ optional revised_answer
+→ commit Memory 4.1 recall usage
+```
+
+### Structured plan
+
+Planner возвращает только:
+- `goal`;
+- `steps`;
+- `constraints`;
+- `evidence_needed`;
+- `done_when`;
+- `risk_level`.
+
+Это task-control artifact, а не chain-of-thought.
+
+### Complexity gate
+
+Gate локальный и deterministic. Он учитывает архитектурные/аналитические маркеры, длину, многошаговый формат, количество ограничений и document context. Простая беседа остаётся в `direct` режиме с одним Cloud.ru вызовом.
+
+### Result Verifier
+
+Verifier получает:
+- исходную задачу;
+- structured plan;
+- основной ответ;
+- уже Cloud-safe evidence context.
+
+Результат:
+- `pass` — ответ остаётся как есть;
+- `revise` — используется полный `revised_answer`;
+- `unavailable` — основной ответ сохраняется, но UI не показывает ложный статус проверки.
+
+### Safety
+
+- единственная внешняя модель: `deepseek-ai/DeepSeek-V4-Flash`;
+- Planner/Verifier не расширяют Action Broker permissions;
+- memory/document content остаётся недоверенными данными;
+- chain-of-thought не сохраняется;
+- recall attribution остаётся post-budget и commit-ится после успешного пользовательского ответа.
+
+### Проверки
+
+- direct/planned complexity gate;
+- нормализация Planner/Verifier JSON;
+- три model calls для planned режима;
+- verifier revision применяется как финальный answer;
+- direct режим использует один model call;
+- Web chat показывает только structured reasoning summary.

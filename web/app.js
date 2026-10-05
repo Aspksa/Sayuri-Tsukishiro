@@ -3707,12 +3707,61 @@ function renderSayuriMessages() {
       const notice = createMemoryCandidateChatNotice(message.metadata.memory_candidates);
       if (notice) bubble.append(notice);
     }
+    const reasoning = createSayuriReasoningSummary(message.metadata);
+    if (reasoning) bubble.append(reasoning);
     const feedback = createSayuriFeedbackControls(messageIndex, message);
     if (feedback) bubble.append(feedback);
     row.append(bubble);
     container.append(row);
   });
   container.scrollTop = container.scrollHeight;
+}
+
+
+function createSayuriReasoningSummary(metadata) {
+  const reasoning = metadata?.reasoning;
+  if (!reasoning || reasoning.mode !== 'planned') return null;
+
+  const details = document.createElement('details');
+  details.className = 'sayuri-reasoning-summary';
+  const summary = document.createElement('summary');
+  const verification = reasoning.verification || {};
+  let state = 'проверка с замечаниями';
+  if (verification.status === 'pass') state = 'проверено';
+  else if (reasoning.revised) state = 'исправлено после проверки';
+  else if (verification.status === 'unavailable') state = 'проверка недоступна';
+  const stepCount = reasoning.plan?.steps?.length || 0;
+  summary.textContent = `План · ${stepCount} шагов · ${state}`;
+  details.append(summary);
+
+  if (reasoning.plan?.goal) {
+    const goal = document.createElement('p');
+    goal.className = 'sayuri-reasoning-goal';
+    goal.textContent = reasoning.plan.goal;
+    details.append(goal);
+  }
+  if (Array.isArray(reasoning.plan?.steps) && reasoning.plan.steps.length) {
+    const list = document.createElement('ol');
+    reasoning.plan.steps.slice(0, 7).forEach((step) => {
+      const item = document.createElement('li');
+      item.textContent = step;
+      list.append(item);
+    });
+    details.append(list);
+  }
+  if (Array.isArray(verification.issues) && verification.issues.length) {
+    const note = document.createElement('p');
+    note.className = 'sayuri-reasoning-issues';
+    note.textContent = `Проверка: ${verification.issues.slice(0, 3).join(' · ')}`;
+    details.append(note);
+  }
+  const meta = document.createElement('small');
+  const score = Number.isFinite(Number(verification.score))
+    ? ` · качество ${Math.round(Number(verification.score) * 100)}%`
+    : '';
+  meta.textContent = `Reasoning Planner + Result Verifier · вызовов модели ${reasoning.model_calls || 0}${score}`;
+  details.append(meta);
+  return details;
 }
 
 function openSayuriChat() {
@@ -3775,6 +3824,7 @@ async function sendSayuriMessage(text) {
       memory_v4: result.memory_v4 || null,
       memory_v4_used: result.memory_v4_used || 0,
       experience_used: result.experience_used || 0,
+      reasoning: result.reasoning || null,
       prompt: message
     });
     if (result.memory_saved) {
@@ -3789,7 +3839,7 @@ async function sendSayuriMessage(text) {
     }
     byId('sayuri-chat-status').textContent = result.model === 'local-memory'
       ? 'Память Sayuri · сохранено локально'
-      : `DeepSeek-V4-Flash · память ${result.memory_used || 0} · знания ${result.memory_v3_used || 0} · цели/задачи ${result.memory_v4_used || 0} · опыт ${result.experience_used || 0}`;
+      : `DeepSeek-V4-Flash · память ${result.memory_used || 0} · знания ${result.memory_v3_used || 0} · цели/задачи ${result.memory_v4_used || 0} · опыт ${result.experience_used || 0}${result.reasoning?.mode === 'planned' ? ' · план+проверка' : ''}`;
   } catch (error) {
     const text = error instanceof Error ? error.message : String(error);
     addSayuriMessage('assistant', `Не удалось получить ответ: ${text}`);
