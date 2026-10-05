@@ -295,17 +295,28 @@ class SayuriMemory:
             rows = db.execute(sql, params).fetchall()
         return [self._row(row) for row in rows]
 
-    def scan_active(self, *, limit: int = 5000) -> list[dict[str, Any]]:
+    def scan_active(
+        self,
+        *,
+        scope: str | None = None,
+        limit: int = 5000,
+    ) -> list[dict[str, Any]]:
         safe_limit = min(max(int(limit), 1), 5000)
+        params: list[Any] = []
+        clauses = ["active = 1"]
+        if scope:
+            clauses.append("scope = ?")
+            params.append(self._validate_scope(scope))
+        params.append(safe_limit)
         with self._connect() as db:
             rows = db.execute(
-                """
+                f"""
                 SELECT * FROM memory_entries
-                WHERE active = 1
+                WHERE {' AND '.join(clauses)}
                 ORDER BY importance DESC, updated_at DESC
                 LIMIT ?
                 """,
-                (safe_limit,),
+                params,
             ).fetchall()
         return [self._row(row) for row in rows]
 
