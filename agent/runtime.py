@@ -319,6 +319,7 @@ class SayuriAgent:
         self.memory_v3.bootstrap()
         self.memory_v3.maybe_maintain()
         self.memory_v4.bootstrap()
+        self.memory_v4.maybe_maintain()
 
     def initialize(self) -> None:
         self.memory.initialize()
