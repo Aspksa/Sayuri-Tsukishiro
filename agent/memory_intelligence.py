@@ -8,6 +8,7 @@ import re
 import sqlite3
 import uuid
 
+from .experience import ExperienceStore
 from .memory import MEMORY_KINDS, MEMORY_SCOPES, SayuriMemory
 
 
@@ -31,9 +32,10 @@ class MemoryIntelligence:
         "auto_save_threshold": 0.96,
     }
 
-    def __init__(self, path: Path, memory: SayuriMemory):
+    def __init__(self, path: Path, memory: SayuriMemory, experience: ExperienceStore | None = None):
         self.path = path
         self.memory = memory
+        self.experience = experience
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.initialize()
 
@@ -327,6 +329,15 @@ class MemoryIntelligence:
             for proposal in proposals:
                 if proposal["scope"] not in MEMORY_SCOPES or proposal["kind"] not in MEMORY_KINDS:
                     continue
+                if self.experience is not None:
+                    strategy = f"memory.{proposal['scope']}.{proposal['kind']}"
+                    adjustment = self.experience.confidence_adjustment(strategy)
+                    if adjustment:
+                        proposal["confidence"] = round(
+                            max(0.05, min(0.99, float(proposal["confidence"]) + adjustment)),
+                            4,
+                        )
+                        proposal["reason"] += f" · опыт Sayuri {adjustment:+.1%}"
                 normalized = self._normalize(proposal["content"])
                 existing_candidate = db.execute(
                     """
@@ -443,23 +454,29 @@ class MemoryIntelligence:
             if item["status"] not in {"pending", "conflict"}:
                 return item
 
-            now = self._now()
-            if decision == "reject":
+        now = self._now()
+        if decision == "reject":
+            with self._connect() as db:
                 db.execute(
                     "UPDATE memory_candidates SET status='rejected', reviewed_at=? WHERE id=?",
                     (now, candidate_id),
                 )
-            else:
-                memory = self.memory.add(
-                    scope=item["scope"],
-                    kind=item["kind"],
-                    content=item["content"],
-                    importance=item["importance"],
-                    source="memory_intelligence_confirmed",
-                    source_context=item["source_context"],
-                    confidence=item["confidence"],
-                    supersedes_id=item["related_memory_id"] if item["relation"] == "conflict" else None,
-                )
+                row = db.execute("SELECT * FROM memory_candidates WHERE id = ?", (candidate_id,)).fetchone()
+                result = self._candidate_row(row)
+        else:
+            # Durable memory and candidate queue share the same SQLite file.
+            # Write memory outside the candidate transaction to avoid nested writers.
+            memory = self.memory.add(
+                scope=item["scope"],
+                kind=item["kind"],
+                content=item["content"],
+                importance=item["importance"],
+                source="memory_intelligence_confirmed",
+                source_context=item["source_context"],
+                confidence=item["confidence"],
+                supersedes_id=item["related_memory_id"] if item["relation"] == "conflict" else None,
+            )
+            with self._connect() as db:
                 db.execute(
                     """
                     UPDATE memory_candidates
@@ -468,8 +485,18 @@ class MemoryIntelligence:
                     """,
                     (now, memory["id"], candidate_id),
                 )
-            row = db.execute("SELECT * FROM memory_candidates WHERE id = ?", (candidate_id,)).fetchone()
-        return self._candidate_row(row)
+                row = db.execute("SELECT * FROM memory_candidates WHERE id = ?", (candidate_id,)).fetchone()
+                result = self._candidate_row(row)
+
+        if self.experience is not None:
+            self.experience.record_memory_review(
+                candidate_id,
+                scope=item["scope"],
+                kind=item["kind"],
+                decision=decision,
+                relation=item["relation"],
+            )
+        return result
 
     def stats(self) -> dict[str, Any]:
         with self._connect() as db:

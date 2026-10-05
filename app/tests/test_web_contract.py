@@ -161,6 +161,23 @@ class WebContractTests(unittest.TestCase):
         self.assertIn('.sayuri-memory-candidate', css)
         self.assertIn('SAYURI UI 0.18 — Memory Intelligence 2.0', css)
 
+    def test_semantic_memory_and_experience_learning_are_visible(self):
+        html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+        css = (ROOT / "web" / "styles.css").read_text(encoding="utf-8")
+
+        self.assertIn('id="sayuri-semantic-engine"', html)
+        self.assertIn('EXPERIENCE LEARNING', html)
+        self.assertIn('id="sayuri-experience-total"', html)
+        self.assertIn('id="sayuri-experience-strategies"', html)
+        self.assertIn('/api/sayuri/experience', script)
+        self.assertIn('/api/sayuri/experience/feedback', script)
+        self.assertIn('createSayuriFeedbackControls', script)
+        self.assertIn('hybrid-semantic-v1', script)
+        self.assertIn('.sayuri-experience-metrics', css)
+        self.assertIn('.sayuri-response-feedback', css)
+        self.assertIn('SAYURI UI 0.19 — Semantic Memory & Experience Learning', css)
+
     def test_sayuri_safe_actions_require_confirmation_in_ui(self):
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")

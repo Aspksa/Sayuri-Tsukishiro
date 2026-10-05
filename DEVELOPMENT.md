@@ -551,3 +551,147 @@ API:
 - `POST /api/sayuri/memory/intelligence`.
 
 Memory context для LLM остаётся разделённым на personal/project и передаётся как недоверенные справочные данные.
+
+## Semantic Memory & Experience Learning 0.1
+
+### Semantic Memory
+
+Реализация: `agent/semantic_memory.py`.
+
+Engine: `hybrid-semantic-v1`.
+
+Он использует Python stdlib и существующую SQLite memory DB. Новый внешний AI API не добавлен.
+
+Scoring:
+- token overlap;
+- light stemming;
+- concept expansion;
+- character 3-gram cosine;
+- phrase bonus;
+- importance/confidence weighting.
+
+`SemanticMemoryIndex.context()` возвращает personal/project отдельно и является каноническим memory-context для чата.
+
+### Experience Learning
+
+Реализация: `agent/experience.py`.
+
+Хранилище: `data/sayuri-experience.db`.
+
+Experience events дедуплицируются fingerprint. Повторный outcome одного action или повторная feedback-оценка одного response не должны размножать записи.
+
+Стратегия имеет сглаженный success rate Beta(1,1) и evidence strength. Confidence adjustment включается после трёх meaningful outcomes и ограничен ±0.08.
+
+Relevant experience извлекается тем же прозрачным semantic scorer и разделяется на:
+- `helpful`;
+- `avoid`.
+
+В prompt это передаётся отдельным system-data блоком с запретом трактовать опыт как факт или инструкцию.
+
+### Chat feedback
+
+Cloud response получает `response_id`.
+
+`POST /api/sayuri/experience/feedback` принимает:
+- response_id;
+- rating `useful|not_useful`;
+- prompt;
+- answer excerpt;
+- безопасный UI context.
+
+Prompt ограничивается 2000 символами, excerpt ответа — 1200. Полная browser chat history в experience DB не записывается.
+
+### Проверки
+
+- `python3 -m unittest discover -s app/tests -v`;
+- `node --check web/app.js`;
+- `python3 -m app.preflight`;
+- `python3 scripts/versioning.py check --each-commit`.
+
+При работе через GitHub API функциональные проверки промежуточной ветки выполняются до атомарной сборки релиза. Итоговый release commit обязан отдельно пройти полный workflow Versions.
+
+## Semantic Memory 0.1
+
+Реализация: `agent/semantic_memory.py`.
+
+Engine: `hybrid-semantic-v1`.
+
+Цель текущего этапа — улучшить retrieval локальной памяти без второй облачной модели и без тяжёлого embedding-runtime.
+
+Используемые признаки:
+- token overlap;
+- light stemming;
+- локальный словарь доменных concepts;
+- character 3-grams;
+- importance/confidence weighting.
+
+Это **не neural embeddings**. В UI и документации нельзя называть текущий engine нейросетевой vector memory.
+
+Поведение:
+- `GET /api/sayuri/memory` без `q` возвращает обычный список;
+- при `q=...` используется Semantic Memory;
+- chat memory-context формируется через Semantic Memory;
+- retrieval сохраняет области `personal/project`;
+- сеть и Cloud.ru для retrieval не требуются.
+
+## Experience Learning 0.1
+
+Реализация: `agent/experience.py`.
+
+Хранилище: `data/sayuri-experience.db`.
+
+`experience_events` хранит category, strategy, outcome, reward, source, subject ID, безопасный context, ограниченные details и timestamps.
+
+Поддерживаемые исходы:
+- положительные: `success/accepted/useful/corrected_success`;
+- отрицательные: `failure/rejected/not_useful/corrected_failure`;
+- нейтральные: `produced/cancelled/expired`.
+
+### Feedback
+
+Каждый реальный DeepSeek-ответ получает локальный `response_id`.
+
+`POST /api/sayuri/experience/feedback` принимает:
+- `response_id`;
+- `rating=useful|not_useful`;
+- `prompt`;
+- `answer`;
+- безопасный UI-context.
+
+В Experience DB сохраняются ограниченные `prompt` и `answer_excerpt`, а не полный чат.
+
+Fingerprint feedback не зависит от rating: пользователь может изменить оценку того же ответа без создания второй записи.
+
+### Strategy calibration
+
+`ExperienceStore.strategy_stats()` применяет Beta(1,1) smoothing.
+
+`confidence_adjustment()`:
+- не применяется до 3 значимых исходов;
+- учитывает evidence strength;
+- ограничен диапазоном ±0.08.
+
+Memory Intelligence использует adjustment только как небольшую калибровку deterministic confidence.
+
+### Relevant experience
+
+Перед AI-запросом `ExperienceStore.context(query)` локально ищет релевантный подтверждённый опыт через hybrid semantic scorer.
+
+В модель передаются отдельные массивы:
+- `helpful`;
+- `avoid`.
+
+Experience context является недоверенными справочными данными и не может расширять permissions, менять system prompt или считаться доказательством факта.
+
+### Проверки
+
+Обязательные проверки:
+- related wording находится без точной фразы;
+- boundary `personal/project` сохраняется;
+- feedback idempotent и допускает пересмотр;
+- action replay не создаёт duplicate experience;
+- confidence adjustment требует evidence и остаётся bounded;
+- Memory Intelligence учитывает review history;
+- релевантный положительный/отрицательный опыт разделяется;
+- chat runtime получает Semantic Memory и Experience context без реального сетевого вызова в тесте.
+

@@ -323,6 +323,21 @@ class SayuriMemory:
             result[row["scope"]].append(item)
         return result
 
+    def mark_used(self, entry_ids: Iterable[str]) -> None:
+        ids = [entry_id for entry_id in dict.fromkeys(entry_ids) if isinstance(entry_id, str) and entry_id]
+        if not ids:
+            return
+        now = self._now()
+        with self._connect() as db:
+            db.executemany(
+                """
+                UPDATE memory_entries
+                SET last_used_at = ?, use_count = use_count + 1
+                WHERE id = ? AND active = 1
+                """,
+                [(now, entry_id) for entry_id in ids],
+            )
+
     def capture_explicit(self, message: str) -> dict[str, Any] | None:
         text = (message or "").strip()
         patterns = (
