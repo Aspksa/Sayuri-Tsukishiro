@@ -2,6 +2,23 @@
 
 ## Невыпущенные изменения
 
+### 0.1.42 — 2026-10-05 — Semantic Memory + Experience Learning
+
+- Добавлен локальный `hybrid-semantic-v1` для смыслового поиска памяти без второй AI-модели.
+- Semantic Memory использует token overlap, лёгкую морфологию, локальные concepts, character n-grams и quality weighting.
+- Личная и проектная память остаются раздельными на этапе retrieval.
+- Поиск в Личном кабинете показывает semantic relevance.
+- Добавлен отдельный локальный `ExperienceStore` в `data/sayuri-experience.db`.
+- Experience Learning учитывает исходы Safe Actions, review кандидатов памяти и явную оценку ответов.
+- У ответов Sayuri появились «Полезно / Не помогло».
+- Обратная связь idempotent и может быть пересмотрена без создания дублей.
+- Memory Intelligence калибрует confidence по накопленному подтверждённому опыту в пределах ±8%.
+- Релевантный положительный/отрицательный опыт передаётся DeepSeek-V4-Flash отдельным недоверенным context block.
+- В Личном кабинете добавлены метрики опыта и success rate стратегий.
+- Добавлены API опыта и тесты Semantic Memory / Experience Learning.
+- Проект: `0.1.42`; Ядро: `0.1.34`; Agent Core: `0.6.0`; Web UI: `0.19.0`.
+
+
 ### 0.1.41 — 2026-10-05 — Memory Intelligence 2.0
 
 - Добавлен автоматический Memory Guardian для анализа сообщений.
