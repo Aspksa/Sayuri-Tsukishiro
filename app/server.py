@@ -465,11 +465,19 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
                     raise BadRequestError("Не указан response_id.")
                 if not isinstance(rating, str):
                     raise BadRequestError("Поле rating должно быть строкой.")
+                prompt = payload.get("prompt")
+                answer = payload.get("answer")
+                if prompt is not None and not isinstance(prompt, str):
+                    raise BadRequestError("Поле prompt должно быть строкой.")
+                if answer is not None and not isinstance(answer, str):
+                    raise BadRequestError("Поле answer должно быть строкой.")
                 self._json(
                     self.server.core.rate_sayuri_response(
                         response_id.strip(),
                         rating,
-                        payload.get("context"),
+                        prompt=prompt or "",
+                        answer=answer or "",
+                        context=payload.get("context"),
                     )
                 )
                 return
