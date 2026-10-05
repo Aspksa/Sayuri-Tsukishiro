@@ -193,6 +193,76 @@ class ExperienceLearningTests(unittest.TestCase):
             )
             self.assertGreaterEqual(feedback["memory_feedback"]["updated"], 1)
 
+    def test_runtime_never_sends_protected_memory_through_adjacent_context_layers(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            agent = SayuriAgent(root)
+            secret_value = "private-token-987654321"
+            secret = agent.memory.add(
+                scope="personal",
+                kind="decision",
+                content=f"API key: {secret_value} используется для тестового доступа",
+                importance=5,
+                confidence=0.99,
+                source="manual",
+            )
+            agent.memory_v3.ingest_memory(secret)
+            agent.memory_v4.ingest_memory(secret)
+            agent.memory_v3.record_episode(
+                event_type="secret_test",
+                summary=f"API key: {secret_value} относится к тестовому доступу",
+                scope="personal",
+                source="test",
+                importance=5,
+            )
+            agent.experience.record_chat_feedback(
+                "secret-feedback",
+                "useful",
+                prompt=f"API key: {secret_value} тестовый доступ",
+                answer="Использовать сохранённый секрет.",
+                context={"view": "sayuri"},
+            )
+            agent.memory_v4.create_goal(
+                f"Не забыть API key: {secret_value}",
+                scope="personal",
+                priority=5,
+            )
+            agent.memory_v4.create_task(
+                f"Проверить Bearer {secret_value}",
+                scope="personal",
+                priority=5,
+            )
+            agent.memory_v4.open_question(
+                f"Пароль: {secret_value} ещё актуален?",
+                scope="personal",
+                reason="test",
+            )
+
+            captured = {}
+
+            def fake_chat(self, messages):
+                captured["messages"] = messages
+                return {
+                    "answer": "Проверочный ответ",
+                    "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+                    "model": "deepseek-ai/DeepSeek-V4-Flash",
+                }
+
+            with patch.dict(os.environ, {"SAYURI_CLOUDRU_API_KEY": "test-key-1234567890"}):
+                with patch.object(CloudRuClient, "chat", fake_chat):
+                    agent.chat(
+                        message="Как настроен тестовый доступ?",
+                        context={"view": "sayuri", "title": "Личный кабинет Sayuri"},
+                    )
+
+            system_text = "\n".join(
+                item["content"]
+                for item in captured["messages"]
+                if item["role"] == "system"
+            )
+            self.assertNotIn(secret_value, system_text)
+            self.assertNotIn("Использовать сохранённый секрет", system_text)
+
     def test_strategy_adjustment_requires_evidence_and_is_bounded(self):
         with tempfile.TemporaryDirectory() as tmp:
             experience = ExperienceStore(Path(tmp) / "experience.db")
