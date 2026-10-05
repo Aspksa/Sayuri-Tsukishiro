@@ -5465,3 +5465,30 @@ footer {
   }
 }
 
+.memory-v4-causal-divider {
+  margin: 4px 0 1px;
+  color: #687586;
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.memory-v4-row.preference.archived {
+  opacity: .68;
+  background: #f6f7f8;
+}
+
+.memory-v4-row.preference.archived .memory-v4-row-head span {
+  background: #eff0f2;
+  color: #7a808a;
+}
+
+.memory-v4-row.audit .memory-v4-row-head strong {
+  text-transform: lowercase;
+}
+
+.memory-v4-row.entity p {
+  color: #647082;
+}
+
