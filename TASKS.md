@@ -91,7 +91,7 @@
 
 
 ## PHONE-001 — Телефон Sayuri
-- Статус: `implemented; CI pending`.
+- Статус: `implemented; CI verified through project 0.1.32`.
 - Цель: отдельный модуль и пункт меню для подключения собственного Android к проекту.
 - Готово в коде:
   - меню «Телефон Sayuri»;
@@ -128,7 +128,7 @@
 
 
 ## PHONE-002.1 — восстановление после отключения телефона
-- Статус: `implemented; CI pending`.
+- Статус: `implemented; CI verified through project 0.1.32`.
 - Реальный дефект: после `Device disconnected` браузер продолжал запрашивать кадры старого serial.
 - Исправлено:
   - stale cache/session cleanup;
@@ -140,7 +140,7 @@
 
 
 ## PHONE-003 — Floating Workspace
-- Статус: `implemented; CI pending`.
+- Статус: `implemented; CI verified through project 0.1.32`.
 - Приоритет изменён прямым запросом пользователя: свободное плавающее окно важнее H.264/WebCodecs.
 - Реализовано:
   - глобальное окно поверх всех view;
@@ -164,7 +164,7 @@
 
 
 ## PHONE-004A — Pro Control & Media
-- Статус: `implemented; повторный CI pending`.
+- Статус: `implemented; CI verified through project 0.1.32`.
 - Готово:
   - keyboard capture switch;
   - scrcpy UHID keyboard;
@@ -180,7 +180,7 @@
 
 
 ## PHONE-004B — H.264 WebCodecs
-- Статус: `implemented; CI pending`.
+- Статус: `implemented; CI verified through project 0.1.32`.
 - Реализовано:
   - scrcpy 4.1 version-pinned H.264 adapter;
   - ADB localhost forward;
@@ -204,7 +204,7 @@
 
 
 ## PHONE-004C — Embedded Audio + Clipboard Sync
-- Статус: `implemented; CI pending`.
+- Статус: `implemented; CI verified through project 0.1.32`.
 - Реализовано:
   - двусторонний Unicode clipboard через scrcpy 4.1 control protocol;
   - clipboard ACK;
@@ -238,7 +238,7 @@
 
 
 ## PHONE-005B — Verified Companion Installer
-- Статус: `implemented; CI pending`.
+- Статус: `implemented; CI verified through project 0.1.32`.
 - Реальный APK `companion-v0.1.1` собран GitHub Actions.
 - Закреплено:
   - size `878630`;
@@ -251,3 +251,17 @@
   - post-install package verification;
   - UI install → pair lifecycle;
   - automatic ADB reverse restore после временного reconnect.
+
+
+## PHONE-006 — Final Workspace Polish
+- Статус: `implemented; current CI pending`.
+- Реализовано:
+  - MAX quality 2560 / 60 FPS / 24 Mbit/s;
+  - fullscreen;
+  - AUTO orientation window fitting;
+  - normal / compact / glass display modes;
+  - Ctrl+Alt+P show/hide;
+  - per-device layout and rotation persistence;
+  - Android Download/Camera/Pictures browser;
+  - phone → Disk Sayuri import with allow-listed roots and size verification.
+- Критерий закрытия: полный main CI success.

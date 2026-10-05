@@ -876,3 +876,61 @@ Browser never receives:
 - pairing token;
 - arbitrary adb install path;
 - arbitrary reverse mapping.
+
+
+## Телефон Sayuri 0.8 — Final Workspace
+
+### Quality profiles
+
+```text
+economy  1024 / 30 FPS / 4M
+balanced 1600 / 60 FPS / 8M
+quality  1920 / 60 FPS / 16M
+ultra    2560 / 60 FPS / 24M
+```
+
+MAX/ultra предназначен для качественного USB-соединения и может использовать больше CPU/USB bandwidth.
+
+### Workspace UX
+
+- Fullscreen: browser Fullscreen API на `#phone-float`.
+- AUTO orientation: размеры текущего H.264/PNG surface определяют portrait/landscape; окно подстраивает width/height.
+- Manual rotate: 0/90/180/270 и отключает AUTO.
+- View mode:
+  - normal;
+  - compact — скрывает второстепенные control rows;
+  - glass — 78% opacity вне hover/focus.
+- Hotkey: `Ctrl+Alt+P`.
+- Per-device localStorage:
+  - `sayuri-phone-float-layout:<serial>`;
+  - `sayuri-phone-rotation:<serial>`.
+
+### Android → Disk Sayuri
+
+GET:
+`/api/phone/files?serial=...&location=downloads|camera|pictures`
+
+POST:
+`/api/phone/files/import`
+
+```json
+{
+  "serial": "R58M123ABC",
+  "location": "camera",
+  "name": "IMG_0001.jpg"
+}
+```
+
+Backend:
+1. validates current ADB-authorized serial;
+2. maps location to a hard-coded root;
+3. rejects path traversal in name;
+4. verifies `test -f`;
+5. reads size through `stat`;
+6. rejects >512 MiB;
+7. pulls into `.runtime/phone/uploads/*.part`;
+8. verifies received byte count;
+9. server streams the temporary file into DiskService;
+10. temporary file is deleted.
+
+Arbitrary Android filesystem browsing is deliberately not exposed.

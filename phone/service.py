@@ -32,7 +32,7 @@ from .companion import (
 from .h264 import iter_h264_bridge_records
 
 
-PHONE_BACKEND_VERSION = "0.7.1"
+PHONE_BACKEND_VERSION = "0.8.0"
 SCRCPY_VERSION = "4.1"
 COMMAND_TIMEOUT_SECONDS = 20
 FRAME_TIMEOUT_SECONDS = 8
@@ -40,6 +40,13 @@ FRAME_CACHE_SECONDS = 0.35
 MAX_SWIPE_DURATION_MS = 1500
 MAX_TEXT_INPUT_CHARS = 250
 MAX_PHONE_PUSH_BYTES = 512 * 1024 * 1024
+MAX_PHONE_PULL_BYTES = 512 * 1024 * 1024
+MAX_PHONE_FILE_LIST = 250
+PHONE_IMPORT_ROOTS = {
+    "downloads": ("/sdcard/Download", "Download"),
+    "camera": ("/sdcard/DCIM/Camera", "Камера"),
+    "pictures": ("/sdcard/Pictures", "Pictures"),
+}
 COMPANION_RELEASE_VERSION = "0.1.1"
 COMPANION_APK_NAME = "Sayuri-Companion-v0.1.1.apk"
 COMPANION_APK_URL = (
@@ -53,6 +60,7 @@ QUALITY_PROFILES = {
     "economy": {"label": "Эконом", "max_size": "1024", "max_fps": "30", "video_bit_rate": "4M"},
     "balanced": {"label": "Баланс", "max_size": "1600", "max_fps": "60", "video_bit_rate": "8M"},
     "quality": {"label": "Качество", "max_size": "1920", "max_fps": "60", "video_bit_rate": "16M"},
+    "ultra": {"label": "Максимум", "max_size": "2560", "max_fps": "60", "video_bit_rate": "24M"},
 }
 PACKAGE_RE = re.compile(r"^[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)+$")
 SAFE_PHONE_NAME_RE = re.compile(r"[^0-9A-Za-zА-Яа-яЁё._() -]+")
@@ -312,6 +320,11 @@ class PhoneService:
                 "audio": runtime_ready,
                 "clipboard": runtime_ready,
                 "file_transfer": adb is not None,
+                "file_import_to_disk": adb is not None,
+                "file_import_roots": [
+                    {"id": key, "label": label}
+                    for key, (_, label) in PHONE_IMPORT_ROOTS.items()
+                ],
                 "screenshot_to_disk": adb is not None,
                 "screen_recording": runtime_ready,
                 "app_launcher": adb is not None,
@@ -1235,6 +1248,147 @@ class PhoneService:
             return self.push_file(serial, temp, safe_name)
         finally:
             temp.unlink(missing_ok=True)
+
+    @staticmethod
+    def _phone_import_root(location: Any) -> tuple[str, str]:
+        if not isinstance(location, str):
+            raise ValueError("Не указан разрешённый каталог телефона.")
+        key = location.strip().casefold()
+        value = PHONE_IMPORT_ROOTS.get(key)
+        if value is None:
+            raise ValueError("Разрешены только Download, Камера и Pictures.")
+        return value
+
+    @staticmethod
+    def _phone_import_name(name: Any) -> str:
+        if not isinstance(name, str):
+            raise ValueError("Не указано имя файла телефона.")
+        value = name.strip()
+        if (
+            not value
+            or value in {".", ".."}
+            or "/" in value
+            or "\\" in value
+            or "\x00" in value
+            or len(value) > 255
+        ):
+            raise ValueError("Некорректное имя файла телефона.")
+        return value
+
+    def list_phone_files(
+        self,
+        serial: Any = None,
+        *,
+        location: Any = "downloads",
+    ) -> dict[str, Any]:
+        device = self._select_authorized_device(serial)
+        device_serial = device["serial"]
+        root, label = self._phone_import_root(location)
+        adb = self._resolve_adb()
+        if adb is None:
+            raise OSError("ADB runtime не установлен.")
+
+        result = self._run(
+            [
+                str(adb), "-s", device_serial, "shell",
+                "find", root, "-maxdepth", "1", "-type", "f",
+            ],
+            timeout=COMMAND_TIMEOUT_SECONDS,
+        )
+        if result.returncode != 0:
+            message = (result.stderr or result.stdout or "").strip()
+            if "No such file" in message:
+                return {
+                    "serial": device_serial,
+                    "location": str(location).strip().casefold(),
+                    "label": label,
+                    "files": [],
+                }
+            raise OSError(message or "Не удалось получить список файлов телефона.")
+
+        prefix = root.rstrip("/") + "/"
+        names: list[str] = []
+        for raw in result.stdout.splitlines():
+            path = raw.strip()
+            if not path.startswith(prefix):
+                continue
+            name = path[len(prefix):]
+            try:
+                name = self._phone_import_name(name)
+            except ValueError:
+                continue
+            names.append(name)
+            if len(names) >= MAX_PHONE_FILE_LIST:
+                break
+
+        names.sort(key=str.casefold)
+        return {
+            "serial": device_serial,
+            "location": str(location).strip().casefold(),
+            "label": label,
+            "files": [{"name": name} for name in names],
+        }
+
+    def pull_phone_file(
+        self,
+        serial: Any,
+        *,
+        location: Any,
+        name: Any,
+    ) -> dict[str, Any]:
+        device = self._select_authorized_device(serial)
+        device_serial = device["serial"]
+        root, label = self._phone_import_root(location)
+        safe_name = self._phone_import_name(name)
+        remote = f"{root.rstrip('/')}/{safe_name}"
+        adb = self._resolve_adb()
+        if adb is None:
+            raise OSError("ADB runtime не установлен.")
+
+        check = self._run(
+            [str(adb), "-s", device_serial, "shell", "test", "-f", remote],
+            timeout=COMMAND_TIMEOUT_SECONDS,
+        )
+        if check.returncode != 0:
+            raise FileNotFoundError("Файл телефона больше не найден.")
+
+        size_result = self._run(
+            [str(adb), "-s", device_serial, "shell", "stat", "-c", "%s", remote],
+            timeout=COMMAND_TIMEOUT_SECONDS,
+        )
+        if size_result.returncode != 0:
+            raise OSError((size_result.stderr or size_result.stdout or "Не удалось определить размер файла.").strip())
+        try:
+            size = int(size_result.stdout.strip())
+        except ValueError as exc:
+            raise OSError("Android вернул некорректный размер файла.") from exc
+        if size < 0 or size > MAX_PHONE_PULL_BYTES:
+            raise ValueError("Файл телефона должен быть не больше 512 МБ.")
+
+        temp = self.uploads_root / f"pull-{uuid.uuid4().hex}.part"
+        result = self._run(
+            [str(adb), "-s", device_serial, "pull", remote, str(temp)],
+            timeout=max(COMMAND_TIMEOUT_SECONDS, 180),
+        )
+        if result.returncode != 0 or not temp.is_file():
+            temp.unlink(missing_ok=True)
+            raise OSError((result.stderr or result.stdout or "Не удалось получить файл с телефона.").strip())
+        actual = temp.stat().st_size
+        if actual != size:
+            temp.unlink(missing_ok=True)
+            raise OSError(
+                f"Размер полученного файла не совпал: {actual} вместо {size} байт."
+            )
+        return {
+            "status": "файл получен",
+            "serial": device_serial,
+            "location": str(location).strip().casefold(),
+            "location_label": label,
+            "name": safe_name,
+            "size_bytes": actual,
+            "remote_path": remote,
+            "path": temp,
+        }
 
     def list_apps(self, serial: Any = None) -> list[dict[str, str]]:
         device = self._select_authorized_device(serial)

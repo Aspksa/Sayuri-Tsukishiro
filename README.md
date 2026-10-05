@@ -180,3 +180,26 @@ Companion не открывает Sayuri в Wi-Fi/LAN. При USB/ADB-соеди
 Если Companion отсутствует на подключённом Android, модуль «Телефон Sayuri» показывает кнопку установки.
 
 Sayuri скачивает только собственный APK версии 0.1.1 из versioned GitHub Release, проверяет его размер и SHA-256 и только затем выполняет локальный ADB install. После установки пользователь отдельно подтверждает pairing и отдельно выдаёт Android-разрешение на чтение уведомлений.
+
+
+### Телефон Sayuri 0.8
+
+Плавающий Android workspace теперь завершает основной рабочий сценарий:
+- H.264/WebCodecs до 60 FPS;
+- MAX до 2560 px / 24 Mbit/s;
+- звук;
+- Unicode clipboard;
+- переключаемая клавиатура ПК;
+- мышь/свайпы/колесо;
+- fullscreen;
+- AUTO portrait/landscape;
+- Обычный / Компакт / Стекло;
+- `Ctrl+Alt+P` показать или скрыть телефон;
+- индивидуальная позиция/размер/поворот для каждого Android serial;
+- скриншоты и запись в Диск Sayuri;
+- файлы Диск/ПК → Android;
+- файлы Android Download/Camera/Pictures → Диск Sayuri;
+- запуск приложений;
+- Companion уведомления.
+
+Все control/file endpoints остаются allow-listed и доступны только через локальный сервер Sayuri.

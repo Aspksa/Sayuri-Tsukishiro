@@ -344,6 +344,16 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
                     "apps": self.server.core.phone.list_apps(serial),
                 })
                 return
+            if parsed.path == "/api/phone/files":
+                serial = query.get("serial", [None])[0]
+                location = query.get("location", ["downloads"])[0]
+                self._json(
+                    self.server.core.phone.list_phone_files(
+                        serial,
+                        location=location,
+                    )
+                )
+                return
             if parsed.path == "/api/phone/clipboard":
                 serial = query.get("serial", [None])[0]
                 try:
@@ -841,6 +851,38 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
                     details={"name": result["name"], "size_bytes": result["size_bytes"]},
                 )
                 self._json(result, HTTPStatus.CREATED)
+                return
+
+            if parsed.path == "/api/phone/files/import":
+                payload = self._read_json()
+                result = self.server.core.phone.pull_phone_file(
+                    payload.get("serial"),
+                    location=payload.get("location"),
+                    name=payload.get("name"),
+                )
+                path = result.pop("path")
+                try:
+                    content_type = mimetypes.guess_type(result["name"])[0] or "application/octet-stream"
+                    with path.open("rb") as source:
+                        item = self.server.core.disk.store_stream(
+                            name=result["name"],
+                            content_type=content_type,
+                            size_bytes=result["size_bytes"],
+                            stream=source,
+                            folder_id=None,
+                        )
+                finally:
+                    path.unlink(missing_ok=True)
+                self.server.core.database.record_event(
+                    "Телефон Sayuri",
+                    "Файл с телефона импортирован в Диск Sayuri",
+                    details={
+                        "file_id": item["id"],
+                        "name": item["name"],
+                        "location": result["location"],
+                    },
+                )
+                self._json({**result, "status": "импортировано", "file": item}, HTTPStatus.CREATED)
                 return
 
             if parsed.path == "/api/phone/apps/launch":

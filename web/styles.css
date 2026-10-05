@@ -3582,3 +3582,166 @@ button.disk-name:hover { text-decoration: underline; }
     bottom: 112px;
   }
 }
+
+
+/* Телефон Sayuri 0.8 — final workspace polish */
+.phone-float:fullscreen,
+.phone-float.fullscreen-mode {
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  max-width: none !important;
+  max-height: none !important;
+  border: 0;
+  border-radius: 0;
+  resize: none;
+}
+
+.phone-float.glass-mode {
+  opacity: .78;
+  transition: opacity .16s ease, box-shadow .16s ease;
+}
+.phone-float.glass-mode:hover,
+.phone-float.glass-mode:focus-within,
+.phone-float.glass-mode.dragging {
+  opacity: 1;
+}
+
+.phone-float.compact-mode .phone-pro-tools > :not(#phone-quality-profile):not(#phone-auto-orient):not(#phone-view-mode) {
+  display: none;
+}
+.phone-float.compact-mode .phone-keyboard-bar,
+.phone-float.compact-mode .phone-float-help {
+  display: none;
+}
+.phone-float.compact-mode .phone-float-body {
+  grid-template-rows: minmax(0, 1fr) auto auto;
+}
+
+#phone-view-mode {
+  width: 70px;
+}
+#phone-quality-profile {
+  width: 52px;
+}
+#phone-auto-orient.active {
+  border-color: #476b57;
+  background: #e9f7ee;
+  color: #245c39;
+}
+
+.phone-file-drawer {
+  position: absolute;
+  z-index: 9;
+  left: 8px;
+  right: 8px;
+  bottom: 118px;
+  max-height: min(420px, 62%);
+  border: 1px solid #303845;
+  border-radius: 14px;
+  overflow: hidden;
+  background: rgba(15,19,26,.985);
+  box-shadow: 0 18px 44px rgba(0,0,0,.34);
+  backdrop-filter: blur(16px);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+.phone-file-drawer-head {
+  min-height: 46px;
+  padding: 7px 8px 7px 11px;
+  border-bottom: 1px solid #29303b;
+  display: grid;
+  grid-template-columns: auto minmax(90px, 1fr) 29px;
+  gap: 8px;
+  align-items: center;
+}
+.phone-file-drawer-head strong {
+  color: #eef1f5;
+  font-size: 10px;
+}
+.phone-file-drawer-head select {
+  min-width: 0;
+  height: 29px;
+  padding: 0 7px;
+  border: 1px solid #303846;
+  border-radius: 8px;
+  background: #090c11;
+  color: #dfe4eb;
+  font: inherit;
+  font-size: 9px;
+  outline: 0;
+}
+.phone-file-drawer-head button {
+  width: 29px;
+  height: 29px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #9099a6;
+  cursor: pointer;
+  font-size: 17px;
+}
+.phone-file-drawer-head button:hover {
+  background: #242b35;
+  color: #fff;
+}
+.phone-file-list {
+  min-height: 90px;
+  overflow: auto;
+  padding: 6px;
+  display: grid;
+  align-content: start;
+  gap: 4px;
+}
+.phone-file-empty {
+  padding: 24px 14px;
+  color: #727c89;
+  text-align: center;
+  font-size: 9px;
+}
+.phone-file-item {
+  min-width: 0;
+  padding: 7px 8px 7px 10px;
+  border: 1px solid #282f39;
+  border-radius: 10px;
+  background: #151a22;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+.phone-file-item strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #dfe4eb;
+  font-size: 9px;
+  font-weight: 600;
+}
+.phone-file-item button {
+  height: 27px;
+  padding: 0 8px;
+  border: 1px solid #344050;
+  border-radius: 7px;
+  background: #202731;
+  color: #eef2f7;
+  cursor: pointer;
+  font: inherit;
+  font-size: 8px;
+}
+.phone-file-item button:hover:not(:disabled) {
+  background: #2b3542;
+}
+.phone-file-item button:disabled {
+  opacity: .45;
+  cursor: default;
+}
+
+@media (max-width: 700px) {
+  .phone-file-drawer {
+    left: 5px;
+    right: 5px;
+    bottom: 112px;
+  }
+}

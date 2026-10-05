@@ -428,6 +428,79 @@ R58M123ABC device product:a56xeea model:SM_A556E device:a56x transport_id:1
             self.assertNotIn("R58M123ABC", service._audio_streams)
 
 
+    def test_phone_file_import_roots_are_allowlisted_and_pull_is_verified(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            service = PhoneService(root)
+            service.initialize()
+            completed = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+
+            with patch.object(
+                service,
+                "_select_authorized_device",
+                return_value={"serial": "R58M123ABC", "authorized": True},
+            ), patch.object(
+                service, "_resolve_adb", return_value=Path("adb.exe")
+            ), patch.object(
+                service,
+                "_run",
+                return_value=subprocess.CompletedProcess(
+                    args=[],
+                    returncode=0,
+                    stdout="/sdcard/Download/report.pdf\n/sdcard/Download/photo 1.jpg\n",
+                    stderr="",
+                ),
+            ) as run:
+                listing = service.list_phone_files("R58M123ABC", location="downloads")
+
+            self.assertEqual(
+                [item["name"] for item in listing["files"]],
+                ["photo 1.jpg", "report.pdf"],
+            )
+            self.assertIn("/sdcard/Download", run.call_args.args[0])
+            with self.assertRaises(ValueError):
+                service.list_phone_files("R58M123ABC", location="../../data")
+
+            def fake_run(argv, timeout=20):
+                if "stat" in argv:
+                    return subprocess.CompletedProcess(args=argv, returncode=0, stdout="7\n", stderr="")
+                if "pull" in argv:
+                    Path(argv[-1]).write_bytes(b"payload")
+                    return completed
+                return completed
+
+            with patch.object(
+                service,
+                "_select_authorized_device",
+                return_value={"serial": "R58M123ABC", "authorized": True},
+            ), patch.object(
+                service, "_resolve_adb", return_value=Path("adb.exe")
+            ), patch.object(service, "_run", side_effect=fake_run) as run:
+                pulled = service.pull_phone_file(
+                    "R58M123ABC",
+                    location="camera",
+                    name="photo.jpg",
+                )
+
+            self.assertEqual(pulled["name"], "photo.jpg")
+            self.assertEqual(pulled["size_bytes"], 7)
+            self.assertTrue(pulled["path"].is_file())
+            pull_argv = next(
+                call.args[0] for call in run.call_args_list
+                if "pull" in call.args[0]
+            )
+            self.assertIn("/sdcard/DCIM/Camera/photo.jpg", pull_argv)
+            pulled["path"].unlink(missing_ok=True)
+
+            with self.assertRaises(ValueError):
+                service.pull_phone_file(
+                    "R58M123ABC",
+                    location="downloads",
+                    name="../secret.txt",
+                )
+
+
+
 class PhoneApiTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -740,6 +813,52 @@ class PhoneApiTests(unittest.TestCase):
                 "sayuri-opus-v1",
             )
         self.assertTrue(body.startswith(b"SYA1"))
+
+
+    def test_phone_files_can_be_listed_and_imported_to_disk(self):
+        self.core.phone.list_phone_files = MagicMock(
+            return_value={
+                "serial": "R58M123ABC",
+                "location": "camera",
+                "label": "Камера",
+                "files": [{"name": "IMG_0001.jpg"}],
+            }
+        )
+        with urllib.request.urlopen(
+            self.base + "/api/phone/files?serial=R58M123ABC&location=camera",
+            timeout=3,
+        ) as response:
+            listing = json.loads(response.read().decode("utf-8"))
+        self.assertEqual(listing["files"][0]["name"], "IMG_0001.jpg")
+
+        pulled_path = Path(self.temp.name) / "pulled.jpg"
+        pulled_path.write_bytes(b"jpeg-data")
+        self.core.phone.pull_phone_file = MagicMock(
+            return_value={
+                "status": "файл получен",
+                "serial": "R58M123ABC",
+                "location": "camera",
+                "location_label": "Камера",
+                "name": "IMG_0001.jpg",
+                "size_bytes": 9,
+                "remote_path": "/sdcard/DCIM/Camera/IMG_0001.jpg",
+                "path": pulled_path,
+            }
+        )
+        imported = self.post_json(
+            "/api/phone/files/import",
+            {
+                "serial": "R58M123ABC",
+                "location": "camera",
+                "name": "IMG_0001.jpg",
+            },
+        )
+        self.assertEqual(imported["status"], "импортировано")
+        self.assertFalse(pulled_path.exists())
+        stored = self.core.disk.get_file(imported["file"]["id"])
+        self.assertEqual(stored["name"], "IMG_0001.jpg")
+        self.assertEqual(stored["path"].read_bytes(), b"jpeg-data")
+
 
 
 if __name__ == "__main__":

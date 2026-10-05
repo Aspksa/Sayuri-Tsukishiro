@@ -433,6 +433,7 @@
       <div class="phone-float-window-actions">
         <button class="phone-keyboard-capture" id="phone-keyboard-capture" type="button" title="Переключить клавиатуру ПК">КЛАВ: SAYURI</button>
         <span class="phone-live-badge" id="phone-live-badge">ОЖИДАНИЕ</span>
+        <button id="phone-float-fullscreen" type="button" title="Полноэкранный режим" aria-label="Полноэкранный режим">⛶</button>
         <button id="phone-float-rotate" type="button" title="Повернуть экран" aria-label="Повернуть экран">↻</button>
         <button id="phone-float-minimize" type="button" title="Свернуть" aria-label="Свернуть">—</button>
         <button id="phone-float-close" type="button" title="Закрыть" aria-label="Закрыть">×</button>
@@ -471,18 +472,41 @@
           <option value="economy">ECO</option>
           <option value="balanced">BAL</option>
           <option value="quality" selected>HQ</option>
+          <option value="ultra">MAX</option>
+        </select>
+        <button id="phone-auto-orient" type="button" title="Автоподстройка окна под ориентацию телефона">AUTO</button>
+        <select id="phone-view-mode" title="Вид окна">
+          <option value="normal" selected>Обычный</option>
+          <option value="compact">Компакт</option>
+          <option value="glass">Стекло</option>
         </select>
         <button id="phone-capture" type="button" title="Сохранить снимок в Диск Sayuri">Снимок</button>
         <button id="phone-record" type="button" title="Запись экрана со звуком">● Запись</button>
         <button id="phone-audio" type="button" title="Включить звук телефона внутри Sayuri">Звук: выкл</button>
         <button id="phone-paste" type="button" title="Буфер компьютера → Android и сразу вставить">ПК→Тел</button>
         <button id="phone-copy" type="button" title="Буфер Android → компьютер">Тел→ПК</button>
-        <button id="phone-file" type="button" title="Отправить файл в Download телефона">Файл</button>
+        <button id="phone-file" type="button" title="Отправить файл в Download телефона">ПК→Тел</button>
+        <button id="phone-import" type="button" title="Импортировать файл с телефона в Диск Sayuri">Тел→Диск</button>
         <button id="phone-apps" type="button" title="Открыть приложение">Приложения</button>
         <button id="phone-notifications" type="button" title="Уведомления Android">
           🔔 <span id="phone-notification-count">0</span>
         </button>
         <input id="phone-file-picker" class="hidden" type="file" multiple>
+      </div>
+
+      <div class="phone-file-drawer hidden" id="phone-file-drawer">
+        <div class="phone-file-drawer-head">
+          <strong>Файлы телефона</strong>
+          <select id="phone-file-location" aria-label="Каталог телефона">
+            <option value="downloads">Download</option>
+            <option value="camera">Камера</option>
+            <option value="pictures">Pictures</option>
+          </select>
+          <button id="phone-file-close" type="button" aria-label="Закрыть файлы телефона">×</button>
+        </div>
+        <div class="phone-file-list" id="phone-file-list">
+          <span class="phone-file-empty">Выберите каталог телефона.</span>
+        </div>
       </div>
 
       <div class="phone-app-drawer hidden" id="phone-app-drawer">
@@ -513,7 +537,7 @@
       </form>
 
       <div class="phone-float-help">
-        <span id="phone-keyboard-hint">Клавиатура Sayuri · включите захват, чтобы печатать с ПК прямо в Android</span>
+        <span id="phone-keyboard-hint">Ctrl+Alt+P · показать/скрыть телефон · клавиатура ПК переключается кнопкой в шапке</span>
         <span id="phone-rotation-state">0°</span>
       </div>
     </div>

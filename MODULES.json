@@ -22,7 +22,7 @@
     {
       "id": "sayuri-phone",
       "display_name": "Телефон Sayuri",
-      "description": "Глобальный Android workspace: H.264/WebCodecs, Opus, clipboard, клавиатура/мышь, файлы, приложения и локальный Sayuri Companion.",
+      "description": "Глобальный Android workspace: H.264/WebCodecs до 60 FPS, MAX 2560/24M, Opus, clipboard, клавиатура/мышь, fullscreen, AUTO-ориентация, файлы в обе стороны, приложения и Companion.",
       "path": "phone"
     },
     {
@@ -34,7 +34,7 @@
     {
       "id": "web-ui",
       "display_name": "Веб-интерфейс",
-      "description": "Локальная оболочка Sayuri с плавающим телефоном, уведомлениями Companion, Диском, ДНК и системными настройками.",
+      "description": "Локальная оболочка Sayuri с глобальным плавающим телефоном, fullscreen/compact/glass режимами, уведомлениями Companion, Диском, ДНК и системными настройками.",
       "path": "web"
     },
     {
