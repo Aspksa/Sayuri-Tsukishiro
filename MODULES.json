@@ -20,27 +20,15 @@
       "path": "disk"
     },
     {
-      "id": "sayuri-phone",
-      "display_name": "Телефон Sayuri",
-      "description": "Глобальный Android workspace: H.264/WebCodecs до 60 FPS, MAX 2560/24M, Opus, clipboard, клавиатура/мышь, fullscreen, AUTO-ориентация, файлы в обе стороны, приложения и Companion.",
-      "path": "phone"
-    },
-    {
-      "id": "sayuri-companion",
-      "display_name": "Sayuri Companion",
-      "description": "Android-компаньон: локальное токенизированное сопряжение и передача уведомлений через ADB reverse без открытия Sayuri в сеть.",
-      "path": "companion"
-    },
-    {
       "id": "web-ui",
       "display_name": "Веб-интерфейс",
-      "description": "Единая светлая оболочка Sayuri с согласованной типографикой, Диском, ДНК, глобальным плавающим телефоном и системными настройками.",
+      "description": "Единая светлая оболочка Sayuri с согласованной типографикой, Диском, ДНК и системными настройками.",
       "path": "web"
     },
     {
       "id": "dev-tools",
       "display_name": "Инструменты разработки",
-      "description": "Версионирование, тесты и переносимый Windows-запуск, включая optional Spatial/OCR и scrcpy runtime.",
+      "description": "Версионирование, тесты и переносимый Windows-запуск, включая optional Spatial/OCR runtime.",
       "path": "scripts"
     }
   ]
