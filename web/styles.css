@@ -5492,3 +5492,28 @@ footer {
   color: #647082;
 }
 
+/* ==========================================================================
+   SAYURI UI 0.22 — Memory 4.1 Quality Gate
+   ========================================================================== */
+
+.sayuri-memory-entry .memory-v4-instruction-risk {
+  background: #fff4dc;
+  color: #8a641d;
+}
+
+.sayuri-memory-entry .memory-v4-instruction-risk.high {
+  background: #fdecec;
+  color: #9b3f3f;
+}
+
+.sayuri-memory-v4-metrics article:nth-child(5),
+.sayuri-memory-v4-metrics article:nth-child(6) {
+  border-style: dashed;
+}
+
+.memory-v4-row.question .memory-v4-row-head span {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+

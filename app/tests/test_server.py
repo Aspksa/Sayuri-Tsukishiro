@@ -228,8 +228,9 @@ class ServerTests(unittest.TestCase):
 
                 with urllib.request.urlopen(base + "/api/sayuri/memory/v4", timeout=2) as response:
                     payload = json.loads(response.read().decode("utf-8"))
-                    self.assertEqual(payload["stats"]["version"], "4.0")
+                    self.assertEqual(payload["stats"]["version"], "4.1")
                     self.assertEqual(payload["stats"]["engine"], "memory-v4")
+                    self.assertEqual(payload["stats"]["quality_gate"], "memory-v4.1-quality")
                     self.assertIn("integrity", payload)
 
                 goal_body = json.dumps({

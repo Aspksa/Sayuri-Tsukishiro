@@ -4,437 +4,196 @@
 
 - Дата: 2026-10-06.
 - Репозиторий: https://github.com/Aspksa/Sayuri-Tsukishiro
-- Проверенная исходная ревизия: `6ab578f9f61212bea92dc92d2c642d816dae5f79` (проект `0.1.44`, финальный CI зелёный).
-- Целевая версия текущего релиза: `0.1.45`.
-- Текущий этап: **Memory 4.0 Hardening — сквозная privacy-защита, read-only local recall и доказательная Failure/Causal Memory**.
+- Рабочая ветка: `memory-quality-v0146`.
+- Проверенная исходная ревизия: `69faaef2744d84a338e9c041326a1ed7eeaed8cb` — проект `0.1.45`, финальный main CI успешен.
+- Целевая версия: `0.1.46`.
+- Текущая задача: **MEM-007 — Memory 4.1 Quality Gate**.
+- Статус: функциональная реализация готова; атомарный release CI/merge ещё не выполнены.
 
-## Версии активных модулей
+## Версии целевого дерева
 
-- Ядро Саюри: `0.1.37`.
-- Agent Core: `0.8.1`.
-- Диск Sayuri: `0.7.1`.
-- Web UI: `0.21.1`.
-- Инструменты разработки: `0.1.6`.
+- Проект: `0.1.46`.
+- Ядро Саюри: `0.1.38`.
+- Agent Core: `0.8.2`.
+- Диск Sayuri: `0.7.1` — не изменялся.
+- Web UI: `0.22.0`.
+- Dev tools: `0.1.6` — не изменялись.
 
-## Архитектура памяти
+## Основа памяти
 
-Memory 4.0 не заменяет Memory 3.0. Она является orchestration/policy-слоем поверх:
+Memory 4.1 не заменяет предыдущие контуры. Она усиливает:
 
-1. долговременной `personal/project` памяти;
+1. personal/project long-term memory;
 2. Memory Intelligence 2.0;
-3. `hybrid-semantic-v1`;
+3. локальный `hybrid-semantic-v1`;
 4. Experience Learning;
-5. Memory 3.0: Working / Episodic / Knowledge / Graph / Temporal / Retention.
+5. Memory 3.0: Working/Episodic/Knowledge/Graph/Temporal/Retention;
+6. Memory 4.0/4.0 Hardening: Goal/Task/Decision/Failure/Question, Source Trust, Freshness, Utility, privacy firewall, Explainable Recall, Audit, Snapshots.
 
-Основная БД остаётся локальной:
+Единственная внешняя LLM остаётся `deepseek-ai/DeepSeek-V4-Flash` через Cloud.ru. Новая embedding-модель, vector DB или второй AI-провайдер не добавлены.
 
-`data/sayuri-memory.db`
+## Memory 4.1 Quality Gate
 
-Отдельный внешний сервис памяти или вторая AI-модель не добавлены.
+### Utility не равна истинности
 
-## Memory 4.0 State
-
-Для каждой активной долговременной записи рассчитывается отдельное состояние:
-
-- `source_key`;
-- `source_trust`;
-- `freshness_class`;
-- `freshness_score`;
-- `utility_score`;
-- `tier = hot | warm | cold`;
-- `sensitivity`;
-- `cloud_allowed`;
-- recall/useful/unhelpful counters;
-- время последнего recall.
-
-Это состояние влияет на retrieval, но не переписывает сам факт.
-
-## Source Trust
-
-Источник знания теперь имеет собственную оценку доверия.
-
-Примеры базовой политики:
-
-- explicit/manual user memory — высокий trust;
-- подтверждённый Memory Intelligence — высокий trust;
-- документ / DNA — высокий, но не абсолютный trust;
-- OCR — ниже из-за риска распознавания;
-- автоматический анализ разговора — ниже подтверждённого факта.
-
-Trust может корректироваться только ограниченно подтверждённым feedback и может иметь ручной override из Личного кабинета.
-
-Низкий trust не удаляет запись. Он снижает вес recall и отображается пользователю.
-
-## Freshness Policy
-
-Разным знаниям назначается различная скорость устаревания.
-
-Примеры:
-
-- версия/API/цена/текущий статус — volatile;
-- обычный факт — medium;
-- задача — medium, но быстрее факта;
-- preference — stable;
-- важное decision — durable.
-
-Freshness не равна истине. Она показывает, насколько давно запись могла требовать повторной проверки.
-
-## Hot / Warm / Cold Memory
-
-Tier рассчитывается из:
-
-- Memory 3 retention;
-- importance;
-- freshness;
-- utility;
-- реального use-count.
-
-`hot` — приоритетный активный контекст.
-
-`warm` — нормальная долговременная память.
-
-`cold` — редко используемая/устаревающая память, которая остаётся доступной.
-
-Автоматического физического удаления нет.
-
-## Sensitive Memory Policy
-
-Перед передачей retrieval-context в Cloud.ru Memory 4.0 классифицирует содержимое.
-
-Секреты и чувствительные идентификаторы получают:
-
-`cloud_allowed = false`
-
-и исключаются из `for_cloud=True` recall.
-
-В `0.1.45` local-only policy стала сквозной: перед Cloud.ru дополнительно фильтруются производные данные Memory 3.0, Experience Learning, Goal/Task/Failure/Question Memory. Связанная сущность с protected source memory также не проходит в AI-context.
-
-Локальный пользовательский поиск при этом может находить такую запись и показывает badge `LOCAL ONLY`.
-
-Это дополнительная защита поверх существующей границы API-ключей.
-
-## Explainable Recall
-
-Chat runtime и поиск Личного кабинета используют Memory 4.0 recall.
-
-Каждая выбранная запись получает объяснение:
-
-- semantic score;
-- source trust;
-- freshness;
-- utility;
-- tier;
-- sensitivity;
-- итоговый relevance;
-- список причин выбора.
-
-В интерфейсе это показывается как:
-
-`Почему вспомнила: ...`
-
-Каждый recall, реально использованный для AI-ответа, получает локальный `recall_id` и аудитируется без копирования полного разговора.
-
-AI recall двухфазный: сначала формируется `prepared_recall` без side effects, затем выполняется Cloud.ru request. Только после успешного ответа выбранные memories получают `use_count`/`recall_count` и recall-audit. Ошибка/timeout провайдера не считается использованием памяти.
-
-Поиск/просмотр в Личном кабинете работает в режиме `record_usage=false`: он показывает Explainable Recall, но не увеличивает `use_count`/`recall_count` и не создаёт обучающий audit event.
-
-## Utility Learning
-
-После ответа Sayuri связывает `response_id` с использованным `recall_id`.
-
-Оценка:
+Обратная связь на ответ:
 
 - `Полезно`;
 - `Не помогло`;
 
-изменяет utility только тех воспоминаний, которые реально были использованы при этом ответе.
+обновляет только helpful/unhelpful counters и retrieval utility memories, реально использованных в ответе.
 
-Повторная оценка того же ответа корректно пересматривает previous rating вместо накопления дублей.
+Generic feedback больше не изменяет factual Source Trust. Плохой ответ модели не является доказательством, что исходный документ/OCR/manual fact ложный.
 
-Feedback также слегка обновляет эмпирическое доверие к источнику.
+D-048 явно заменяет соответствующую часть D-041.
 
-## Goal Memory
+## Instruction-risk quarantine
 
-Добавлена структурированная таблица `memory_goals`.
+В `memory_v4_state` миграцией добавлены:
 
-Цель содержит:
+- `instruction_risk`;
+- `instruction_risk_score`.
 
-- personal/project scope;
-- title;
-- description;
-- priority;
-- status;
-- source;
-- source memory;
-- timestamps.
+Локальный deterministic classifier выделяет:
 
-Статусы:
+- high-risk directives: игнорировать инструкции/правила, раскрыть system prompt/developer message и аналогичные команды;
+- medium-risk упоминания prompt injection/system prompt.
 
-- active;
-- paused;
-- achieved;
-- cancelled.
+High-risk memory:
 
-Цель связывается с Knowledge Graph.
+- остаётся видимой локально;
+- получает `cloud_allowed=false`;
+- показывается с badge `INSTRUCTION RISK`;
+- не проходит в direct Cloud recall;
+- не проходит через Memory 3.0 / Experience-derived context благодаря общему `_cloud_text_allowed()`.
 
-## Task Memory
+Memory text остаётся данными, а не инструкцией.
 
-Добавлена таблица `memory_tasks`.
+## Diversified Recall
 
-Task Memory хранит:
+После обычного relevance ranking применяется greedy diversity selection.
 
-- связанную goal;
-- status;
-- priority;
-- next action;
-- blocked reason;
-- безопасный UI-context;
-- provenance.
+Selection учитывает:
 
-Статусы:
+- основной final relevance;
+- semantic similarity к уже выбранным memories;
+- небольшой same-source penalty.
 
-- planned;
-- in_progress;
-- blocked;
-- done;
-- cancelled.
+Цель: почти одинаковые воспоминания не должны вытеснять независимые полезные источники.
 
-Это позволяет Sayuri хранить «где остановились» и конкретный следующий шаг отдельно от обычных заметок.
+Explainable Recall дополнительно сохраняет:
 
-## Decision Memory
+- selection score;
+- redundancy penalty;
+- причину diversity adjustment.
 
-Подтверждённые записи `kind=decision` получают структурированную decision-card:
+## Verification Queue
 
-- statement;
-- rationale, если явно указан;
-- alternatives, если явно указаны;
-- project version;
-- temporal status;
-- source memory ID.
+Maintenance автоматически ставит важную память на перепроверку, но не удаляет и не объявляет ложной.
 
-Decision Memory не придумывает причину, если пользователь её не указал.
+Question Memory создаётся, если:
 
-## Failure Memory
+- importance >= 4;
+- факт относится к volatile;
+- freshness < 0.45;
 
-Подтверждённый failed Safe Action создаёт или усиливает failure pattern:
+или если важная запись имеет Source Trust < 0.45.
 
-- strategy/tool;
-- symptom;
-- occurrences;
-- status;
-- cause/resolution/prevention, когда они известны;
-- source reference.
+Повторный maintenance не создаёт дубликаты вопросов.
 
-Поздний успешный outcome того же strategy **не закрывает** failure автоматически. Он сохраняется только как наблюдение:
+После `refresh_memory_states()` review queue использует уже рассчитанный `memory_v4_state` через SQLite JOIN и не выполняет второй полный пересчёт до 5000 records.
 
-`failure → followed_by_success → action`
+## Bounded Cloud Context
 
-с низкой causal confidence и `correlation_only` evidence.
+Quality Gate ограничивает размер memory-derived AI-context до сериализации для Cloud.ru:
 
-Failure переводится в `resolved` только после явного пользовательского подтверждения причины/исправления. Повтор ранее исправленной ошибки переоткрывает pattern. Повтор одинакового resolution идемпотентен.
+- direct personal/project recall: `9000` chars;
+- Goal/Task/Failure/Question context: `7000` chars.
 
-## Question / Uncertainty Memory
+Отдельная memory excerpt ограничена; при необходимости outbound content сокращается. Оригинал в SQLite не меняется.
 
-Memory 4.0 умеет хранить отдельные открытые вопросы.
+Критический attribution invariant:
 
-Противоречие Memory 3.0 автоматически создаёт Question Memory с обеими сторонами конфликта.
+```text
+semantic candidates
+→ quality ranking
+→ diversity selection
+→ privacy/instruction firewall
+→ context budget
+→ final selected memory IDs
+→ Cloud.ru response
+→ commit recall
+→ usage / feedback
+```
 
-После пользовательского решения связанный вопрос закрывается.
+`_prepared_recall` формируется после budget selection. Поэтому use-count, recall-count и feedback получают только memories, фактически вошедшие в окончательный model context.
 
-Это не позволяет системе превращать неопределённость в подтверждённый факт.
-
-## Entity Profiles
-
-Поверх Knowledge Graph формируются read-only profiles для:
-
-- person;
-- project;
-- document;
-- vehicle;
-- company.
-
-Профиль показывает количество и примеры связей.
-
-Entity Profile не создаёт новую «истину»: он является представлением уже существующего графа.
-
-## Preference Drift
-
-Личный кабинет показывает историю preference memory включая:
-
-- активные предпочтения;
-- архивированные предыдущие версии;
-- confidence;
-- source;
-- `supersedes_id`.
-
-Это даёт временную картину изменения предпочтений вместо простого удаления старого значения.
-
-## Memory Audit
-
-Добавлен локальный `memory_audit_log`.
-
-Аудитируются, в частности:
-
-- recall;
-- feedback recall;
-- создание/изменение goal/task;
-- изменение Source Trust;
-- открытие/закрытие вопросов;
-- archive;
-- integrity checks;
-- snapshots;
-- bootstrap.
-
-Audit не должен содержать API-ключи или полную browser chat history.
-
-## Snapshots
-
-Локальные резервные снимки хранятся в:
-
-`data/memory-snapshots/`
-
-Создание выполняется штатным SQLite backup API.
-
-Для каждого snapshot сохраняются:
-
-- SHA-256;
-- размер;
-- reason;
-- timestamp;
-- filename.
-
-Restore:
-
-1. требует точное подтверждение `RESTORE MEMORY`;
-2. проверяет SHA-256 выбранного snapshot;
-3. автоматически создаёт pre-restore safety snapshot;
-4. восстанавливает БД через SQLite backup;
-5. повторно инициализирует схемы;
-6. запускает integrity check.
-
-Автоматического restore нет.
-
-## Memory Integrity
-
-Проверяются:
-
-- `PRAGMA integrity_check`;
-- orphan graph edges;
-- task → missing goal;
-- confirmed knowledge → missing source memory;
-- response → missing recall audit.
-
-Dashboard integrity-check read-only. Явная ручная проверка записывает audit event.
-
-## AI Context
-
-DeepSeek-V4-Flash получает только контролируемые недоверенные blocks:
-
-1. Memory 4.0 filtered personal/project recall;
-2. Experience Learning helpful/avoid;
-3. Memory 3.0 working/knowledge/episodes/conflicts;
-4. Memory 4.0 goals/tasks/failures/questions;
-5. UI-context.
-
-Перед отправкой все memory-derived blocks проходят Memory 4.0 privacy firewall. Protected/local-only данные не должны попадать ни через прямой recall, ни через Memory 3.0, Experience, Goals, Tasks, Failures или Questions.
-
-Цели и задачи не выдаются модели как выполненные только потому, что они присутствуют в памяти.
+Сохраняется правило v0.1.45: provider/network/timeout error до успешного AI-response не commit-ит recall.
 
 ## Личный кабинет
 
-Memory 4.0 control center показывает:
+Memory card теперь обозначена как:
 
-- Hot / Warm / Cold;
-- protected/local-only count;
-- Goal Memory;
-- Task Memory;
-- blocked tasks;
-- Failure & Causal Memory;
-- Question Memory;
-- Source Trust;
-- Explainable Recall;
+`MEMORY 4.1 · QUALITY GATE`
+
+Дополнительно показываются:
+
+- `Quarantine`;
+- `К перепроверке`;
+- `INSTRUCTION RISK / PROMPT RISK` badges в локальном списке памяти;
+- friendly labels для freshness/source-trust review questions.
+
+Security note уточняет, что generic response feedback влияет на utility, а не на истинность источника.
+
+## Проверки рабочего дерева
+
+На промежуточных revisions подтверждены:
+
+- Python core/tests — success;
+- Memory 3.0 — success;
+- Memory 4.0 regression suite — success;
+- новые Quality Gate tests — success;
+- Semantic/Experience — success;
+- Server/API tests — success;
+- Web contract — success;
+- JavaScript syntax — success;
+- preflight — success;
+- Windows launcher — success.
+
+Последняя полностью просмотренная функциональная веточная проверка: workflow run #441, где все функциональные шаги прошли успешно; падал только `versioning.py check --each-commit`, ожидаемо из-за промежуточной GitHub API-истории рабочей ветки.
+
+После неё добавлены только дополнительный context-budget test, adjacent-layer instruction-risk test, performance refactor и документация; их окончательная проверка входит в release pipeline.
+
+## Релизный критерий 0.1.46
+
+Рабочая ветка не используется напрямую как release history.
+
+Перед завершением необходимо:
+
+1. сверить текущий `main` с ожидаемым `69faaef2744d84a338e9c041326a1ed7eeaed8cb`;
+2. взять финальное tree рабочей ветки;
+3. создать один атомарный commit `feat: v0.1.46 — Memory 4.1 Quality Gate` с parent текущего `main`;
+4. создать новую validation-ветку без force-update;
+5. получить зелёные:
+   - scripts tests;
+   - app/core tests;
+   - JS syntax;
+   - preflight;
+   - `versioning.py check --each-commit`;
+   - Windows launcher;
+6. merge через PR;
+7. подтвердить финальный `main` и его зелёный CI.
+
+## Следующий рациональный этап
+
+После проверки `0.1.46` память не следует бесконечно расширять новыми таблицами без измеримой пользы.
+
+Следующий системный слой — **Reasoning Planner + Result Verifier**, которые должны использовать:
+
+- Goal/Task Memory;
 - Decision Memory;
-- Entity Profiles;
-- Preference Drift;
-- Memory Audit;
-- Integrity;
-- Snapshots.
+- Failure/Causal Memory;
+- verified/quality-gated recall;
+- исходные ограничения задачи.
 
-Доступно ручное создание goal/task, изменение Source Trust, закрытие вопросов, integrity check, snapshot и защищённый restore.
-
-## API
-
-Добавлены:
-
-- `GET /api/sayuri/memory/v4`;
-- `POST /api/sayuri/memory/v4/maintenance`;
-- `POST /api/sayuri/memory/v4/goals`;
-- `POST /api/sayuri/memory/v4/goals/{id}/update`;
-- `POST /api/sayuri/memory/v4/tasks`;
-- `POST /api/sayuri/memory/v4/tasks/{id}/update`;
-- `POST /api/sayuri/memory/v4/sources/trust`;
-- `POST /api/sayuri/memory/v4/failures/{id}/resolve`;
-- `POST /api/sayuri/memory/v4/questions/{id}/resolve`;
-- `POST /api/sayuri/memory/v4/integrity`;
-- `POST /api/sayuri/memory/v4/snapshots`;
-- `POST /api/sayuri/memory/v4/snapshots/{id}/restore`.
-
-Существующие v1/v2/v3 memory API не удалены.
-
-## Тесты Memory 4.0
-
-Проверяются:
-
-- secret/sensitive local-only policy;
-- local recall vs Cloud-safe recall;
-- explainable recall;
-- feedback → utility/source evidence;
-- goal/task lifecycle;
-- goal/task graph linking;
-- automatic task/goal promotion;
-- Decision Memory;
-- Failure Memory: correlation-only success observation + explicit resolution + reopen lifecycle;
-- conflict → Question Memory → close;
-- freshness decay;
-- Source Trust override;
-- snapshot + SHA-256 + restore;
-- обязательный restore confirmation;
-- pre-restore safety copy;
-- integrity;
-- HTTP API;
-- Web contract;
-- runtime injection в DeepSeek-context без реального сетевого запроса;
-- protected memory не проходит через соседние context layers;
-- local cabinet recall не изменяет utility/use counters;
-- failed Cloud request не commit-ит recall и не обучает memory usage.
-
-## Инварианты
-
-- единственный внешний AI-провайдер: Cloud.ru;
-- единственная LLM: `deepseek-ai/DeepSeek-V4-Flash`;
-- Memory 4.0 не добавляет embedding API или вторую LLM;
-- personal/project не смешиваются;
-- protected memory не передаётся в Cloud context;
-- trust/freshness/utility меняют retrieval-вес, но не переписывают факт;
-- неизвестное хранится как question, а не knowledge;
-- failure не считается причинностью без evidence;
-- goals/tasks не расширяют permissions;
-- Safe Actions остаются confirmation-gated;
-- restore всегда требует явного точного подтверждения.
-
-## Релизный критерий
-
-Рабочая ветка может иметь красный `check --each-commit` из-за промежуточных GitHub API-коммитов.
-
-Канонический `0.1.45` считается готовым только после:
-
-1. сборки одного атомарного commit поверх `main 0.1.44`;
-2. полного зелёного workflow Versions на свежей validation-ветке;
-3. merge через PR;
-4. полного зелёного workflow на финальном `main`.
-
-## Следующий этап после Memory 4.0
-
-После hardening `0.1.45` следующий рациональный слой — **Reasoning Planner + Result Verifier**.
-
-Planner должен использовать Goal/Task/Failure/Decision Memory, а Verifier — отдельно проверять результат против исходной задачи, ограничений и доказательств.
+Memory 4.1 должна стать стабильным входным контуром для этого reasoning layer.

@@ -2,6 +2,23 @@
 
 ## Невыпущенные изменения
 
+### 0.1.46 — 2026-10-06 — Memory 4.1 Quality Gate
+
+- Generic chat feedback теперь обучает только retrieval utility и не меняет factual Source Trust.
+- Добавлен instruction-risk classifier и local-only quarantine для high-risk directives внутри памяти.
+- Quarantine действует также на Memory 3.0 и Experience-derived Cloud-context.
+- Recall получил diversity selection, чтобы почти одинаковые воспоминания не вытесняли независимые источники.
+- Важные stale volatile memories и важные low-trust records автоматически создают idempotent Question Memory на перепроверку.
+- Добавлены отдельные char budgets для direct recall и Goal/Task/Failure/Question context.
+- Длинные memories сокращаются только в outbound context; оригиналы не изменяются.
+- Prepared recall после budget selection содержит только IDs реально отправленных модели memories.
+- Usage/feedback остаются двухфазными и применяются только после успешного Cloud.ru ответа.
+- Maintenance переиспользует рассчитанный `memory_v4_state` для review queue вместо повторной полной оценки.
+- Личный кабинет показывает Quarantine и «К перепроверке», а локальный список памяти — instruction-risk badges.
+- Добавлены regression tests для source-truth separation, instruction-risk firewall, diversified recall, stale review queue и bounded context attribution.
+- Проект: `0.1.46`; Ядро: `0.1.38`; Agent Core: `0.8.2`; Web UI: `0.22.0`.
+
+
 ### 0.1.45 — 2026-10-06 — Memory 4.0 Hardening
 
 - Локальный поиск/просмотр памяти больше не увеличивает `use_count`, `recall_count` и не создаёт обучающий recall-audit.

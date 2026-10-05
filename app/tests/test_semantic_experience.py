@@ -177,11 +177,12 @@ class ExperienceLearningTests(unittest.TestCase):
             self.assertIn("белый компактный интерфейс", system_text)
             self.assertIn("Снизить визуальный шум", system_text)
             self.assertIn("Сохранить компактность светлого интерфейса", system_text)
-            self.assertIn("Memory 4.0 Sayuri", system_text)
+            self.assertIn("Memory 4.1 Quality Gate Sayuri", system_text)
             self.assertGreaterEqual(result["memory_used"], 1)
             self.assertGreaterEqual(result["experience_used"], 1)
             self.assertGreaterEqual(result["memory_v4_used"], 1)
-            self.assertEqual(result["memory_v4"]["version"], "4.0")
+            self.assertEqual(result["memory_v4"]["version"], "4.1")
+            self.assertEqual(result["memory_v4"]["quality_gate"], "memory-v4.1-quality")
             self.assertTrue(result["response_id"])
 
             feedback = agent.record_chat_feedback(
