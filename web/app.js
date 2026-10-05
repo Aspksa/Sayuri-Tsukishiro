@@ -22,6 +22,26 @@ const diskState = {
   selected: new Map()
 };
 
+function readLocalJson(key, fallback) {
+  try {
+    const value = JSON.parse(localStorage.getItem(key) || 'null');
+    return value ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+const sayuriState = {
+  profile: null,
+  messages: readLocalJson('sayuri-chat-history', []),
+  suppressOrbClick: false,
+  orbDrag: null,
+  chatDrag: null,
+  visible: localStorage.getItem('sayuri-visible') !== '0',
+  rememberPosition: localStorage.getItem('sayuri-remember-position') !== '0',
+  rememberHistory: localStorage.getItem('sayuri-remember-history') !== '0'
+};
+
 function setStatus(kind, text) {
   const pill = byId('status-pill');
   pill.className = `status-pill ${kind}`;
@@ -73,10 +93,12 @@ function showView(name) {
   document.querySelectorAll('.nav-item').forEach((button) => {
     button.classList.toggle('active', button.dataset.view === name);
   });
+  byId('sayuri-account-nav')?.classList.toggle('active', name === 'sayuri');
 
   const titles = {
     home: ['СИСТЕМА', 'Главная'],
     disk: ['ФАЙЛЫ И ДОКУМЕНТЫ', 'Диск Sayuri'],
+    sayuri: ['ЛИЧНЫЙ КАБИНЕТ', 'Sayuri'],
     settings: ['СИСТЕМА И АРХИТЕКТУРА', 'Настройки']
   };
   const [eyebrow, title] = titles[name] || titles.home;
@@ -86,11 +108,15 @@ function showView(name) {
   if (name === 'disk') {
     history.replaceState(null, '', '#disk');
     loadDisk().catch(showDiskError);
+  } else if (name === 'sayuri') {
+    history.replaceState(null, '', '#sayuri');
+    loadSayuriProfile().catch(showSayuriProviderError);
   } else if (name === 'settings') {
     history.replaceState(null, '', '#settings');
   } else {
     history.replaceState(null, '', '#home');
   }
+  updateSayuriContextUI();
 }
 
 function renderSettings(settings) {
@@ -1489,6 +1515,469 @@ function configureRefreshTimer() {
   refreshTimer = window.setInterval(refreshSystem, seconds * 1000);
 }
 
+
+function currentSayuriContext() {
+  const active = document.querySelector('.view.active');
+  const view = active?.id?.replace('view-', '') || 'home';
+  const titles = {
+    home: 'Главная',
+    disk: 'Диск Sayuri',
+    sayuri: 'Личный кабинет Sayuri',
+    settings: 'Настройки'
+  };
+  const context = {
+    view,
+    title: titles[view] || byId('page-title')?.textContent || 'Sayuri',
+    route: location.hash || '#home'
+  };
+  if (view === 'disk') {
+    context.disk = {
+      scope: diskState.scope,
+      folder_id: diskState.folderId,
+      search: byId('disk-search-input')?.value?.trim() || '',
+      selected_count: diskState.selected.size
+    };
+  }
+  if (viewerItem) {
+    context.current_document = {
+      id: viewerItem.id,
+      name: viewerItem.name,
+      kind: viewerItem.kind,
+      category: viewerItem.category || null
+    };
+  }
+  return context;
+}
+
+function updateSayuriContextUI() {
+  const context = currentSayuriContext();
+  if (byId('sayuri-context-view')) byId('sayuri-context-view').textContent = context.view;
+  if (byId('sayuri-context-title')) byId('sayuri-context-title').textContent = context.title;
+  if (byId('sayuri-context-document')) {
+    byId('sayuri-context-document').textContent = context.current_document?.name || '—';
+  }
+  if (byId('sayuri-chat-context')) {
+    byId('sayuri-chat-context').textContent = context.current_document?.name
+      ? `${context.title} · ${context.current_document.name}`
+      : context.title;
+  }
+}
+
+function setSayuriProviderMessage(text, kind = '') {
+  const target = byId('sayuri-provider-message');
+  if (!target) return;
+  target.className = `sayuri-provider-message ${kind}`.trim();
+  target.textContent = text;
+}
+
+function renderSayuriProfile(profile) {
+  sayuriState.profile = profile;
+  const provider = profile.provider || {};
+  const configured = Boolean(provider.configured);
+  byId('sayuri-connection-state').textContent = configured ? 'Ключ сохранён' : 'Не настроено';
+  byId('sayuri-connection-state').classList.toggle('ready', configured);
+  byId('sayuri-ai-badge').textContent = configured ? 'AI готов' : 'Нужен API-ключ';
+  byId('sayuri-ai-badge').classList.toggle('ready', configured);
+  byId('sayuri-key-mask').textContent = configured
+    ? `Сохранён: ${provider.api_key_masked || '••••••••'} · пустое поле сохранит текущий ключ`
+    : 'Ключ ещё не сохранён';
+  byId('sayuri-orb-status').classList.toggle('ready', configured);
+  byId('sayuri-chat-status').textContent = configured
+    ? 'DeepSeek-V4-Flash · Cloud.ru · готово'
+    : 'Откройте Личный кабинет Sayuri и добавьте ключ Cloud.ru';
+}
+
+async function loadSayuriProfile() {
+  const response = await fetch('/api/sayuri/profile', {cache: 'no-store'});
+  const data = await response.json();
+  if (!response.ok) throw new Error(data?.error?.message || `HTTP ${response.status}`);
+  renderSayuriProfile(data);
+  return data;
+}
+
+function showSayuriProviderError(error) {
+  setSayuriProviderMessage(`Ошибка: ${error instanceof Error ? error.message : String(error)}`, 'error');
+}
+
+async function saveSayuriProvider() {
+  const button = byId('sayuri-save-provider');
+  const apiKey = byId('sayuri-api-key').value.trim();
+  if (!apiKey && !sayuriState.profile?.provider?.configured) {
+    setSayuriProviderMessage('Вставьте API-ключ Cloud.ru.', 'error');
+    return;
+  }
+  button.disabled = true;
+  setSayuriProviderMessage('Сохраняю локально…');
+  try {
+    const data = await postJson('/api/sayuri/provider', {api_key: apiKey || null});
+    byId('sayuri-api-key').value = '';
+    renderSayuriProfile(data);
+    setSayuriProviderMessage('Ключ сохранён локально. В GitHub он не попадает.', 'ready');
+    await loadSystem();
+  } catch (error) {
+    showSayuriProviderError(error);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function testSayuriProvider() {
+  const button = byId('sayuri-test-provider');
+  button.disabled = true;
+  setSayuriProviderMessage('Проверяю Cloud.ru и наличие DeepSeek-V4-Flash…');
+  try {
+    const data = await postJson('/api/sayuri/provider/test', {});
+    if (!data.model_available) {
+      throw new Error('Ключ работает, но DeepSeek-V4-Flash не найден среди доступных моделей.');
+    }
+    setSayuriProviderMessage(`Подключение готово · ${data.latency_ms} мс · DeepSeek-V4-Flash доступна.`, 'ready');
+    await loadSayuriProfile();
+    await loadSystem();
+  } catch (error) {
+    showSayuriProviderError(error);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function clearSayuriProvider() {
+  if (!window.confirm('Удалить сохранённый API-ключ Cloud.ru с этого компьютера?')) return;
+  try {
+    const data = await postJson('/api/sayuri/provider', {clear: true});
+    renderSayuriProfile(data);
+    byId('sayuri-api-key').value = '';
+    setSayuriProviderMessage('Локальный ключ удалён.');
+    await loadSystem();
+  } catch (error) {
+    showSayuriProviderError(error);
+  }
+}
+
+function persistSayuriHistory() {
+  if (sayuriState.rememberHistory) {
+    localStorage.setItem('sayuri-chat-history', JSON.stringify(sayuriState.messages.slice(-40)));
+  } else {
+    localStorage.removeItem('sayuri-chat-history');
+  }
+}
+
+function addSayuriMessage(role, content, metadata = null) {
+  sayuriState.messages.push({role, content, metadata});
+  if (sayuriState.messages.length > 40) sayuriState.messages = sayuriState.messages.slice(-40);
+  persistSayuriHistory();
+  renderSayuriMessages();
+}
+
+function renderSayuriMessages() {
+  const container = byId('sayuri-chat-messages');
+  if (!container) return;
+  container.replaceChildren();
+
+  if (!sayuriState.messages.length) {
+    const welcome = document.createElement('article');
+    welcome.className = 'sayuri-message assistant';
+    const avatar = document.createElement('img');
+    avatar.src = '/assets/sayuri-avatar.webp';
+    avatar.alt = '';
+    const bubble = document.createElement('div');
+    bubble.textContent = 'Я рядом, Господин. Откройте любой раздел проекта — я буду учитывать текущий экран в разговоре.';
+    welcome.append(avatar, bubble);
+    container.append(welcome);
+    return;
+  }
+
+  for (const message of sayuriState.messages) {
+    const row = document.createElement('article');
+    row.className = `sayuri-message ${message.role}`;
+    if (message.role === 'assistant') {
+      const avatar = document.createElement('img');
+      avatar.src = '/assets/sayuri-avatar.webp';
+      avatar.alt = '';
+      row.append(avatar);
+    }
+    const bubble = document.createElement('div');
+    bubble.textContent = message.content;
+    row.append(bubble);
+    container.append(row);
+  }
+  container.scrollTop = container.scrollHeight;
+}
+
+function openSayuriChat() {
+  byId('sayuri-chat-window').classList.remove('hidden');
+  updateSayuriContextUI();
+  renderSayuriMessages();
+  window.setTimeout(() => byId('sayuri-chat-input').focus(), 0);
+}
+
+function closeSayuriChat() {
+  byId('sayuri-chat-window').classList.add('hidden');
+}
+
+async function sendSayuriMessage(text) {
+  const message = text.trim();
+  if (!message) return;
+
+  const history = sayuriState.messages
+    .filter((item) => item.role === 'user' || item.role === 'assistant')
+    .slice(-16)
+    .map(({role, content}) => ({role, content}));
+
+  addSayuriMessage('user', message);
+  byId('sayuri-chat-input').value = '';
+  byId('sayuri-chat-send').disabled = true;
+  byId('sayuri-chat-status').textContent = 'Sayuri думает через DeepSeek-V4-Flash…';
+
+  try {
+    const result = await postJson('/api/sayuri/chat', {
+      message,
+      history,
+      context: currentSayuriContext()
+    });
+    addSayuriMessage('assistant', result.answer, {model: result.model, usage: result.usage});
+    byId('sayuri-chat-status').textContent = 'DeepSeek-V4-Flash · Cloud.ru · готово';
+  } catch (error) {
+    const text = error instanceof Error ? error.message : String(error);
+    addSayuriMessage('assistant', `Не удалось получить ответ: ${text}`);
+    byId('sayuri-chat-status').textContent = 'Ошибка подключения к AI';
+  } finally {
+    byId('sayuri-chat-send').disabled = false;
+  }
+}
+
+function openSayuriContextMenu(event) {
+  event.preventDefault();
+  const menu = byId('sayuri-context-menu');
+  menu.classList.remove('hidden');
+  const margin = 10;
+  const rect = menu.getBoundingClientRect();
+  menu.style.left = `${Math.max(margin, Math.min(event.clientX, window.innerWidth - rect.width - margin))}px`;
+  menu.style.top = `${Math.max(margin, Math.min(event.clientY, window.innerHeight - rect.height - margin))}px`;
+}
+
+function closeSayuriContextMenu() {
+  byId('sayuri-context-menu').classList.add('hidden');
+}
+
+function runSayuriAction(action) {
+  closeSayuriContextMenu();
+  if (action === 'account') {
+    showView('sayuri');
+    return;
+  }
+  openSayuriChat();
+  const prompts = {
+    see: 'Sayuri, опиши, что ты видишь сейчас в интерфейсе проекта и какой контекст у тебя есть.',
+    explain: 'Sayuri, объясни текущий раздел проекта: что здесь находится и чем ты можешь мне помочь.',
+    improve: 'Sayuri, оцени текущий раздел проекта и предложи наиболее полезные улучшения. Отдели факты от предложений.'
+  };
+  if (prompts[action]) sendSayuriMessage(prompts[action]);
+}
+
+function applySayuriPreferences() {
+  const orb = byId('sayuri-orb');
+  orb.classList.toggle('hidden', !sayuriState.visible);
+  byId('sayuri-visible-toggle').checked = sayuriState.visible;
+  byId('sayuri-position-toggle').checked = sayuriState.rememberPosition;
+  byId('sayuri-history-toggle').checked = sayuriState.rememberHistory;
+
+  const orbPosition = readLocalJson('sayuri-orb-position', null);
+  if (sayuriState.rememberPosition && orbPosition) {
+    orb.style.left = `${orbPosition.left}px`;
+    orb.style.top = `${orbPosition.top}px`;
+    orb.style.right = 'auto';
+    orb.style.bottom = 'auto';
+  }
+
+  const chatPosition = readLocalJson('sayuri-chat-position', null);
+  const chat = byId('sayuri-chat-window');
+  if (sayuriState.rememberPosition && chatPosition) {
+    chat.style.left = `${chatPosition.left}px`;
+    chat.style.top = `${chatPosition.top}px`;
+    chat.style.right = 'auto';
+    chat.style.bottom = 'auto';
+  }
+}
+
+function clampFloating(element, left, top) {
+  const margin = 8;
+  return {
+    left: Math.max(margin, Math.min(left, window.innerWidth - element.offsetWidth - margin)),
+    top: Math.max(margin, Math.min(top, window.innerHeight - element.offsetHeight - margin))
+  };
+}
+
+function beginOrbDrag(event) {
+  if (event.button !== 0) return;
+  const orb = byId('sayuri-orb');
+  const rect = orb.getBoundingClientRect();
+  sayuriState.orbDrag = {
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    left: rect.left,
+    top: rect.top,
+    moved: false
+  };
+  orb.setPointerCapture?.(event.pointerId);
+}
+
+function moveOrbDrag(event) {
+  const drag = sayuriState.orbDrag;
+  if (!drag || drag.pointerId !== event.pointerId) return;
+  const dx = event.clientX - drag.startX;
+  const dy = event.clientY - drag.startY;
+  if (Math.abs(dx) + Math.abs(dy) > 5) drag.moved = true;
+  if (!drag.moved) return;
+  const orb = byId('sayuri-orb');
+  const pos = clampFloating(orb, drag.left + dx, drag.top + dy);
+  orb.style.left = `${pos.left}px`;
+  orb.style.top = `${pos.top}px`;
+  orb.style.right = 'auto';
+  orb.style.bottom = 'auto';
+}
+
+function endOrbDrag(event) {
+  const drag = sayuriState.orbDrag;
+  if (!drag || drag.pointerId !== event.pointerId) return;
+  sayuriState.suppressOrbClick = drag.moved;
+  sayuriState.orbDrag = null;
+  if (drag.moved && sayuriState.rememberPosition) {
+    const rect = byId('sayuri-orb').getBoundingClientRect();
+    localStorage.setItem('sayuri-orb-position', JSON.stringify({left: rect.left, top: rect.top}));
+  }
+}
+
+function beginChatDrag(event) {
+  if (event.button !== 0 || event.target.closest('button')) return;
+  const chat = byId('sayuri-chat-window');
+  const rect = chat.getBoundingClientRect();
+  sayuriState.chatDrag = {
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    left: rect.left,
+    top: rect.top
+  };
+  byId('sayuri-chat-drag').setPointerCapture?.(event.pointerId);
+}
+
+function moveChatDrag(event) {
+  const drag = sayuriState.chatDrag;
+  if (!drag || drag.pointerId !== event.pointerId) return;
+  const chat = byId('sayuri-chat-window');
+  const pos = clampFloating(
+    chat,
+    drag.left + event.clientX - drag.startX,
+    drag.top + event.clientY - drag.startY
+  );
+  chat.style.left = `${pos.left}px`;
+  chat.style.top = `${pos.top}px`;
+  chat.style.right = 'auto';
+  chat.style.bottom = 'auto';
+}
+
+function endChatDrag(event) {
+  const drag = sayuriState.chatDrag;
+  if (!drag || drag.pointerId !== event.pointerId) return;
+  sayuriState.chatDrag = null;
+  if (sayuriState.rememberPosition) {
+    const rect = byId('sayuri-chat-window').getBoundingClientRect();
+    localStorage.setItem('sayuri-chat-position', JSON.stringify({left: rect.left, top: rect.top}));
+  }
+}
+
+function resetSayuriLayout() {
+  localStorage.removeItem('sayuri-orb-position');
+  localStorage.removeItem('sayuri-chat-position');
+  const orb = byId('sayuri-orb');
+  const chat = byId('sayuri-chat-window');
+  for (const element of [orb, chat]) {
+    element.style.left = '';
+    element.style.top = '';
+    element.style.right = '';
+    element.style.bottom = '';
+  }
+  setSayuriProviderMessage('Положение Sayuri сброшено.');
+}
+
+function initializeSayuri() {
+  applySayuriPreferences();
+  renderSayuriMessages();
+  updateSayuriContextUI();
+
+  byId('sayuri-orb').addEventListener('click', () => {
+    if (sayuriState.suppressOrbClick) {
+      sayuriState.suppressOrbClick = false;
+      return;
+    }
+    if (byId('sayuri-chat-window').classList.contains('hidden')) openSayuriChat();
+    else closeSayuriChat();
+  });
+  byId('sayuri-orb').addEventListener('contextmenu', openSayuriContextMenu);
+  byId('sayuri-orb').addEventListener('pointerdown', beginOrbDrag);
+  byId('sayuri-orb').addEventListener('pointermove', moveOrbDrag);
+  byId('sayuri-orb').addEventListener('pointerup', endOrbDrag);
+  byId('sayuri-orb').addEventListener('pointercancel', endOrbDrag);
+
+  byId('sayuri-chat-drag').addEventListener('pointerdown', beginChatDrag);
+  byId('sayuri-chat-drag').addEventListener('pointermove', moveChatDrag);
+  byId('sayuri-chat-drag').addEventListener('pointerup', endChatDrag);
+  byId('sayuri-chat-drag').addEventListener('pointercancel', endChatDrag);
+
+  byId('sayuri-chat-close').addEventListener('click', closeSayuriChat);
+  byId('sayuri-chat-clear').addEventListener('click', () => {
+    sayuriState.messages = [];
+    persistSayuriHistory();
+    renderSayuriMessages();
+  });
+  byId('sayuri-chat-form').addEventListener('submit', (event) => {
+    event.preventDefault();
+    sendSayuriMessage(byId('sayuri-chat-input').value);
+  });
+  byId('sayuri-chat-input').addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      byId('sayuri-chat-form').requestSubmit();
+    }
+  });
+
+  byId('sayuri-account-nav').addEventListener('click', () => showView('sayuri'));
+  byId('sayuri-open-chat-account').addEventListener('click', openSayuriChat);
+  byId('sayuri-save-provider').addEventListener('click', saveSayuriProvider);
+  byId('sayuri-test-provider').addEventListener('click', testSayuriProvider);
+  byId('sayuri-clear-provider').addEventListener('click', clearSayuriProvider);
+  byId('sayuri-key-toggle').addEventListener('click', () => {
+    const input = byId('sayuri-api-key');
+    const visible = input.type === 'text';
+    input.type = visible ? 'password' : 'text';
+    byId('sayuri-key-toggle').textContent = visible ? 'Показать' : 'Скрыть';
+  });
+  byId('sayuri-visible-toggle').addEventListener('change', (event) => {
+    sayuriState.visible = event.target.checked;
+    localStorage.setItem('sayuri-visible', sayuriState.visible ? '1' : '0');
+    applySayuriPreferences();
+  });
+  byId('sayuri-position-toggle').addEventListener('change', (event) => {
+    sayuriState.rememberPosition = event.target.checked;
+    localStorage.setItem('sayuri-remember-position', sayuriState.rememberPosition ? '1' : '0');
+    if (!sayuriState.rememberPosition) {
+      localStorage.removeItem('sayuri-orb-position');
+      localStorage.removeItem('sayuri-chat-position');
+    }
+  });
+  byId('sayuri-history-toggle').addEventListener('change', (event) => {
+    sayuriState.rememberHistory = event.target.checked;
+    localStorage.setItem('sayuri-remember-history', sayuriState.rememberHistory ? '1' : '0');
+    persistSayuriHistory();
+  });
+  byId('sayuri-reset-layout').addEventListener('click', resetSayuriLayout);
+
+  document.querySelectorAll('[data-sayuri-action]').forEach((button) => {
+    button.addEventListener('click', () => runSayuriAction(button.dataset.sayuriAction));
+  });
+}
+
 document.querySelectorAll('.nav-item').forEach((button) => {
   button.addEventListener('click', () => showView(button.dataset.view));
 });
@@ -1615,8 +2104,15 @@ document.addEventListener('click', (event) => {
   if (!event.target.closest('#disk-context-menu') && !event.target.closest('.icon-action')) {
     closeContextMenu();
   }
+  if (!event.target.closest('#sayuri-context-menu') && !event.target.closest('#sayuri-orb')) {
+    closeSayuriContextMenu();
+  }
 });
-window.addEventListener('resize', closeContextMenu);
+window.addEventListener('resize', () => {
+  closeContextMenu();
+  closeSayuriContextMenu();
+  updateSayuriContextUI();
+});
 window.addEventListener('scroll', closeContextMenu, true);
 
 byId('file-viewer-modal').addEventListener('click', (event) => {
@@ -1629,18 +2125,23 @@ byId('move-modal').addEventListener('click', (event) => {
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') {
     closeContextMenu();
+    closeSayuriContextMenu();
     if (!byId('move-modal').classList.contains('hidden')) closeMoveModal();
     if (!byId('file-viewer-modal').classList.contains('hidden')) closeViewer();
+    if (!byId('sayuri-chat-window').classList.contains('hidden')) closeSayuriChat();
   }
 });
 
 const initialHash = location.hash;
 const initialView = initialHash === '#disk'
   ? 'disk'
-  : (initialHash === '#settings' || initialHash.startsWith('#system-') ? 'settings' : 'home');
+  : initialHash === '#sayuri'
+    ? 'sayuri'
+    : (initialHash === '#settings' || initialHash.startsWith('#system-') ? 'settings' : 'home');
+initializeSayuri();
 showView(initialView);
 
-Promise.all([loadSettings(), loadSystem()])
+Promise.all([loadSettings(), loadSystem(), loadSayuriProfile()])
   .then(loadEvents)
   .catch((error) => {
     setStatus('error', 'Ошибка запуска интерфейса');
