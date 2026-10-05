@@ -167,6 +167,33 @@ class ServerTests(unittest.TestCase):
                     payload = json.loads(response.read().decode("utf-8"))
                     self.assertTrue(payload["settings"]["candidate_generation"])
 
+                server.core.agent.experience.record_chat_response(
+                    "response-api-test",
+                    {"view": "sayuri"},
+                )
+                feedback_body = json.dumps({
+                    "response_id": "response-api-test",
+                    "rating": "useful",
+                    "context": {"view": "sayuri"},
+                }).encode("utf-8")
+                request = urllib.request.Request(
+                    base + "/api/sayuri/experience/feedback",
+                    data=feedback_body,
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(request, timeout=2) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+                    self.assertEqual(payload["event"]["outcome"], "useful")
+                    self.assertEqual(payload["stats"]["positive"], 1)
+
+                with urllib.request.urlopen(base + "/api/sayuri/experience?limit=20", timeout=2) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+                    self.assertGreaterEqual(payload["stats"]["total"], 2)
+                    self.assertTrue(
+                        any(item["subject_id"] == "response-api-test" for item in payload["recent"])
+                    )
+
                 candidates = server.core.agent.memory_intelligence.analyze_message(
                     "Я предпочитаю компактный светлый интерфейс",
                     {"view": "sayuri"},
