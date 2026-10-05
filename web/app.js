@@ -77,6 +77,7 @@ function showView(name) {
   const titles = {
     home: ['СИСТЕМА', 'Главная'],
     disk: ['ФАЙЛЫ И ДОКУМЕНТЫ', 'Диск Sayuri'],
+    phone: ['ANDROID И УСТРОЙСТВА', 'Телефон Sayuri'],
     settings: ['СИСТЕМА И АРХИТЕКТУРА', 'Настройки']
   };
   const [eyebrow, title] = titles[name] || titles.home;
@@ -86,6 +87,9 @@ function showView(name) {
   if (name === 'disk') {
     history.replaceState(null, '', '#disk');
     loadDisk().catch(showDiskError);
+  } else if (name === 'phone') {
+    history.replaceState(null, '', '#phone');
+    loadPhone().catch(showPhoneError);
   } else if (name === 'settings') {
     history.replaceState(null, '', '#settings');
   } else {
@@ -1402,6 +1406,162 @@ async function handleBulkAction(action) {
   }
 }
 
+function showPhoneMessage(text, kind = 'ready') {
+  const target = byId('phone-message');
+  target.className = `phone-message ${kind}`;
+  target.textContent = text;
+}
+
+function hidePhoneMessage() {
+  byId('phone-message').className = 'phone-message hidden';
+  byId('phone-message').textContent = '';
+}
+
+function showPhoneError(error) {
+  showPhoneMessage(`Ошибка: ${error instanceof Error ? error.message : String(error)}`, 'error');
+}
+
+function phoneDeviceLabel(device) {
+  return device.model || device.product || device.device || device.serial;
+}
+
+function renderPhone(data) {
+  const runtime = data.runtime || {};
+  const devices = Array.isArray(data.devices) ? data.devices : [];
+  const sessions = new Set(data.control_sessions || []);
+
+  byId('phone-runtime-state').textContent = runtime.ready ? 'ГОТОВ' : 'НЕ УСТАНОВЛЕН';
+  byId('phone-runtime-detail').textContent = runtime.ready
+    ? `scrcpy ${data.backend_version} · ADB готов`
+    : 'Нужен локальный scrcpy / ADB runtime';
+  byId('phone-device-count').textContent = String(devices.length);
+  byId('phone-device-detail').textContent = `авторизовано: ${data.authorized_devices || 0}`;
+  byId('phone-control-state').textContent = sessions.size ? 'ОТКРЫТО' : 'ГОТОВО';
+
+  const list = byId('phone-device-list');
+  list.replaceChildren();
+
+  if (!devices.length) {
+    const empty = document.createElement('div');
+    empty.className = 'phone-empty';
+    const title = document.createElement('strong');
+    title.textContent = runtime.ready ? 'Телефон пока не найден' : 'Runtime телефона ещё не готов';
+    const copy = document.createElement('p');
+    copy.textContent = runtime.ready
+      ? 'Подключите Android по USB и подтвердите запрос отладки на самом телефоне.'
+      : 'После перезапуска Sayuri переносимый scrcpy/ADB runtime будет подготовлен автоматически на Windows x64.';
+    empty.append(title, copy);
+    list.append(empty);
+    return;
+  }
+
+  for (const device of devices) {
+    const card = document.createElement('article');
+    card.className = `phone-device-card ${device.authorized ? 'authorized' : 'blocked'}`;
+
+    const icon = document.createElement('div');
+    icon.className = 'phone-device-icon';
+    icon.textContent = '▯';
+
+    const info = document.createElement('div');
+    info.className = 'phone-device-info';
+    const title = document.createElement('strong');
+    title.textContent = phoneDeviceLabel(device);
+    const serial = document.createElement('code');
+    serial.textContent = device.serial;
+    const meta = document.createElement('span');
+    meta.textContent = device.authorized
+      ? `${device.connection === 'wifi' ? 'Wi-Fi' : 'USB'} · доступ разрешён`
+      : `Состояние: ${device.state}`;
+    info.append(title, serial, meta);
+
+    const actions = document.createElement('div');
+    actions.className = 'phone-device-actions';
+
+    const controlling = sessions.has(device.serial);
+    const controlButton = document.createElement('button');
+    controlButton.type = 'button';
+    controlButton.className = controlling ? 'secondary-button' : 'primary-button';
+    controlButton.disabled = !device.authorized;
+    controlButton.textContent = controlling ? 'Остановить' : 'Открыть управление';
+    controlButton.addEventListener('click', async () => {
+      try {
+        const endpoint = controlling ? '/api/phone/control/stop' : '/api/phone/control/start';
+        const result = await postJson(endpoint, {serial: device.serial});
+        showPhoneMessage(result.status || 'Готово');
+        await loadPhone();
+      } catch (error) {
+        showPhoneError(error);
+      }
+    });
+    actions.append(controlButton);
+
+    if (device.connection === 'wifi') {
+      const disconnectButton = document.createElement('button');
+      disconnectButton.type = 'button';
+      disconnectButton.className = 'phone-link-button';
+      disconnectButton.textContent = 'Отключить Wi-Fi';
+      disconnectButton.addEventListener('click', async () => {
+        try {
+          const result = await postJson('/api/phone/disconnect', {serial: device.serial});
+          showPhoneMessage(result.status || 'Отключено');
+          await loadPhone();
+        } catch (error) {
+          showPhoneError(error);
+        }
+      });
+      actions.append(disconnectButton);
+    }
+
+    card.append(icon, info, actions);
+    list.append(card);
+  }
+}
+
+async function loadPhone() {
+  const response = await fetch('/api/phone', {cache: 'no-store'});
+  const data = await response.json();
+  if (!response.ok) throw new Error(data?.error?.message || `HTTP ${response.status}`);
+  renderPhone(data);
+}
+
+async function pairPhone(event) {
+  event.preventDefault();
+  const address = byId('phone-pair-address').value.trim();
+  const pairingCode = byId('phone-pair-code').value.trim();
+  if (!address || !pairingCode) {
+    showPhoneMessage('Укажите адрес сопряжения и 6-значный код.', 'error');
+    return;
+  }
+  try {
+    const result = await postJson('/api/phone/pair', {
+      address,
+      pairing_code: pairingCode
+    });
+    byId('phone-pair-code').value = '';
+    showPhoneMessage(result.message || 'Телефон сопряжён.');
+    await loadPhone();
+  } catch (error) {
+    showPhoneError(error);
+  }
+}
+
+async function connectPhone(event) {
+  event.preventDefault();
+  const address = byId('phone-connect-address').value.trim();
+  if (!address) {
+    showPhoneMessage('Укажите адрес подключения из раздела «Беспроводная отладка».', 'error');
+    return;
+  }
+  try {
+    const result = await postJson('/api/phone/connect', {address});
+    showPhoneMessage(result.message || 'Телефон подключён.');
+    await loadPhone();
+  } catch (error) {
+    showPhoneError(error);
+  }
+}
+
 async function loadSettings() {
   const response = await fetch('/api/settings', {cache: 'no-store'});
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -1516,6 +1676,12 @@ byId('dna-reanalyze').addEventListener('click', () => {
 
 byId('save-settings').addEventListener('click', saveSettings);
 byId('refresh-system').addEventListener('click', refreshSystem);
+byId('phone-refresh').addEventListener('click', () => {
+  hidePhoneMessage();
+  loadPhone().catch(showPhoneError);
+});
+byId('phone-pair-form').addEventListener('submit', pairPhone);
+byId('phone-connect-form').addEventListener('submit', connectPhone);
 byId('upload-button').addEventListener('click', () => byId('disk-file-input').click());
 byId('disk-file-input').addEventListener('change', (event) => uploadDiskFiles(event.target.files));
 byId('new-folder-button').addEventListener('click', () => {
@@ -1636,7 +1802,9 @@ document.addEventListener('keydown', (event) => {
 const initialHash = location.hash;
 const initialView = initialHash === '#disk'
   ? 'disk'
-  : (initialHash === '#settings' || initialHash.startsWith('#system-') ? 'settings' : 'home');
+  : initialHash === '#phone'
+    ? 'phone'
+    : (initialHash === '#settings' || initialHash.startsWith('#system-') ? 'settings' : 'home');
 showView(initialView);
 
 Promise.all([loadSettings(), loadSystem()])

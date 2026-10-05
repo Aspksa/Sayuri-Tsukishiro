@@ -19,6 +19,7 @@
       <nav class="main-nav" aria-label="Главное меню">
         <button class="nav-item active" type="button" data-view="home"><span class="nav-icon">⌂</span><span>Главная</span></button>
         <button class="nav-item" type="button" data-view="disk"><span class="nav-icon">◫</span><span>Диск Sayuri</span></button>
+        <button class="nav-item" type="button" data-view="phone"><span class="nav-icon">▯</span><span>Телефон Sayuri</span></button>
         <button class="nav-item" type="button" data-view="settings"><span class="nav-icon">⚙</span><span>Настройки</span></button>
       </nav>
 
@@ -274,6 +275,79 @@
           <button id="disk-undo-button" type="button">Отменить</button>
         </div>
         <div class="disk-context-menu hidden" id="disk-context-menu" role="menu"></div>
+      </section>
+
+      <section class="view" id="view-phone">
+        <div class="phone-head">
+          <div>
+            <p class="eyebrow">ЛОКАЛЬНОЕ УПРАВЛЕНИЕ ANDROID</p>
+            <h2>Телефон Sayuri</h2>
+            <p>Подключите свой Android к Саюри по USB или беспроводной отладке и запускайте управление прямо из проекта.</p>
+          </div>
+          <button class="secondary-button" id="phone-refresh" type="button">Обновить</button>
+        </div>
+
+        <section class="phone-stats">
+          <article><span>Runtime</span><strong id="phone-runtime-state">—</strong><small id="phone-runtime-detail">scrcpy / ADB</small></article>
+          <article><span>Телефонов</span><strong id="phone-device-count">0</strong><small id="phone-device-detail">подключённые Android</small></article>
+          <article><span>Управление</span><strong id="phone-control-state">—</strong><small>запускается из Sayuri</small></article>
+        </section>
+
+        <div class="phone-message hidden" id="phone-message" role="status"></div>
+
+        <section class="phone-grid">
+          <article class="phone-panel phone-devices-panel">
+            <div class="section-head">
+              <div><p class="eyebrow">УСТРОЙСТВА</p><h3>Мои телефоны</h3></div>
+            </div>
+            <div class="phone-device-list" id="phone-device-list">
+              <div class="phone-empty">
+                <strong>Телефон пока не найден</strong>
+                <p>Подключите Android по USB, включите «Отладку по USB» и подтвердите отпечаток компьютера на телефоне.</p>
+              </div>
+            </div>
+          </article>
+
+          <article class="phone-panel">
+            <div class="section-head">
+              <div><p class="eyebrow">USB</p><h3>Первое подключение</h3></div>
+            </div>
+            <ol class="phone-steps">
+              <li><strong>Откройте параметры разработчика</strong><span>На Android включите «Отладку по USB».</span></li>
+              <li><strong>Подключите кабель</strong><span>Разрешите отладку для этого компьютера на экране телефона.</span></li>
+              <li><strong>Нажмите «Обновить»</strong><span>Sayuri увидит авторизованное устройство и разрешит запуск управления.</span></li>
+            </ol>
+          </article>
+
+          <article class="phone-panel">
+            <div class="section-head">
+              <div><p class="eyebrow">WI-FI</p><h3>Беспроводное сопряжение</h3></div>
+            </div>
+            <p class="phone-help">Android 11+: «Для разработчиков → Беспроводная отладка → Сопряжение устройства с помощью кода».</p>
+            <form class="phone-form" id="phone-pair-form">
+              <label><span>Адрес сопряжения</span><input id="phone-pair-address" type="text" placeholder="192.168.1.20:37125" autocomplete="off"></label>
+              <label><span>6-значный код</span><input id="phone-pair-code" type="text" inputmode="numeric" maxlength="6" placeholder="123456" autocomplete="one-time-code"></label>
+              <button class="primary-button" type="submit">Сопрячь</button>
+            </form>
+            <form class="phone-form phone-connect-form" id="phone-connect-form">
+              <label><span>Адрес подключения</span><input id="phone-connect-address" type="text" placeholder="192.168.1.20:39587" autocomplete="off"></label>
+              <button class="secondary-button" type="submit">Подключить по Wi-Fi</button>
+            </form>
+          </article>
+
+          <article class="phone-panel phone-safety-panel">
+            <div class="section-head">
+              <div><p class="eyebrow">БЕЗОПАСНОСТЬ</p><h3>Локальный мост</h3></div>
+            </div>
+            <div class="phone-security-list">
+              <span>✓ Сервер Sayuri остаётся на 127.0.0.1</span>
+              <span>✓ Проект не открывает ADB shell в браузере</span>
+              <span>✓ Управление запускается только по вашему нажатию</span>
+              <span>✓ scrcpy не требует root и не оставляет приложение на телефоне</span>
+            </div>
+            <p class="phone-help">В версии 0.1 экран управления открывается отдельным локальным окном «Телефон Sayuri». Встраивание видеопотока внутрь страницы будет отдельным этапом.</p>
+          </article>
+        </section>
       </section>
 
       <section class="view" id="view-settings">

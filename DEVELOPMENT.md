@@ -264,3 +264,76 @@ Spatial locator:
 - Tesseract auto-install в bootstrap предусмотрен только для AMD64; ARM64 использует найденный внешний OCR либо работает без OCR.
 - table/signature/stamp detection 0.7 создаёт кандидаты, а не подтверждённые semantic entities.
 - реальный vision/LLM слой не подключён.
+
+
+## Телефон Sayuri 0.1
+
+### Каталог
+
+```text
+phone/
+  VERSION
+  __init__.py
+  service.py
+```
+
+### Runtime
+
+Windows AMD64:
+- scrcpy `4.1`;
+- официальный архив `scrcpy-win64-v4.1.zip`;
+- источник: `Genymobile/scrcpy`;
+- SHA-256: `5b12172b3264b2889f4583ee64752ce832e29bc8b1089dca81093459697165db`;
+- локальный путь: `.runtime/phone/scrcpy/`.
+
+Runtime optional: ошибка скачивания не блокирует запуск Sayuri.
+
+### API
+
+```text
+GET  /api/phone
+POST /api/phone/pair
+POST /api/phone/connect
+POST /api/phone/disconnect
+POST /api/phone/control/start
+POST /api/phone/control/stop
+```
+
+Payload pairing:
+
+```json
+{"address":"192.168.1.20:37125","pairing_code":"123456"}
+```
+
+Payload connect:
+
+```json
+{"address":"192.168.1.20:39587"}
+```
+
+Control:
+
+```json
+{"serial":"R58M123ABC"}
+```
+
+### Security boundary
+
+- нет shell-строк;
+- subprocess получает argv;
+- pairing address валидируется как host:port;
+- pairing code — ровно 6 цифр;
+- управление разрешено только для устройства, которое присутствует в текущем `adb devices -l` и имеет state `device`;
+- сервер Sayuri остаётся `127.0.0.1`.
+
+### UI
+
+Отдельный view `#phone`:
+- runtime status;
+- список устройств;
+- USB-инструкция;
+- Wireless Debugging pairing;
+- connect/disconnect;
+- open/stop control.
+
+0.1 не содержит embedded browser stream.

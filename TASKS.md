@@ -88,3 +88,19 @@
 ## AI-003 — Подключение ИИ-провайдера
 - Статус: `proposed`.
 - Цель: семантические роли, сложные причинные связи и проверяемые выводы поверх ДНК.
+
+
+## PHONE-001 — Телефон Sayuri
+- Статус: `implemented; CI pending`.
+- Цель: отдельный модуль и пункт меню для подключения собственного Android к проекту.
+- Готово в коде:
+  - меню «Телефон Sayuri»;
+  - device status;
+  - USB flow;
+  - Wireless Debugging pair/connect;
+  - scrcpy control start/stop;
+  - optional verified runtime в Windows launcher;
+  - allow-listed API без shell;
+  - unit/API/web/bootstrap tests.
+- Ограничение 0.1: экран scrcpy пока отдельное локальное окно, не встроен в браузер.
+- Следующий этап: PHONE-002 — встроенный экран/управление внутри страницы через локальный streaming bridge.

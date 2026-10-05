@@ -68,5 +68,23 @@ class WebContractTests(unittest.TestCase):
         self.assertIn(".dna-metrics", css)
 
 
+    def test_phone_sayuri_menu_and_controls_are_present(self):
+        html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+        css = (ROOT / "web" / "styles.css").read_text(encoding="utf-8")
+
+        self.assertIn('data-view="phone"', html)
+        self.assertIn('>Телефон Sayuri<', html)
+        self.assertIn('id="view-phone"', html)
+        self.assertIn('id="phone-device-list"', html)
+        self.assertIn('id="phone-pair-form"', html)
+        self.assertIn('id="phone-connect-form"', html)
+        self.assertIn("/api/phone", script)
+        self.assertIn("/api/phone/control/start", script)
+        self.assertIn("loadPhone", script)
+        self.assertIn(".phone-device-card", css)
+        self.assertIn(".phone-grid", css)
+
+
 if __name__ == "__main__":
     unittest.main()

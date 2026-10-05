@@ -21,6 +21,7 @@ def main() -> int:
             "sqlite": sqlite3.sqlite_version,
             "база_данных": core.database.health(),
             "диск_sayuri": core.disk.health(),
+            "телефон_sayuri": core.phone.health(),
         }
         print(json.dumps(report, ensure_ascii=False, indent=2))
         return 0

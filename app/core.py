@@ -8,6 +8,7 @@ from typing import Any
 
 from agent import AgentCoreContract
 from disk import DiskService
+from phone import PhoneService
 
 from .config import Settings
 from .database import Database
@@ -21,12 +22,14 @@ class SayuriCore:
         self.database = Database(settings.database_path)
         self.system_settings = SystemSettings(self.database)
         self.disk = DiskService(settings.database_path, settings.disk_dir)
+        self.phone = PhoneService(settings.root)
         self.started_monotonic = time.monotonic()
 
     def initialize(self, *, record_event: bool = True) -> None:
         self.database.initialize()
         self.system_settings.initialize()
         self.disk.initialize()
+        self.phone.initialize()
         if not record_event:
             return
         self.database.record_event(
@@ -93,6 +96,7 @@ class SayuriCore:
             },
             "agent": AgentCoreContract.snapshot(),
             "disk": self.disk.health(),
+            "phone": self.phone.health(),
             "uptime_seconds": round(time.monotonic() - self.started_monotonic, 3),
             "time_utc": datetime.now(timezone.utc).isoformat(),
         }
@@ -122,6 +126,7 @@ class SayuriCore:
             },
             "agent": health["agent"],
             "disk": health["disk"],
+            "phone": health["phone"],
             "architecture": self.module_registry(),
             "time_utc": health["time_utc"],
         }

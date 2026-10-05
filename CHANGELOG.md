@@ -2,6 +2,18 @@
 
 ## Невыпущенные изменения
 
+### 0.1.21 — 2026-10-05 — Телефон Sayuri 0.1
+
+- Добавлен новый зарегистрированный модуль `sayuri-phone` версии `0.1.0`.
+- В левое меню добавлен **«Телефон Sayuri»**.
+- Добавлены USB/Wi-Fi Android device discovery, Wireless Debugging pair/connect/disconnect.
+- Добавлен запуск/остановка официального scrcpy из Sayuri.
+- Добавлены allow-listed `/api/phone/*` endpoints; произвольный adb shell не публикуется.
+- Windows AMD64 launcher получает официальный scrcpy 4.1 с проверкой SHA-256.
+- Добавлены phone service/API/web/bootstrap tests.
+- Встроенный видеопоток в браузер отложен на PHONE-002.
+
+
 ### 0.1.20 — 2026-10-05 — Исправление тестового синтаксиса Spatial DNA
 
 - Исправлен буквальный `\\n` в `app/tests/test_disk.py`, из-за которого unittest не мог импортировать модуль.

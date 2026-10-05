@@ -20,15 +20,21 @@
       "path": "disk"
     },
     {
+      "id": "sayuri-phone",
+      "display_name": "Телефон Sayuri",
+      "description": "Локальное подключение Android по USB/Wi-Fi через ADB и официальный scrcpy: обнаружение устройства, pairing, connect и запуск управления.",
+      "path": "phone"
+    },
+    {
       "id": "web-ui",
       "display_name": "Веб-интерфейс",
-      "description": "Локальная оболочка с Диск Sayuri, центральным просмотром, вкладкой ДНК и системными настройками.",
+      "description": "Локальная оболочка с Диск Sayuri, Телефон Sayuri, центральным просмотром, вкладкой ДНК и системными настройками.",
       "path": "web"
     },
     {
       "id": "dev-tools",
       "display_name": "Инструменты разработки",
-      "description": "Версионирование, тесты и переносимый Windows-запуск, включая optional Spatial/OCR runtime.",
+      "description": "Версионирование, тесты и переносимый Windows-запуск, включая optional Spatial/OCR и scrcpy runtime.",
       "path": "scripts"
     }
   ]

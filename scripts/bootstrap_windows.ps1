@@ -13,6 +13,8 @@ $PythonRoot = Join-Path $RuntimeRoot 'python'
 $PackagesRoot = Join-Path $RuntimeRoot 'packages'
 $TesseractRoot = Join-Path $RuntimeRoot 'tesseract'
 $TessdataRoot = Join-Path $RuntimeRoot 'tessdata'
+$PhoneRuntimeRoot = Join-Path $RuntimeRoot 'phone'
+$ScrcpyRoot = Join-Path $PhoneRuntimeRoot 'scrcpy'
 $Downloads = Join-Path $RuntimeRoot 'downloads'
 $Logs = Join-Path $Root 'logs'
 $LauncherLog = Join-Path $Logs 'launcher.log'
@@ -22,6 +24,7 @@ $PdfiumVersion = '5.13.0'
 $PillowVersion = '12.3.0'
 $TesseractVersion = '5.5.3'
 $TessdataVersion = '4.1.0'
+$ScrcpyVersion = '4.1'
 
 New-Item -ItemType Directory -Force -Path $RuntimeRoot, $Downloads, $Logs | Out-Null
 
@@ -46,6 +49,9 @@ function Get-RuntimeSpec {
                 PillowFilename = 'pillow-12.3.0-cp314-cp314-win_amd64.whl'
                 PillowSha256 = 'fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d'
                 AutoTesseract = $true
+                AutoScrcpy = $true
+                ScrcpyFilename = 'scrcpy-win64-v4.1.zip'
+                ScrcpySha256 = '5b12172b3264b2889f4583ee64752ce832e29bc8b1089dca81093459697165db'
             }
         }
         'ARM64' {
@@ -58,6 +64,9 @@ function Get-RuntimeSpec {
                 PillowFilename = 'pillow-12.3.0-cp314-cp314-win_arm64.whl'
                 PillowSha256 = 'e91206ee562682b51b98ef4b26a6ef48fd84e15fd4c4bc5ec768eb641d206838'
                 AutoTesseract = $false
+                AutoScrcpy = $false
+                ScrcpyFilename = $null
+                ScrcpySha256 = $null
             }
         }
         default {
@@ -291,12 +300,86 @@ function Ensure-SpatialRuntime {
     }
 }
 
+function Test-PhoneRuntime {
+    $scrcpy = Join-Path $ScrcpyRoot 'scrcpy.exe'
+    $adb = Join-Path $ScrcpyRoot 'adb.exe'
+    return ((Test-Path -LiteralPath $scrcpy) -and (Test-Path -LiteralPath $adb))
+}
+
+function Install-PhoneRuntime {
+    $spec = Get-RuntimeSpec
+    if (-not $spec.AutoScrcpy) {
+        throw 'SAYURI-PHONE-001: Автоматический scrcpy runtime для этой архитектуры не предусмотрен.'
+    }
+
+    New-Item -ItemType Directory -Force -Path $PhoneRuntimeRoot | Out-Null
+    $archive = Join-Path $Downloads $spec.ScrcpyFilename
+    if (Test-Path -LiteralPath $archive) {
+        $cached = (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant()
+        if ($cached -ne $spec.ScrcpySha256) {
+            Write-LauncherLog "SHA256 сохранённого scrcpy runtime не совпал; архив будет удалён." 'WARN'
+            Remove-Item -Force -LiteralPath $archive
+        }
+    }
+
+    if (-not (Test-Path -LiteralPath $archive)) {
+        Write-LauncherLog "Загрузка официального scrcpy $ScrcpyVersion с GitHub."
+        $url = "https://github.com/Genymobile/scrcpy/releases/download/v$ScrcpyVersion/$($spec.ScrcpyFilename)"
+        Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $archive
+    }
+
+    $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant()
+    if ($actual -ne $spec.ScrcpySha256) {
+        Remove-Item -Force -LiteralPath $archive -ErrorAction SilentlyContinue
+        throw 'SAYURI-PHONE-002: SHA256 scrcpy runtime не совпал.'
+    }
+
+    $temp = Join-Path $RuntimeRoot ("scrcpy-" + [Guid]::NewGuid().ToString('N'))
+    if (Test-Path -LiteralPath $ScrcpyRoot) {
+        Remove-Item -LiteralPath $ScrcpyRoot -Recurse -Force
+    }
+    New-Item -ItemType Directory -Force -Path $ScrcpyRoot, $temp | Out-Null
+    try {
+        Expand-Archive -LiteralPath $archive -DestinationPath $temp -Force
+        $scrcpyExe = Get-ChildItem -LiteralPath $temp -Filter 'scrcpy.exe' -File -Recurse | Select-Object -First 1
+        if (-not $scrcpyExe) {
+            throw 'SAYURI-PHONE-003: В официальном архиве не найден scrcpy.exe.'
+        }
+        $sourceDir = $scrcpyExe.Directory.FullName
+        Get-ChildItem -LiteralPath $sourceDir -Force | ForEach-Object {
+            Copy-Item -LiteralPath $_.FullName -Destination $ScrcpyRoot -Recurse -Force
+        }
+    }
+    finally {
+        Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    if (-not (Test-PhoneRuntime)) {
+        throw 'SAYURI-PHONE-004: scrcpy/ADB runtime не прошёл проверку.'
+    }
+    Write-LauncherLog "Телефон Sayuri: scrcpy $ScrcpyVersion и ADB готовы."
+}
+
+function Ensure-PhoneRuntime {
+    if (Test-PhoneRuntime) {
+        Write-LauncherLog "Телефон Sayuri: scrcpy $ScrcpyVersion и ADB готовы."
+        return
+    }
+    try {
+        Install-PhoneRuntime
+    }
+    catch {
+        Write-LauncherLog ("Телефон Sayuri: локальный runtime недоступен; проект запустится без управления телефоном. " + $_.Exception.Message) 'WARN'
+    }
+}
+
 try {
     Write-LauncherLog "Запуск. Корень проекта: $Root"
     if (-not (Test-PortablePython)) { Install-PortablePython }
     else { Write-LauncherLog "Переносимый Python $PythonVersion готов." }
 
     Ensure-SpatialRuntime
+    Ensure-PhoneRuntime
 
     $python = Join-Path $PythonRoot 'python.exe'
     Push-Location $Root

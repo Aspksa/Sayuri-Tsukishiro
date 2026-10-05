@@ -229,6 +229,9 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
             if parsed.path == "/api/settings":
                 self._json(self.server.core.settings_payload())
                 return
+            if parsed.path == "/api/phone":
+                self._json(self.server.core.phone.health())
+                return
             if parsed.path == "/api/disk":
                 self._json(
                     self.server.core.disk.list_entries(
@@ -376,6 +379,44 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
                 if not isinstance(changes, dict):
                     raise BadRequestError("Поле settings должно быть объектом.")
                 self._json(self.server.core.update_settings(changes))
+                return
+
+            if parsed.path == "/api/phone/pair":
+                payload = self._read_json()
+                result = self.server.core.phone.pair(
+                    payload.get("address"),
+                    payload.get("pairing_code"),
+                )
+                self.server.core.database.record_event("Телефон Sayuri", "Телефон сопряжён по Wi-Fi")
+                self._json(result)
+                return
+
+            if parsed.path == "/api/phone/connect":
+                payload = self._read_json()
+                result = self.server.core.phone.connect(payload.get("address"))
+                self.server.core.database.record_event("Телефон Sayuri", "Телефон подключён по Wi-Fi")
+                self._json(result)
+                return
+
+            if parsed.path == "/api/phone/disconnect":
+                payload = self._read_json()
+                result = self.server.core.phone.disconnect(payload.get("serial"))
+                self.server.core.database.record_event("Телефон Sayuri", "Телефон отключён")
+                self._json(result)
+                return
+
+            if parsed.path == "/api/phone/control/start":
+                payload = self._read_json()
+                result = self.server.core.phone.start_control(payload.get("serial"))
+                self.server.core.database.record_event("Телефон Sayuri", "Управление телефоном запущено")
+                self._json(result)
+                return
+
+            if parsed.path == "/api/phone/control/stop":
+                payload = self._read_json()
+                result = self.server.core.phone.stop_control(payload.get("serial"))
+                self.server.core.database.record_event("Телефон Sayuri", "Управление телефоном остановлено")
+                self._json(result)
                 return
 
             if parsed.path == "/api/disk/folders":
