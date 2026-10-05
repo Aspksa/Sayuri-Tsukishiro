@@ -85,6 +85,43 @@ class SayuriCore:
         except AgentRuntimeError as exc:
             raise BadRequestError(str(exc)) from exc
 
+    def sayuri_memory_candidates(self, *, status: str | None = None, limit: int = 100) -> dict[str, Any]:
+        try:
+            return self.agent.memory_candidates(status=status, limit=limit)
+        except AgentRuntimeError as exc:
+            raise BadRequestError(str(exc)) from exc
+
+    def review_sayuri_memory_candidate(self, candidate_id: str, decision: str) -> dict[str, Any]:
+        try:
+            result = self.agent.review_memory_candidate(candidate_id, decision)
+        except AgentRuntimeError as exc:
+            raise BadRequestError(str(exc)) from exc
+        self.database.record_event(
+            "Sayuri",
+            "Кандидат памяти обработан",
+            details={
+                "candidate_id": candidate_id,
+                "decision": decision,
+                "status": result["candidate"]["status"],
+            },
+        )
+        return result
+
+    def sayuri_memory_intelligence_settings(self) -> dict[str, Any]:
+        return self.agent.memory_intelligence_settings()
+
+    def update_sayuri_memory_intelligence_settings(self, changes: dict[str, Any]) -> dict[str, Any]:
+        try:
+            result = self.agent.update_memory_intelligence_settings(changes)
+        except AgentRuntimeError as exc:
+            raise BadRequestError(str(exc)) from exc
+        self.database.record_event(
+            "Sayuri",
+            "Настройки Memory Intelligence изменены",
+            details={"keys": sorted(changes)},
+        )
+        return result
+
     def remember_sayuri(
         self,
         *,
