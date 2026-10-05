@@ -79,6 +79,35 @@ class WebContractTests(unittest.TestCase):
         self.assertNotIn("phoneState", script)
         self.assertNotIn(".phone-", css)
 
+
+    def test_sayuri_global_assistant_and_personal_cabinet_are_present(self):
+        html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+        css = (ROOT / "web" / "styles.css").read_text(encoding="utf-8")
+
+        self.assertIn('id="view-sayuri"', html)
+        self.assertIn('id="sayuri-account-nav"', html)
+        self.assertIn('id="sayuri-orb"', html)
+        self.assertIn('id="sayuri-context-menu"', html)
+        self.assertIn('id="sayuri-chat-window"', html)
+        self.assertIn('id="sayuri-api-key"', html)
+        self.assertIn('deepseek-ai/DeepSeek-V4-Flash', html)
+        self.assertIn('Cloud.ru Foundation Models', html)
+        self.assertIn('/assets/sayuri-avatar.svg', html)
+
+        self.assertIn('/api/sayuri/profile', script)
+        self.assertIn('/api/sayuri/provider', script)
+        self.assertIn('/api/sayuri/provider/test', script)
+        self.assertIn('/api/sayuri/chat', script)
+        self.assertIn('currentSayuriContext', script)
+        self.assertIn("addEventListener('contextmenu'", script)
+        self.assertIn('initializeSayuri()', script)
+
+        self.assertIn('.sayuri-orb', css)
+        self.assertIn('.sayuri-chat-window', css)
+        self.assertIn('.sayuri-account-grid', css)
+        self.assertIn('SAYURI UI 0.14 — Global Assistant & Personal Cabinet', css)
+
     def test_unified_visual_system_is_readable_and_consistent(self):
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         css = (ROOT / "web" / "styles.css").read_text(encoding="utf-8")

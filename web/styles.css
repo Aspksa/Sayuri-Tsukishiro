@@ -3220,3 +3220,555 @@ footer {
     font-size: 12.5px;
   }
 }
+
+/* ==========================================================================
+   SAYURI UI 0.14 — Global Assistant & Personal Cabinet
+   ========================================================================== */
+
+.sayuri-account-nav {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 10px;
+  padding: 9px 10px;
+  border: 1px solid var(--ui-line, #e1e6ed);
+  border-radius: 15px;
+  background: #fff;
+  color: var(--ui-text, #171b24);
+  text-align: left;
+  cursor: pointer;
+  transition: 160ms ease;
+}
+
+.sayuri-account-nav:hover,
+.sayuri-account-nav.active {
+  border-color: #cfc1ea;
+  box-shadow: 0 8px 22px rgba(56, 40, 92, 0.10);
+  transform: translateY(-1px);
+}
+
+.sayuri-account-nav img {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid #d9c9ef;
+}
+
+.sayuri-account-nav span {
+  display: grid;
+  min-width: 0;
+}
+
+.sayuri-account-nav strong {
+  font-size: 12.5px;
+}
+
+.sayuri-account-nav small {
+  color: var(--ui-muted, #6f7b8c);
+  font-size: 11px;
+}
+
+.sayuri-profile-hero {
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr) auto;
+  gap: 24px;
+  align-items: center;
+  padding: 26px;
+  border: 1px solid var(--ui-line, #e1e6ed);
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at 10% 10%, rgba(245, 225, 255, 0.72), transparent 34%),
+    radial-gradient(circle at 86% 12%, rgba(223, 236, 255, 0.74), transparent 36%),
+    #fff;
+  box-shadow: 0 18px 50px rgba(39, 34, 55, 0.08);
+}
+
+.sayuri-profile-portrait {
+  width: 128px;
+  height: 128px;
+  padding: 4px;
+  border-radius: 50%;
+  background: linear-gradient(145deg, #f0c68a, #dfb7ff, #91b8ff);
+  box-shadow: 0 14px 34px rgba(75, 52, 105, 0.18);
+}
+
+.sayuri-profile-portrait img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.sayuri-profile-copy h2 {
+  margin: 2px 0 8px;
+}
+
+.sayuri-profile-copy > p:last-of-type {
+  max-width: 760px;
+  margin: 0;
+  color: var(--ui-muted, #6f7b8c);
+}
+
+.sayuri-profile-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 14px;
+}
+
+.sayuri-profile-badges span,
+.sayuri-connection-state {
+  display: inline-flex;
+  align-items: center;
+  min-height: 27px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid #e2e6ec;
+  background: #f8f9fb;
+  color: #5f6876;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.sayuri-profile-badges span.ready,
+.sayuri-connection-state.ready {
+  border-color: #c8e5d4;
+  background: #f1fbf5;
+  color: #2c7750;
+}
+
+.sayuri-account-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, .8fr);
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.sayuri-account-card {
+  padding: 22px;
+  border: 1px solid var(--ui-line, #e1e6ed);
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: 0 10px 28px rgba(37, 43, 55, 0.05);
+}
+
+.sayuri-account-card:first-child {
+  grid-row: span 2;
+}
+
+.sayuri-card-copy,
+.sayuri-security-note,
+.sayuri-context-card > p {
+  color: var(--ui-muted, #6f7b8c);
+  font-size: 12px;
+}
+
+.sayuri-provider-fixed {
+  display: grid;
+  gap: 9px;
+  margin: 18px 0;
+}
+
+.sayuri-provider-fixed label {
+  display: grid;
+  grid-template-columns: 105px minmax(0, 1fr);
+  gap: 12px;
+  align-items: baseline;
+  padding: 11px 12px;
+  border-radius: 12px;
+  background: #f7f8fb;
+}
+
+.sayuri-provider-fixed span {
+  color: var(--ui-muted, #6f7b8c);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+
+.sayuri-provider-fixed strong,
+.sayuri-provider-fixed code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
+.sayuri-key-field {
+  display: grid;
+  gap: 7px;
+  margin-top: 18px;
+}
+
+.sayuri-key-field > span {
+  font-weight: 750;
+}
+
+.sayuri-key-field > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.sayuri-key-field input {
+  width: 100%;
+  min-height: 42px;
+  padding: 0 12px;
+  border: 1px solid var(--ui-line, #dfe4ea);
+  border-radius: 11px;
+  background: #fff;
+  font: inherit;
+}
+
+.sayuri-key-field small {
+  color: var(--ui-muted, #6f7b8c);
+}
+
+.sayuri-provider-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.danger-soft {
+  color: #9b4141 !important;
+}
+
+.sayuri-provider-message {
+  min-height: 20px;
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--ui-muted, #6f7b8c);
+}
+
+.sayuri-provider-message.ready {
+  color: #2f7a51;
+}
+
+.sayuri-provider-message.error {
+  color: #a33d3d;
+}
+
+.sayuri-preference-list {
+  display: grid;
+  gap: 9px;
+  margin-bottom: 14px;
+}
+
+.sayuri-preference-list label {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: center;
+  padding: 12px;
+  border-radius: 13px;
+  background: #f8f9fb;
+}
+
+.sayuri-preference-list label > span {
+  display: grid;
+  gap: 2px;
+}
+
+.sayuri-preference-list small {
+  color: var(--ui-muted, #6f7b8c);
+}
+
+.sayuri-context-card dl {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 14px;
+}
+
+.sayuri-context-card dl div {
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  gap: 10px;
+  padding: 9px 0;
+  border-bottom: 1px solid #eef0f3;
+}
+
+.sayuri-context-card dt {
+  color: var(--ui-muted, #6f7b8c);
+}
+
+.sayuri-context-card dd {
+  margin: 0;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.sayuri-orb {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 90;
+  width: 82px;
+  height: 82px;
+  padding: 4px;
+  border: 0;
+  border-radius: 50%;
+  background: linear-gradient(145deg, #f3c77f, #d5b7f0 48%, #8eb5ff);
+  box-shadow: 0 18px 44px rgba(45, 34, 71, 0.24);
+  cursor: grab;
+  touch-action: none;
+  transition: box-shadow 160ms ease, transform 160ms ease;
+}
+
+.sayuri-orb:hover {
+  transform: translateY(-3px) scale(1.02);
+  box-shadow: 0 22px 52px rgba(45, 34, 71, 0.30);
+}
+
+.sayuri-orb:active {
+  cursor: grabbing;
+}
+
+.sayuri-orb img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid rgba(255,255,255,.92);
+}
+
+.sayuri-orb-status {
+  position: absolute;
+  right: 5px;
+  bottom: 7px;
+  width: 13px;
+  height: 13px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: #b0b6c0;
+}
+
+.sayuri-orb-status.ready {
+  background: #35a96b;
+}
+
+.sayuri-context-menu {
+  position: fixed;
+  z-index: 110;
+  width: 260px;
+  padding: 7px;
+  border: 1px solid #e0e4ea;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, .98);
+  box-shadow: 0 22px 56px rgba(31, 35, 43, .18);
+  backdrop-filter: blur(18px);
+}
+
+.sayuri-context-menu button {
+  width: 100%;
+  display: grid;
+  gap: 2px;
+  padding: 10px 11px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ui-text, #171b24);
+  text-align: left;
+  cursor: pointer;
+}
+
+.sayuri-context-menu button:hover {
+  background: #f4f1fa;
+}
+
+.sayuri-context-menu small {
+  color: var(--ui-muted, #6f7b8c);
+}
+
+.sayuri-chat-window {
+  position: fixed;
+  right: 122px;
+  bottom: 24px;
+  z-index: 100;
+  width: min(430px, calc(100vw - 24px));
+  height: min(620px, calc(100vh - 40px));
+  display: grid;
+  grid-template-rows: auto 1fr auto auto;
+  overflow: hidden;
+  border: 1px solid #dfe3e9;
+  border-radius: 22px;
+  background: rgba(255,255,255,.985);
+  box-shadow: 0 26px 72px rgba(31, 30, 45, .23);
+  backdrop-filter: blur(20px);
+}
+
+.sayuri-chat-head {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto auto;
+  gap: 9px;
+  align-items: center;
+  padding: 11px 12px;
+  border-bottom: 1px solid #e8ebef;
+  background: linear-gradient(110deg, #fbf8ff, #f4f8ff);
+  cursor: move;
+  touch-action: none;
+}
+
+.sayuri-chat-head img {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.sayuri-chat-head > div {
+  display: grid;
+  min-width: 0;
+}
+
+.sayuri-chat-head small {
+  overflow: hidden;
+  color: var(--ui-muted, #6f7b8c);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sayuri-chat-messages {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 14px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(229, 219, 250, .26), transparent 35%),
+    #fbfbfc;
+}
+
+.sayuri-message {
+  display: flex;
+  align-items: flex-end;
+  gap: 7px;
+  margin: 0 0 11px;
+}
+
+.sayuri-message.user {
+  justify-content: flex-end;
+}
+
+.sayuri-message img {
+  width: 27px;
+  height: 27px;
+  flex: 0 0 27px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.sayuri-message > div {
+  max-width: 82%;
+  padding: 10px 12px;
+  border: 1px solid #e2e5ea;
+  border-radius: 15px 15px 15px 5px;
+  background: #fff;
+  line-height: 1.48;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.sayuri-message.user > div {
+  border-color: #d9d0e9;
+  border-radius: 15px 15px 5px 15px;
+  background: #efe9f7;
+}
+
+.sayuri-chat-status {
+  min-height: 27px;
+  padding: 6px 14px;
+  border-top: 1px solid #eceef2;
+  color: var(--ui-muted, #6f7b8c);
+  font-size: 10.5px;
+}
+
+.sayuri-chat-form {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  padding: 10px;
+  border-top: 1px solid #e7eaee;
+  background: #fff;
+}
+
+.sayuri-chat-form textarea {
+  min-height: 46px;
+  max-height: 130px;
+  resize: vertical;
+  padding: 10px 11px;
+  border: 1px solid #dfe3e8;
+  border-radius: 12px;
+  font: inherit;
+  line-height: 1.4;
+}
+
+.sayuri-chat-form button {
+  align-self: end;
+}
+
+@media (max-width: 900px) {
+  .sayuri-profile-hero {
+    grid-template-columns: 94px minmax(0, 1fr);
+  }
+
+  .sayuri-profile-portrait {
+    width: 92px;
+    height: 92px;
+  }
+
+  .sayuri-profile-hero > .primary-button {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+
+  .sayuri-account-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .sayuri-account-card:first-child {
+    grid-row: auto;
+  }
+}
+
+@media (max-width: 640px) {
+  .sayuri-orb {
+    width: 68px;
+    height: 68px;
+    right: 14px;
+    bottom: 14px;
+  }
+
+  .sayuri-chat-window {
+    left: 8px !important;
+    right: 8px !important;
+    bottom: 8px !important;
+    top: auto !important;
+    width: auto;
+    height: min(78vh, 620px);
+    border-radius: 18px;
+  }
+
+  .sayuri-profile-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .sayuri-profile-portrait {
+    width: 108px;
+    height: 108px;
+  }
+
+  .sayuri-provider-fixed label {
+    grid-template-columns: 1fr;
+    gap: 3px;
+  }
+
+  .sayuri-key-field > div,
+  .sayuri-chat-form {
+    grid-template-columns: 1fr;
+  }
+}
+

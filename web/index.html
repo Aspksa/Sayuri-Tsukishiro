@@ -23,6 +23,10 @@
       </nav>
 
       <div class="sidebar-bottom">
+        <button class="sayuri-account-nav" id="sayuri-account-nav" type="button" data-view="sayuri">
+          <img src="/assets/sayuri-avatar.svg" alt="">
+          <span><strong>Личный кабинет</strong><small>Sayuri</small></span>
+        </button>
         <div class="mini-status"><span class="dot"></span><span>Локальная система</span></div>
         <small id="sidebar-version">версия —</small>
       </div>
@@ -276,6 +280,76 @@
         <div class="disk-context-menu hidden" id="disk-context-menu" role="menu"></div>
       </section>
 
+      <section class="view" id="view-sayuri">
+        <section class="sayuri-profile-hero">
+          <div class="sayuri-profile-portrait"><img src="/assets/sayuri-avatar.svg" alt="Sayuri Tsukishiro"></div>
+          <div class="sayuri-profile-copy">
+            <p class="eyebrow">ЛИЧНЫЙ КАБИНЕТ</p>
+            <h2>Sayuri Tsukishiro</h2>
+            <p>Личная AI-помощница, которая остаётся рядом во всех разделах проекта и получает контекст текущего экрана.</p>
+            <div class="sayuri-profile-badges">
+              <span id="sayuri-provider-badge">Cloud.ru</span>
+              <span>DeepSeek-V4-Flash</span>
+              <span id="sayuri-ai-badge">Проверка…</span>
+            </div>
+          </div>
+          <button class="primary-button" id="sayuri-open-chat-account" type="button">Открыть чат</button>
+        </section>
+
+        <section class="sayuri-account-grid">
+          <article class="sayuri-account-card">
+            <div class="section-head">
+              <div><p class="eyebrow">ИИ · CLOUD.RU</p><h3>Подключение Sayuri</h3></div>
+              <span class="sayuri-connection-state" id="sayuri-connection-state">Не настроено</span>
+            </div>
+            <p class="sayuri-card-copy">Используется только одна модель. Переключателя моделей в проекте нет.</p>
+
+            <div class="sayuri-provider-fixed">
+              <label><span>Провайдер</span><strong>Cloud.ru Foundation Models</strong></label>
+              <label><span>Модель</span><strong>deepseek-ai/DeepSeek-V4-Flash</strong></label>
+              <label><span>API endpoint</span><code>https://foundation-models.api.cloud.ru/v1</code></label>
+            </div>
+
+            <label class="sayuri-key-field">
+              <span>API-ключ Cloud.ru</span>
+              <div>
+                <input id="sayuri-api-key" type="password" autocomplete="off" placeholder="Вставьте новый ключ">
+                <button class="secondary-button" id="sayuri-key-toggle" type="button">Показать</button>
+              </div>
+              <small id="sayuri-key-mask">Ключ ещё не сохранён</small>
+            </label>
+
+            <div class="sayuri-provider-actions">
+              <button class="primary-button" id="sayuri-save-provider" type="button">Сохранить ключ</button>
+              <button class="secondary-button" id="sayuri-test-provider" type="button">Проверить подключение</button>
+              <button class="secondary-button danger-soft" id="sayuri-clear-provider" type="button">Удалить ключ</button>
+            </div>
+            <div class="sayuri-provider-message" id="sayuri-provider-message" aria-live="polite"></div>
+            <p class="sayuri-security-note">Ключ не отправляется в GitHub и не возвращается в интерфейс целиком. В Windows локально защищается DPAPI текущего пользователя.</p>
+          </article>
+
+          <article class="sayuri-account-card">
+            <div class="section-head"><div><p class="eyebrow">ПРИСУТСТВИЕ</p><h3>Как Sayuri ведёт себя в проекте</h3></div></div>
+            <div class="sayuri-preference-list">
+              <label><span><strong>Sayuri всегда рядом</strong><small>Показывать плавающий аватар во всех разделах.</small></span><input id="sayuri-visible-toggle" type="checkbox" checked></label>
+              <label><span><strong>Запоминать положение</strong><small>Сохранять место аватара и окна чата в этом браузере.</small></span><input id="sayuri-position-toggle" type="checkbox" checked></label>
+              <label><span><strong>История чата локально</strong><small>Хранить последние сообщения только в локальном браузере.</small></span><input id="sayuri-history-toggle" type="checkbox" checked></label>
+            </div>
+            <button class="secondary-button" id="sayuri-reset-layout" type="button">Вернуть Sayuri на место</button>
+          </article>
+
+          <article class="sayuri-account-card sayuri-context-card">
+            <div class="section-head"><div><p class="eyebrow">КОНТЕКСТ</p><h3>Что Sayuri видит сейчас</h3></div></div>
+            <dl id="sayuri-context-summary">
+              <div><dt>Раздел</dt><dd id="sayuri-context-view">Главная</dd></div>
+              <div><dt>Экран</dt><dd id="sayuri-context-title">Главная</dd></div>
+              <div><dt>Документ</dt><dd id="sayuri-context-document">—</dd></div>
+            </dl>
+            <p>В чат передаются только сведения о текущем интерфейсе и выбранном объекте. Содержимое документа не отправляется в Cloud.ru автоматически.</p>
+          </article>
+        </section>
+      </section>
+
       <section class="view" id="view-settings">
         <div class="settings-intro">
           <div><p class="eyebrow">СИСТЕМА</p><h2>Настройки</h2><p>Настройки, диагностика и состояние проекта.</p></div>
@@ -320,6 +394,35 @@
       <footer><span>Саюри Цукисиро · локальная система</span><span id="updated-at">—</span></footer>
     </main>
   </div>
+
+
+  <button class="sayuri-orb" id="sayuri-orb" type="button" aria-label="Открыть чат Sayuri" title="Sayuri · клик — чат, правый клик — действия">
+    <img src="/assets/sayuri-avatar.svg" alt="Sayuri">
+    <span class="sayuri-orb-status" id="sayuri-orb-status"></span>
+  </button>
+
+  <div class="sayuri-context-menu hidden" id="sayuri-context-menu" role="menu">
+    <button type="button" data-sayuri-action="chat"><strong>Открыть чат</strong><small>Поговорить с Sayuri</small></button>
+    <button type="button" data-sayuri-action="see"><strong>Что ты видишь?</strong><small>Контекст текущего экрана</small></button>
+    <button type="button" data-sayuri-action="explain"><strong>Объясни этот раздел</strong><small>Что здесь можно сделать</small></button>
+    <button type="button" data-sayuri-action="improve"><strong>Что можно улучшить?</strong><small>Идеи по текущему разделу</small></button>
+    <button type="button" data-sayuri-action="account"><strong>Личный кабинет Sayuri</strong><small>Cloud.ru, ключ и поведение</small></button>
+  </div>
+
+  <aside class="sayuri-chat-window hidden" id="sayuri-chat-window" role="dialog" aria-label="Чат Sayuri">
+    <header class="sayuri-chat-head" id="sayuri-chat-drag">
+      <img src="/assets/sayuri-avatar.svg" alt="">
+      <div><strong>Sayuri Tsukishiro</strong><small id="sayuri-chat-context">Рядом с вами</small></div>
+      <button class="icon-button" id="sayuri-chat-clear" type="button" title="Очистить чат">↺</button>
+      <button class="icon-button" id="sayuri-chat-close" type="button" aria-label="Закрыть">×</button>
+    </header>
+    <div class="sayuri-chat-messages" id="sayuri-chat-messages" aria-live="polite"></div>
+    <div class="sayuri-chat-status" id="sayuri-chat-status">DeepSeek-V4-Flash · Cloud.ru</div>
+    <form class="sayuri-chat-form" id="sayuri-chat-form">
+      <textarea id="sayuri-chat-input" rows="2" maxlength="12000" placeholder="Напишите Sayuri…"></textarea>
+      <button class="primary-button" id="sayuri-chat-send" type="submit">Отправить</button>
+    </form>
+  </aside>
 
   <script src="/app.js" defer></script>
 </body>

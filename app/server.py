@@ -230,6 +230,9 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
             if parsed.path == "/api/settings":
                 self._json(self.server.core.settings_payload())
                 return
+            if parsed.path == "/api/sayuri/profile":
+                self._json(self.server.core.sayuri_profile())
+                return
 
             if parsed.path == "/api/disk":
                 self._json(
@@ -380,6 +383,37 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
                 self._json(self.server.core.update_settings(changes))
                 return
 
+            if parsed.path == "/api/sayuri/provider":
+                payload = self._read_json()
+                api_key = payload.get("api_key")
+                clear = payload.get("clear") is True
+                if api_key is not None and not isinstance(api_key, str):
+                    raise BadRequestError("Поле api_key должно быть строкой.")
+                self._json(
+                    self.server.core.configure_sayuri_provider(
+                        api_key=api_key,
+                        clear=clear,
+                    )
+                )
+                return
+
+            if parsed.path == "/api/sayuri/provider/test":
+                self._json(self.server.core.test_sayuri_provider())
+                return
+
+            if parsed.path == "/api/sayuri/chat":
+                payload = self._read_json()
+                message = payload.get("message")
+                if not isinstance(message, str):
+                    raise BadRequestError("Поле message должно быть строкой.")
+                self._json(
+                    self.server.core.sayuri_chat(
+                        message=message,
+                        history=payload.get("history"),
+                        context=payload.get("context"),
+                    )
+                )
+                return
 
             if parsed.path == "/api/disk/folders":
                 payload = self._read_json()

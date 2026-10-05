@@ -46,12 +46,30 @@ class ServerTests(unittest.TestCase):
                 with urllib.request.urlopen(base + "/api/system", timeout=2) as response:
                     payload = json.loads(response.read().decode("utf-8"))
                     self.assertEqual(payload["status"], "готово")
-                    self.assertEqual(payload["agent"]["status_code"], "contract_ready")
+                    self.assertEqual(payload["agent"]["status_code"], "provider_not_configured")
 
                 with urllib.request.urlopen(base + "/api/settings", timeout=2) as response:
                     payload = json.loads(response.read().decode("utf-8"))
                     keys = {item["key"] for item in payload["settings"]}
                     self.assertIn("ui.refresh_seconds", keys)
+
+                with urllib.request.urlopen(base + "/api/sayuri/profile", timeout=2) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+                    self.assertEqual(payload["provider"]["model"], "deepseek-ai/DeepSeek-V4-Flash")
+                    self.assertFalse(payload["provider"]["configured"])
+
+                secret = "test-cloudru-key-123456789"
+                body = json.dumps({"api_key": secret}).encode("utf-8")
+                request = urllib.request.Request(
+                    base + "/api/sayuri/provider",
+                    data=body,
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(request, timeout=2) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+                    self.assertTrue(payload["provider"]["configured"])
+                    self.assertNotIn(secret, json.dumps(payload, ensure_ascii=False))
 
                 body = json.dumps(
                     {"settings": {"ui.refresh_seconds": 15, "events.display_limit": 20}}

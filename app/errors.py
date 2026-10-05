@@ -26,3 +26,8 @@ class StaticFileError(SayuriError):
 class BadRequestError(SayuriError):
     def __init__(self, message: str):
         super().__init__("SAYURI-API-400", message, 400)
+
+
+class ProviderError(SayuriError):
+    def __init__(self, message: str, *, status: int = 502):
+        super().__init__("SAYURI-AI-502", message, status)
