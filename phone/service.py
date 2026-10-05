@@ -9,7 +9,7 @@ import threading
 from typing import Any
 
 
-PHONE_BACKEND_VERSION = "0.1.0"
+PHONE_BACKEND_VERSION = "0.1.1"
 SCRCPY_VERSION = "4.1"
 COMMAND_TIMEOUT_SECONDS = 20
 PAIR_CODE_RE = re.compile(r"^\d{6}$")
@@ -188,13 +188,13 @@ class PhoneService:
         }
 
     def pair(self, address: Any, pairing_code: Any) -> dict[str, Any]:
-        adb = self._resolve_adb()
-        if adb is None:
-            raise OSError("ADB runtime не установлен.")
         target = self._validate_address(address, field="Адрес сопряжения")
         code = str(pairing_code or "").strip()
         if not PAIR_CODE_RE.fullmatch(code):
             raise ValueError("Код сопряжения должен содержать 6 цифр.")
+        adb = self._resolve_adb()
+        if adb is None:
+            raise OSError("ADB runtime не установлен.")
 
         result = self._run([str(adb), "pair", target, code])
         combined = "\n".join(value for value in (result.stdout.strip(), result.stderr.strip()) if value)
@@ -204,10 +204,10 @@ class PhoneService:
         return {"status": "сопряжено", "address": target, "message": combined}
 
     def connect(self, address: Any) -> dict[str, Any]:
+        target = self._validate_address(address, field="Адрес подключения")
         adb = self._resolve_adb()
         if adb is None:
             raise OSError("ADB runtime не установлен.")
-        target = self._validate_address(address, field="Адрес подключения")
         result = self._run([str(adb), "connect", target])
         combined = "\n".join(value for value in (result.stdout.strip(), result.stderr.strip()) if value)
         failed = (
@@ -221,12 +221,12 @@ class PhoneService:
         return {"status": "подключено", "address": target, "message": combined}
 
     def disconnect(self, serial: Any) -> dict[str, Any]:
-        adb = self._resolve_adb()
-        if adb is None:
-            raise OSError("ADB runtime не установлен.")
         if not isinstance(serial, str) or not serial.strip():
             raise ValueError("Не указан идентификатор телефона.")
         device_serial = serial.strip()
+        adb = self._resolve_adb()
+        if adb is None:
+            raise OSError("ADB runtime не установлен.")
         known = {item["serial"] for item in self.devices()}
         if device_serial not in known:
             raise ValueError("Телефон не найден среди подключённых устройств.")

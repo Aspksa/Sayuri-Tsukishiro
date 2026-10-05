@@ -488,3 +488,17 @@ Preflight теперь отдельно выводит `диск_sayuri`, что
 - ARM64 не получает x64 runtime автоматически; внешний adb/scrcpy может быть обнаружен через PATH.
 - Preflight отдельно показывает `телефон_sayuri`.
 - Проверка CI обязательна после публикации.
+
+
+## Исправление PHONE-001 0.1.1
+
+Первый CI PHONE-001 подтвердил:
+- phone bootstrap tests — success;
+- Windows PowerShell parser — success;
+- BAT check — success;
+- phone API route test — success;
+- menu/web contract — success.
+
+Единственный сбой: safety-тест ожидал отказ по некорректному адресу до обращения к ADB, а `pair()` сначала проверял наличие runtime.
+
+В `0.1.22 / Телефон Sayuri 0.1.1` внешние address/code/serial данные валидируются до обращения к ADB. Это усиливает boundary и не ослабляет тест.
