@@ -240,6 +240,25 @@ class MemoryV4Tests(unittest.TestCase):
             self.assertEqual(resolved["resolved_count"], 1)
             self.assertIn("read-only", resolved["prevention"])
 
+            same = v4.resolve_failure(
+                failure["id"],
+                cause="Папка с таким именем уже существовала",
+                resolution="Проверять наличие папки перед созданием",
+                prevention="Сначала выполнять read-only проверку.",
+            )
+            self.assertEqual(same["resolved_count"], 1)
+
+            repeated = v4.record_action_outcome({
+                "id": "action-failed-again",
+                "tool": "disk.create_folder",
+                "status": "failed",
+                "title": "Создать папку",
+                "error": "Папка уже существует",
+            })
+            self.assertEqual(repeated["status"], "open")
+            self.assertEqual(repeated["occurrences"], 2)
+            self.assertEqual(repeated["resolved_count"], 1)
+
     def test_local_browsing_recall_does_not_train_usage_or_create_recall_audit(self):
         with tempfile.TemporaryDirectory() as tmp:
             memory, semantic, v3, v4 = self._build(Path(tmp))
