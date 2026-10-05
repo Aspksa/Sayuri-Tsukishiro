@@ -71,6 +71,57 @@ class ServerTests(unittest.TestCase):
                     self.assertTrue(payload["provider"]["configured"])
                     self.assertNotIn(secret, json.dumps(payload, ensure_ascii=False))
 
+                action_body = json.dumps({
+                    "text": "создай папку Проверка действий",
+                    "context": {"view": "disk", "disk": {"folder_id": None}},
+                }).encode("utf-8")
+                request = urllib.request.Request(
+                    base + "/api/sayuri/actions/plan",
+                    data=action_body,
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(request, timeout=2) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+                    action_id = payload["action"]["id"]
+                    self.assertEqual(payload["action"]["status"], "pending")
+
+                with urllib.request.urlopen(base + "/api/disk", timeout=2) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+                    self.assertEqual(payload["folders"], [])
+
+                request = urllib.request.Request(
+                    base + f"/api/sayuri/actions/{action_id}/confirm",
+                    data=b"{}",
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(request, timeout=2) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+                    self.assertEqual(payload["status"], "completed")
+
+                request = urllib.request.Request(
+                    base + f"/api/sayuri/actions/{action_id}/confirm",
+                    data=b"{}",
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(request, timeout=2) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+                    self.assertEqual(payload["status"], "completed")
+
+                with urllib.request.urlopen(base + "/api/disk", timeout=2) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+                    self.assertEqual(
+                        [item["name"] for item in payload["folders"]],
+                        ["Проверка действий"],
+                    )
+
+                with urllib.request.urlopen(base + "/api/sayuri/actions", timeout=2) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+                    self.assertTrue(payload["tools"])
+                    self.assertEqual(payload["actions"][0]["id"], action_id)
+
                 memory_body = json.dumps({
                     "scope": "project",
                     "kind": "decision",
