@@ -662,6 +662,7 @@ class MemorySystemV4:
         scopes: Iterable[str] = ("personal", "project"),
         limit: int = 10,
         for_cloud: bool = False,
+        record_usage: bool = True,
     ) -> dict[str, Any]:
         text = (query or "").strip()
         valid_scopes = tuple(dict.fromkeys(scope for scope in scopes if scope in {"personal", "project"}))
@@ -672,6 +673,7 @@ class MemorySystemV4:
             scopes=valid_scopes,
             limit=min(max(int(limit) * 6, 40), 120),
             minimum_score=0.02,
+            mark_used=record_usage,
         )
         ranked: list[tuple[float, dict[str, Any], dict[str, Any]]] = []
         for scope in valid_scopes:
@@ -709,42 +711,43 @@ class MemorySystemV4:
         selected = ranked[: min(max(int(limit), 1), 30)]
         selected_ids = [entry["id"] for _, entry, _ in selected]
         explanations = [explanation for _, _, explanation in selected]
-        recall_id = uuid.uuid4().hex
-        now = self._now()
-
-        with self._connect() as db:
-            db.execute(
-                """
-                INSERT INTO memory_recall_audit(
-                    id, query_hash, query_excerpt, selected_ids_json,
-                    explanations_json, scopes_json, created_at
-                ) VALUES(?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    recall_id,
-                    hashlib.sha256(text.encode("utf-8")).hexdigest(),
-                    text[:300],
-                    self._json(selected_ids),
-                    self._json(explanations),
-                    self._json(valid_scopes),
-                    now,
-                ),
-            )
-            if selected_ids:
-                db.executemany(
+        recall_id: str | None = None
+        if record_usage:
+            recall_id = uuid.uuid4().hex
+            now = self._now()
+            with self._connect() as db:
+                db.execute(
                     """
-                    UPDATE memory_v4_state
-                    SET recall_count = recall_count + 1, last_recalled_at = ?
-                    WHERE memory_id = ?
+                    INSERT INTO memory_recall_audit(
+                        id, query_hash, query_excerpt, selected_ids_json,
+                        explanations_json, scopes_json, created_at
+                    ) VALUES(?, ?, ?, ?, ?, ?, ?)
                     """,
-                    [(now, memory_id) for memory_id in selected_ids],
+                    (
+                        recall_id,
+                        hashlib.sha256(text.encode("utf-8")).hexdigest(),
+                        text[:300],
+                        self._json(selected_ids),
+                        self._json(explanations),
+                        self._json(valid_scopes),
+                        now,
+                    ),
                 )
-        self._audit(
-            "memory_recalled",
-            "recall",
-            recall_id,
-            {"count": len(selected_ids), "scopes": list(valid_scopes), "for_cloud": for_cloud},
-        )
+                if selected_ids:
+                    db.executemany(
+                        """
+                        UPDATE memory_v4_state
+                        SET recall_count = recall_count + 1, last_recalled_at = ?
+                        WHERE memory_id = ?
+                        """,
+                        [(now, memory_id) for memory_id in selected_ids],
+                    )
+            self._audit(
+                "memory_recalled",
+                "recall",
+                recall_id,
+                {"count": len(selected_ids), "scopes": list(valid_scopes), "for_cloud": for_cloud},
+            )
 
         result = {scope: [] for scope in valid_scopes}
         for _, entry, _ in selected:
@@ -1334,31 +1337,30 @@ class MemorySystemV4:
                 ).fetchone()
                 if row is None:
                     return None
-                resolution = str(action.get("result") or "Повторное действие завершилось успешно")[:3000]
                 now = self._now()
-                db.execute(
-                    """
-                    UPDATE memory_failures
-                    SET resolution = ?, status = 'resolved',
-                        resolved_count = resolved_count + 1, updated_at = ?
-                    WHERE id = ?
-                    """,
-                    (resolution, now, row["id"]),
-                )
                 effect_id = action_id or uuid.uuid4().hex
-                causal_id = uuid.uuid4().hex
+                causal_id = self._fingerprint(
+                    "failure_observation",
+                    row["id"],
+                    effect_id,
+                    "followed_by_success",
+                )
                 db.execute(
                     """
                     INSERT OR IGNORE INTO memory_causal_links(
                         id, cause_type, cause_id, effect_type, effect_id,
                         relation, confidence, evidence_json, created_at, updated_at
-                    ) VALUES(?, 'failure', ?, 'action', ?, 'resolved_by', 0.85, ?, ?, ?)
+                    ) VALUES(?, 'failure', ?, 'action', ?, 'followed_by_success', 0.45, ?, ?, ?)
                     """,
                     (
                         causal_id,
                         row["id"],
                         effect_id,
-                        self._json({"tool": tool, "result": action.get("result")}),
+                        self._json({
+                            "tool": tool,
+                            "result": action.get("result"),
+                            "interpretation": "correlation_only",
+                        }),
                         now,
                         now,
                     ),
@@ -1367,7 +1369,12 @@ class MemorySystemV4:
                     "SELECT * FROM memory_failures WHERE id = ?",
                     (row["id"],),
                 ).fetchone()
-            self._audit("failure_resolved", "failure", row["id"], {"action_id": action_id})
+            self._audit(
+                "failure_success_observed",
+                "failure",
+                row["id"],
+                {"action_id": action_id, "causal_claim": False},
+            )
             return self._failure_row(updated)
         return None
 
@@ -1473,6 +1480,57 @@ class MemorySystemV4:
             }
             for row in rows
         ]
+
+    def resolve_failure(
+        self,
+        failure_id: str,
+        *,
+        resolution: str,
+        cause: str = "",
+        prevention: str = "",
+    ) -> dict[str, Any]:
+        clean_resolution = " ".join((resolution or "").strip().split())
+        if not clean_resolution:
+            raise MemorySystemV4Error("Нужно указать, как была исправлена ошибка.")
+        clean_cause = " ".join((cause or "").strip().split())
+        clean_prevention = " ".join((prevention or "").strip().split())
+        now = self._now()
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT * FROM memory_failures WHERE id = ?",
+                (failure_id,),
+            ).fetchone()
+            if row is None:
+                raise MemorySystemV4Error("Ошибка в Failure Memory не найдена.")
+            db.execute(
+                """
+                UPDATE memory_failures
+                SET cause = ?, resolution = ?, prevention = ?, status = 'resolved',
+                    resolved_count = resolved_count + 1, updated_at = ?
+                WHERE id = ?
+                """,
+                (
+                    clean_cause[:3000] or row["cause"],
+                    clean_resolution[:3000],
+                    clean_prevention[:3000] or row["prevention"],
+                    now,
+                    failure_id,
+                ),
+            )
+            updated = db.execute(
+                "SELECT * FROM memory_failures WHERE id = ?",
+                (failure_id,),
+            ).fetchone()
+        self._audit(
+            "failure_resolved_by_user",
+            "failure",
+            failure_id,
+            {
+                "has_cause": bool(clean_cause),
+                "has_prevention": bool(clean_prevention),
+            },
+        )
+        return self._failure_row(updated)
 
     def failures(self, limit: int = 100) -> list[dict[str, Any]]:
         with self._connect() as db:
@@ -2034,18 +2092,158 @@ class MemorySystemV4:
             "snapshots": self.snapshots(20),
         }
 
+    @classmethod
+    def _cloud_text_allowed(cls, *parts: Any) -> bool:
+        text = " ".join(
+            str(part)
+            for part in parts
+            if part is not None and str(part).strip()
+        )
+        if not text:
+            return True
+        return cls.classify_sensitivity(text)[1]
+
+    def _memory_cloud_allowed(self, memory_id: str | None) -> bool:
+        if not memory_id:
+            return True
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT cloud_allowed FROM memory_v4_state WHERE memory_id = ?",
+                (memory_id,),
+            ).fetchone()
+        if row is not None:
+            return bool(row["cloud_allowed"])
+        entry = self.memory.get(memory_id, include_inactive=True)
+        if entry is None:
+            return False
+        return bool(self.evaluate_entry(entry)["cloud_allowed"])
+
+    def _all_memory_sources_cloud_allowed(self, source_ids: Iterable[str]) -> bool:
+        return all(self._memory_cloud_allowed(str(memory_id)) for memory_id in source_ids)
+
+    def sanitize_memory_v3_context(self, payload: Any) -> dict[str, Any]:
+        if not isinstance(payload, dict):
+            return {
+                "working": [],
+                "knowledge": [],
+                "episodes": [],
+                "conflicts": [],
+                "open_conflicts": 0,
+                "engine": "memory-v3",
+            }
+
+        working = []
+        for item in payload.get("working", []):
+            if not isinstance(item, dict):
+                continue
+            if self._cloud_text_allowed(self._json(item.get("value"), 6000)):
+                working.append(item)
+
+        knowledge = []
+        for item in payload.get("knowledge", []):
+            if not isinstance(item, dict):
+                continue
+            source_ids = item.get("source_memory_ids") if isinstance(item.get("source_memory_ids"), list) else []
+            if not self._cloud_text_allowed(item.get("statement")):
+                continue
+            if source_ids and not self._all_memory_sources_cloud_allowed(source_ids):
+                continue
+            knowledge.append(item)
+
+        episodes = []
+        for item in payload.get("episodes", []):
+            if not isinstance(item, dict):
+                continue
+            if self._cloud_text_allowed(
+                item.get("summary"),
+                self._json(item.get("details"), 6000),
+            ):
+                episodes.append(item)
+
+        conflicts = []
+        for item in payload.get("conflicts", []):
+            if not isinstance(item, dict):
+                continue
+            if not self._memory_cloud_allowed(item.get("old_memory_id")):
+                continue
+            if not self._memory_cloud_allowed(item.get("new_memory_id")):
+                continue
+            if not self._cloud_text_allowed(item.get("old_content"), item.get("new_content")):
+                continue
+            conflicts.append(item)
+
+        return {
+            "working": working[:2],
+            "knowledge": knowledge[:6],
+            "episodes": episodes[:4],
+            "conflicts": conflicts[:6],
+            "open_conflicts": len(conflicts),
+            "engine": str(payload.get("engine") or "memory-v3"),
+        }
+
+    def sanitize_experience_context(self, payload: Any) -> dict[str, Any]:
+        if not isinstance(payload, dict):
+            return {"retrieval": "hybrid_semantic_v1", "helpful": [], "avoid": []}
+
+        def safe_items(name: str) -> list[dict[str, Any]]:
+            result: list[dict[str, Any]] = []
+            for item in payload.get(name, []):
+                if not isinstance(item, dict):
+                    continue
+                if not self._cloud_text_allowed(
+                    item.get("strategy"),
+                    item.get("category"),
+                    self._json(item.get("details"), 6000),
+                ):
+                    continue
+                result.append(item)
+            return result[:4]
+
+        return {
+            "retrieval": str(payload.get("retrieval") or "hybrid_semantic_v1"),
+            "helpful": safe_items("helpful"),
+            "avoid": safe_items("avoid"),
+        }
+
     def context(self, query: str) -> dict[str, Any]:
-        recalled = self.recall(query, limit=10, for_cloud=True)
-        active_goals = self.goals(status="active", limit=8)
-        open_tasks = [
-            item for item in self.tasks(limit=30)
-            if item["status"] in {"planned", "in_progress", "blocked"}
+        recalled = self.recall(query, limit=10, for_cloud=True, record_usage=True)
+
+        active_goals = [
+            item
+            for item in self.goals(status="active", limit=30)
+            if self._memory_cloud_allowed(item.get("source_memory_id"))
+            and self._cloud_text_allowed(item.get("title"), item.get("description"))
         ][:8]
+
+        open_tasks = [
+            item
+            for item in self.tasks(limit=80)
+            if item["status"] in {"planned", "in_progress", "blocked"}
+            and self._memory_cloud_allowed(item.get("source_memory_id"))
+            and self._cloud_text_allowed(
+                item.get("title"),
+                item.get("next_action"),
+                item.get("blocked_reason"),
+            )
+        ][:8]
+
         failures = [
-            item for item in self.failures(40)
+            item
+            for item in self.failures(80)
             if item["status"] == "open"
+            and self._cloud_text_allowed(
+                item.get("strategy"),
+                item.get("symptom"),
+                item.get("cause"),
+                item.get("prevention"),
+            )
         ][:5]
-        questions = self.questions(status="open", limit=5)
+
+        questions = [
+            item
+            for item in self.questions(status="open", limit=30)
+            if self._cloud_text_allowed(item.get("question"), item.get("reason"))
+        ][:5]
         return {
             "engine": self.ENGINE_ID,
             "recall_id": recalled["recall_id"],
