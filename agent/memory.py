@@ -295,6 +295,20 @@ class SayuriMemory:
             rows = db.execute(sql, params).fetchall()
         return [self._row(row) for row in rows]
 
+    def scan_active(self, *, limit: int = 5000) -> list[dict[str, Any]]:
+        safe_limit = min(max(int(limit), 1), 5000)
+        with self._connect() as db:
+            rows = db.execute(
+                """
+                SELECT * FROM memory_entries
+                WHERE active = 1
+                ORDER BY importance DESC, updated_at DESC
+                LIMIT ?
+                """,
+                (safe_limit,),
+            ).fetchall()
+        return [self._row(row) for row in rows]
+
     def stats(self) -> dict[str, Any]:
         with self._connect() as db:
             rows = db.execute(
