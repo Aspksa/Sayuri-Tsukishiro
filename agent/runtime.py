@@ -346,7 +346,10 @@ class SayuriAgent:
     def memory_payload(self, *, scope: str | None = None, query: str = "", limit: int = 100) -> dict[str, Any]:
         try:
             return {
-                "stats": self.memory.stats(),
+                "stats": {
+                    **self.memory.stats(),
+                    "intelligence": self.memory_intelligence.stats(),
+                },
                 "entries": self.memory.list(scope=scope, query=query, limit=limit),
             }
         except MemoryError as exc:
