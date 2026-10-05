@@ -810,6 +810,19 @@ async function createDiskFolder(event) {
   }
 }
 
+const DNA_AUTO_EXTENSIONS = new Set([
+  'pdf', 'txt', 'md', 'json', 'xml', 'csv', 'log', 'ini', 'cfg', 'yaml', 'yml',
+  'docx', 'pptx', 'xlsx', 'odt', 'ods', 'odp',
+  'png', 'jpg', 'jpeg', 'webp', 'tif', 'tiff', 'bmp'
+]);
+
+function shouldAutoAnalyzeDna(file) {
+  const extension = (file.name.split('.').pop() || '').toLowerCase();
+  return DNA_AUTO_EXTENSIONS.has(extension)
+    || file.type === 'application/pdf'
+    || file.type.startsWith('image/');
+}
+
 function uploadOneFile(file, index, total) {
   return new Promise((resolve, reject) => {
     const params = new URLSearchParams();
@@ -857,10 +870,11 @@ function uploadOneFile(file, index, total) {
       }
       bar.style.width = '100%';
       row.classList.add('done');
-      status.textContent = data?.file?.duplicate_of
-        ? 'Готово · найдено совпадение по SHA-256'
-        : 'Готово';
-      resolve(data);
+      const dnaEligible = shouldAutoAnalyzeDna(file);
+      status.textContent = dnaEligible
+        ? 'Файл загружен · ожидает ДНК'
+        : (data?.file?.duplicate_of ? 'Готово · совпадение SHA-256' : 'Готово');
+      resolve({data, file, row, status, bar, dnaEligible});
     });
 
     xhr.addEventListener('error', () => {
@@ -873,6 +887,38 @@ function uploadOneFile(file, index, total) {
   });
 }
 
+async function analyzeUploadedDna(upload, index, total) {
+  if (!upload?.dnaEligible || !upload?.data?.file?.id) return {analyzed: false, error: null};
+
+  const {status, row, data} = upload;
+  status.textContent = `Строю ДНК… ${index + 1} из ${total}`;
+  byId('upload-summary').textContent = `ДНК: ${index + 1} из ${total}`;
+
+  try {
+    const response = await fetch(
+      `/api/disk/files/${encodeURIComponent(data.file.id)}/dna/analyze`,
+      {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: '{}'
+      }
+    );
+    const dna = await response.json();
+    if (!response.ok) throw new Error(dna?.error?.message || `HTTP ${response.status}`);
+
+    row.classList.remove('dna-error');
+    row.classList.add('dna-ready');
+    status.textContent = `Готово · ДНК ${Math.round(Number(dna.coverage_percent) || 0)}%`;
+    data.dna = dna;
+    return {analyzed: true, error: null};
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    row.classList.add('dna-error');
+    status.textContent = `Файл загружен · ошибка ДНК: ${message}`;
+    return {analyzed: false, error: message};
+  }
+}
+
 async function uploadDiskFiles(files) {
   const queue = Array.from(files || []);
   if (!queue.length || diskState.scope !== 'all') return;
@@ -881,21 +927,43 @@ async function uploadDiskFiles(files) {
   byId('upload-queue').classList.remove('hidden');
   byId('upload-summary').textContent = `0 из ${queue.length}`;
 
-  let completed = 0;
+  const uploaded = [];
+  let uploadErrors = 0;
   for (let index = 0; index < queue.length; index += 1) {
     try {
-      await uploadOneFile(queue[index], index, queue.length);
-      completed += 1;
+      uploaded.push(await uploadOneFile(queue[index], index, queue.length));
     } catch (error) {
+      uploadErrors += 1;
       showDiskError(error);
-      break;
     }
   }
 
-  byId('upload-summary').textContent = `Готово: ${completed} из ${queue.length}`;
   byId('disk-file-input').value = '';
-  if (completed) {
-    showDiskMessage(`Загружено файлов: ${completed}.`);
+  if (uploaded.length) {
+    await loadDisk();
+  }
+
+  const dnaQueue = uploaded.filter((item) => item.dnaEligible);
+  let dnaCompleted = 0;
+  let dnaErrors = 0;
+  for (let index = 0; index < dnaQueue.length; index += 1) {
+    const result = await analyzeUploadedDna(dnaQueue[index], index, dnaQueue.length);
+    if (result.analyzed) dnaCompleted += 1;
+    if (result.error) dnaErrors += 1;
+  }
+
+  const parts = [`загружено ${uploaded.length}`];
+  if (dnaQueue.length) parts.push(`ДНК ${dnaCompleted}/${dnaQueue.length}`);
+  if (uploadErrors) parts.push(`ошибок загрузки ${uploadErrors}`);
+  if (dnaErrors) parts.push(`ошибок ДНК ${dnaErrors}`);
+  byId('upload-summary').textContent = parts.join(' · ');
+
+  if (uploaded.length) {
+    showDiskMessage(
+      dnaErrors
+        ? `Файлы загружены. ДНК построена для ${dnaCompleted} из ${dnaQueue.length}; ошибки видны в очереди.`
+        : `Загружено файлов: ${uploaded.length}. ДНК построена автоматически.`
+    );
     await Promise.all([loadDisk(), loadSystem()]);
   }
 }
@@ -1066,14 +1134,28 @@ function renderDocumentDna(dna) {
   method.classList.toggle('hidden', !method.textContent);
 }
 
+function setDnaLoadState(kind = '', title = '', message = '') {
+  const state = byId('dna-load-state');
+  if (!state) return;
+  state.className = kind ? `dna-load-state ${kind}` : 'dna-load-state hidden';
+  byId('dna-load-state-title').textContent = title;
+  byId('dna-load-state-text').textContent = message;
+  byId('dna-load-retry').classList.toggle('hidden', kind !== 'error');
+}
+
 async function loadViewerDna(fileId, force = false) {
   if (!force && viewerDnaLoadedFor === fileId) return;
   const button = byId('dna-reanalyze');
   button.disabled = true;
-  if (!force) {
-    byId('dna-document-type').textContent = 'Изучение документа…';
-    byId('dna-summary').textContent = 'Саюри разбирает структуру и молекулы документа.';
-  }
+  byId('dna-load-retry').disabled = true;
+  byId('dna-document-type').textContent = force ? 'Переизучение документа…' : 'Изучение документа…';
+  byId('dna-summary').textContent = 'Саюри разбирает структуру, текст, OCR и молекулы документа.';
+  setDnaLoadState(
+    'loading',
+    force ? 'Переизучаю ДНК' : 'Строю ДНК документа',
+    'Для сканированного PDF OCR может занять заметное время. Окно можно оставить открытым.'
+  );
+
   try {
     let response;
     if (force) {
@@ -1089,8 +1171,22 @@ async function loadViewerDna(fileId, force = false) {
     if (!response.ok) throw new Error(dna?.error?.message || `HTTP ${response.status}`);
     viewerDnaLoadedFor = fileId;
     renderDocumentDna(dna);
+    setDnaLoadState(
+      'ready',
+      'ДНК готова',
+      `Покрытие ${Math.round(Number(dna.coverage_percent) || 0)}% · молекул ${dna.molecules?.total ?? 0}`
+    );
+    return dna;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    viewerDnaLoadedFor = null;
+    byId('dna-document-type').textContent = 'ДНК не построена';
+    byId('dna-summary').textContent = 'Анализ документа завершился ошибкой. Оригинальный файл сохранён.';
+    setDnaLoadState('error', 'Ошибка анализа ДНК', message);
+    throw error;
   } finally {
     button.disabled = false;
+    byId('dna-load-retry').disabled = false;
   }
 }
 
@@ -2493,6 +2589,11 @@ document.querySelectorAll('[data-viewer-tab]').forEach((button) => {
   button.addEventListener('click', () => switchViewerTab(button.dataset.viewerTab));
 });
 byId('dna-reanalyze').addEventListener('click', () => {
+  if (viewerItem?.kind === 'file') {
+    loadViewerDna(viewerItem.id, true).catch(showDiskError);
+  }
+});
+byId('dna-load-retry').addEventListener('click', () => {
   if (viewerItem?.kind === 'file') {
     loadViewerDna(viewerItem.id, true).catch(showDiskError);
   }

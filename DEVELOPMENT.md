@@ -475,3 +475,35 @@ UI:
 - `.sayuri-action-proposal` — карточка подтверждения в чате;
 - `#sayuri-tool-list` — allowlist в Личном кабинете;
 - `#sayuri-actions-history` — локальный журнал.
+
+## DNA Upload Reliability 0.1
+
+Версии:
+- project `0.1.40`;
+- disk `0.7.1`;
+- web `0.17.0`.
+
+Web flow:
+
+```text
+uploadOneFile()
+-> file persisted
+-> loadDisk()
+-> analyzeUploadedDna()
+-> POST /api/disk/files/{id}/dna/analyze
+-> row status + cached DNA
+```
+
+Автоанализ применяется только к форматам, для которых ДНК имеет практический смысл: PDF, text/config/data, Office Open XML, ODF и основные изображения.
+
+Ключевой инвариант: успешная загрузка файла не откатывается из-за ошибки анализатора. Ошибка ДНК возвращается как отдельное состояние UI.
+
+Viewer flow:
+- `setDnaLoadState('loading')` перед запросом;
+- `ready` после успешного анализа;
+- `error` с текстом backend-ошибки и retry-кнопкой;
+- `viewerDnaLoadedFor` выставляется только после успешного ответа.
+
+Spatial diagnostics использует `capabilities.pdfium_available`. Старое имя `pymupdf_available` для текущего PDFium engine некорректно.
+
+Следующее архитектурное улучшение — вынести тяжёлый OCR в persisted background queue с page-level progress. Это не входит в `0.1.40`.

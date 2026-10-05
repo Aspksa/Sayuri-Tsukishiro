@@ -16,13 +16,13 @@
     {
       "id": "sayuri-disk",
       "display_name": "Диск Sayuri",
-      "description": "Файловый менеджер и ДНК 0.7: PDFium spatial geometry, Tesseract OCR, координатные доказательства, spatial quality и Evolution Core.",
+      "description": "Диск Sayuri и ДНК 0.7.1: автоматический анализ после загрузки, Evidence Engine, Spatial/OCR, координатные доказательства и Evolution Core.",
       "path": "disk"
     },
     {
       "id": "web-ui",
       "display_name": "Веб-интерфейс",
-      "description": "Единая светлая оболочка Sayuri с глобальной помощницей, чатом, подтверждением действий, Личным кабинетом, памятью, аватарами, Диском и ДНК.",
+      "description": "Единая светлая оболочка Sayuri с глобальной помощницей, чатом, подтверждением действий, Личным кабинетом и надёжным состоянием загрузки/ошибок ДНК.",
       "path": "web"
     },
     {
