@@ -134,6 +134,8 @@ Chat runtime и поиск Личного кабинета используют 
 
 Каждый recall, реально использованный для AI-ответа, получает локальный `recall_id` и аудитируется без копирования полного разговора.
 
+AI recall двухфазный: сначала формируется `prepared_recall` без side effects, затем выполняется Cloud.ru request. Только после успешного ответа выбранные memories получают `use_count`/`recall_count` и recall-audit. Ошибка/timeout провайдера не считается использованием памяти.
+
 Поиск/просмотр в Личном кабинете работает в режиме `record_usage=false`: он показывает Explainable Recall, но не увеличивает `use_count`/`recall_count` и не создаёт обучающий audit event.
 
 ## Utility Learning
@@ -403,7 +405,8 @@ Memory 4.0 control center показывает:
 - Web contract;
 - runtime injection в DeepSeek-context без реального сетевого запроса;
 - protected memory не проходит через соседние context layers;
-- local cabinet recall не изменяет utility/use counters.
+- local cabinet recall не изменяет utility/use counters;
+- failed Cloud request не commit-ит recall и не обучает memory usage.
 
 ## Инварианты
 
