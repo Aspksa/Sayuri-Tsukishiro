@@ -187,7 +187,7 @@
 
 ## MEM-005 — Memory 4.0
 
-- Статус: `implemented; final CI pending`.
+- Статус: `implemented`.
 - Добавлен orchestration/policy layer `agent/memory_v4.py` поверх Memory 3.0.
 - Для каждой memory рассчитываются Source Trust, Freshness, Utility, sensitivity и tier `hot/warm/cold`.
 - Secret/sensitive memory остаётся локальной и исключается из Cloud recall.
