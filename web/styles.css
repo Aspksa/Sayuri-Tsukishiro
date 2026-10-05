@@ -4370,3 +4370,257 @@ footer {
   }
 }
 
+/* ==========================================================================
+   SAYURI UI 0.18 — Memory Intelligence 2.0
+   ========================================================================== */
+
+.sayuri-memory-intelligence {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid #e7eaee;
+}
+
+.sayuri-memory-intelligence h4 {
+  margin: 2px 0 0;
+  font-size: 17px;
+}
+
+.sayuri-memory-guardian-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 9px;
+  border: 1px solid #d6dcec;
+  border-radius: 999px;
+  background: #f5f7fc;
+  color: #566b91;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .03em;
+}
+
+.sayuri-memory-automation-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.sayuri-memory-automation-grid label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px;
+  border: 1px solid #e6e9ee;
+  border-radius: 13px;
+  background: #fafbfc;
+}
+
+.sayuri-memory-automation-grid label > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.sayuri-memory-automation-grid strong {
+  font-size: 11.5px;
+}
+
+.sayuri-memory-automation-grid small {
+  color: var(--ui-muted, #6f7b8c);
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+
+.sayuri-memory-intelligence-actions {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+
+.sayuri-memory-intelligence-actions label {
+  display: grid;
+  gap: 5px;
+  color: var(--ui-muted, #6f7b8c);
+  font-size: 10.5px;
+}
+
+.sayuri-memory-intelligence-actions select {
+  min-height: 38px;
+  padding: 0 10px;
+  border: 1px solid #dfe4ea;
+  border-radius: 10px;
+  background: #fff;
+  font: inherit;
+}
+
+.sayuri-memory-candidate-message {
+  min-height: 18px;
+  color: var(--ui-muted, #6f7b8c);
+  font-size: 11px;
+}
+
+.sayuri-memory-candidate-message.ready {
+  color: #2f7a51;
+}
+
+.sayuri-memory-candidate-message.error {
+  color: #a33d3d;
+}
+
+.sayuri-memory-candidates {
+  display: grid;
+  gap: 9px;
+  max-height: 520px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.sayuri-memory-candidate {
+  display: grid;
+  gap: 8px;
+  padding: 12px 13px;
+  border: 1px solid #e2e6eb;
+  border-radius: 14px;
+  background: #fbfbfc;
+}
+
+.sayuri-memory-candidate.conflict {
+  border-color: #ead4a8;
+  background: #fffbf2;
+}
+
+.sayuri-memory-candidate.duplicate {
+  opacity: .72;
+}
+
+.sayuri-memory-candidate.accepted,
+.sayuri-memory-candidate.auto_saved {
+  border-color: #cbe3d4;
+  background: #f5fbf7;
+}
+
+.sayuri-memory-candidate.rejected {
+  opacity: .65;
+}
+
+.sayuri-memory-candidate-head,
+.sayuri-memory-candidate-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.sayuri-memory-candidate-head > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.sayuri-memory-candidate-head span,
+.sayuri-memory-candidate-footer > span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: #eef1f5;
+  color: #687180;
+  font-size: 9.5px;
+  font-weight: 750;
+}
+
+.sayuri-memory-candidate-head .memory-scope.personal {
+  background: #f1eafa;
+  color: #72548f;
+}
+
+.sayuri-memory-candidate-head .memory-scope.project {
+  background: #eaf3fb;
+  color: #376c94;
+}
+
+.sayuri-memory-candidate-head .memory-relation.conflict {
+  background: #fff0d7;
+  color: #906821;
+}
+
+.sayuri-memory-candidate-head .memory-relation.duplicate {
+  background: #f0f1f3;
+  color: #747b86;
+}
+
+.sayuri-memory-candidate-head > strong {
+  flex: 0 0 auto;
+  color: #536785;
+  font-size: 12px;
+}
+
+.sayuri-memory-candidate p {
+  margin: 0;
+  line-height: 1.48;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.sayuri-memory-candidate > small {
+  color: var(--ui-muted, #6f7b8c);
+  font-size: 10.5px;
+}
+
+.sayuri-memory-candidate-footer > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.sayuri-memory-candidate-footer button {
+  min-height: 33px;
+  padding: 0 10px;
+  font-size: 10.5px;
+}
+
+.sayuri-memory-chat-notice {
+  display: grid;
+  gap: 5px;
+  margin-top: 9px;
+  padding: 10px;
+  border: 1px solid #d9e0ed;
+  border-radius: 11px;
+  background: #f7f9fd;
+}
+
+.sayuri-memory-chat-notice strong {
+  color: #4d6389;
+  font-size: 10.5px;
+}
+
+.sayuri-memory-chat-notice small {
+  color: var(--ui-muted, #6f7b8c);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.sayuri-memory-chat-notice button {
+  justify-self: start;
+  min-height: 31px;
+  padding: 0 9px;
+  font-size: 10px;
+}
+
+@media (max-width: 780px) {
+  .sayuri-memory-automation-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .sayuri-memory-candidate-head,
+  .sayuri-memory-candidate-footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
