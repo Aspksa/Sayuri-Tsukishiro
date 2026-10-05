@@ -254,6 +254,45 @@ class MemoryV4Tests(unittest.TestCase):
             self.assertTrue(any(item.get("content_truncated") for item in sent))
             self.assertTrue(all(len(item["content"]) <= 2400 for item in sent))
 
+    def test_upgrade_from_4_0_recalculates_quality_without_reingest_audit_spam(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            memory, semantic, v3, v4 = self._build(root)
+            entry = memory.add(
+                scope="project",
+                kind="decision",
+                content="Используем одну внешнюю LLM",
+                importance=5,
+                confidence=0.95,
+                source="memory_intelligence_confirmed",
+            )
+            v4.ingest_memory(entry)
+            before = [
+                item for item in v4.audit_log(100)
+                if item["action"] == "memory_v4_ingested"
+            ]
+            with sqlite3.connect(root / "data" / "sayuri-memory.db") as db:
+                now = datetime.now(timezone.utc).isoformat()
+                db.execute(
+                    """
+                    INSERT INTO memory_v4_meta(key, value, updated_at)
+                    VALUES('bootstrap_version', '4.0', ?)
+                    ON CONFLICT(key) DO UPDATE SET value='4.0', updated_at=excluded.updated_at
+                    """,
+                    (now,),
+                )
+
+            result = v4.bootstrap()
+            after = [
+                item for item in v4.audit_log(100)
+                if item["action"] == "memory_v4_ingested"
+            ]
+
+            self.assertEqual(result["upgraded_from"], "4.0")
+            self.assertEqual(result["ingested"], 0)
+            self.assertEqual(len(after), len(before))
+            self.assertEqual(v4.state_for(entry["id"])["instruction_risk"], "none")
+
     def test_quality_maintenance_is_automatic_and_rate_limited(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
