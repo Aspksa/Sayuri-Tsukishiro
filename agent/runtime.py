@@ -925,7 +925,7 @@ class SayuriAgent:
             if memory_saved is not None:
                 self.memory_v3.ingest_memory(memory_saved, event_type="memory_explicit")
                 self.memory_v4.ingest_memory(memory_saved)
-            memory_v4_context = self.memory_v4.context(text)
+            memory_v4_context = self.memory_v4.context(text, record_usage=False)
             memory_context = {
                 "retrieval": memory_v4_context["engine"],
                 "personal": memory_v4_context["personal"],
@@ -1039,6 +1039,10 @@ class SayuriAgent:
         messages.extend(self._normalized_history(history))
         messages.append({"role": "user", "content": text})
         result = CloudRuClient(api_key).chat(messages)
+        recall_id = self.memory_v4.commit_prepared_recall(
+            text,
+            memory_v4_context.get("_prepared_recall"),
+        )
         memory_used = sum(
             len(items)
             for key, items in memory_context.items()
@@ -1061,7 +1065,7 @@ class SayuriAgent:
             + len(memory_v4_context.get("questions", []))
         )
         response_id = uuid.uuid4().hex
-        self.memory_v4.bind_response(response_id, memory_v4_context.get("recall_id"))
+        self.memory_v4.bind_response(response_id, recall_id)
         self.experience.record_chat_response(
             response_id,
             self._experience_context(context),
