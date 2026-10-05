@@ -2181,30 +2181,40 @@ class MemorySystemV4:
     def refresh_verification_questions(self) -> dict[str, Any]:
         opened = 0
         checked = 0
-        for entry in self.memory.scan_active(limit=self.MAX_SCAN):
-            state = self.evaluate_entry(entry)
+        with self._connect() as db:
+            rows = db.execute(
+                """
+                SELECT m.id, m.scope, m.content, m.importance,
+                       s.freshness_class, s.freshness_score, s.source_trust
+                FROM memory_entries AS m
+                JOIN memory_v4_state AS s ON s.memory_id = m.id
+                WHERE m.active = 1
+                ORDER BY m.importance DESC, m.updated_at DESC
+                LIMIT ?
+                """,
+                (self.MAX_SCAN,),
+            ).fetchall()
+
+        for row in rows:
             checked += 1
-            importance = int(entry.get("importance") or 1)
+            importance = int(row["importance"] or 1)
             reason = None
             if (
                 importance >= 4
-                and state["freshness_class"] == "volatile"
-                and state["freshness_score"] < 0.45
+                and row["freshness_class"] == "volatile"
+                and float(row["freshness_score"]) < 0.45
             ):
                 reason = "freshness_review"
-            elif importance >= 4 and state["source_trust"] < 0.45:
+            elif importance >= 4 and float(row["source_trust"]) < 0.45:
                 reason = "source_trust_review"
             if reason is None:
                 continue
 
             question_text = (
                 f"Проверить актуальность важной памяти: "
-                f"«{str(entry.get('content') or '')[:500]}»"
+                f"«{str(row['content'] or '')[:500]}»"
             )
-            fingerprint = self._fingerprint(
-                str(entry.get("scope") or "project"),
-                question_text,
-            )
+            fingerprint = self._fingerprint(str(row["scope"] or "project"), question_text)
             with self._connect() as db:
                 existed = db.execute(
                     "SELECT 1 FROM memory_questions WHERE fingerprint = ?",
@@ -2212,14 +2222,15 @@ class MemorySystemV4:
                 ).fetchone() is not None
             self.open_question(
                 question_text,
-                scope=str(entry.get("scope") or "project"),
+                scope=str(row["scope"] or "project"),
                 reason=reason,
-                related_ids=[str(entry["id"])],
+                related_ids=[str(row["id"])],
                 source="memory_quality_gate",
             )
             if not existed:
                 opened += 1
         return {"checked": checked, "opened": opened}
+
 
     def maintenance(self, *, create_snapshot: bool = False) -> dict[str, Any]:
         snapshot = self.create_snapshot("memory_v4_maintenance") if create_snapshot else None
