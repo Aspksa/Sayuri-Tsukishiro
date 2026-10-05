@@ -282,6 +282,28 @@ class ServerTests(unittest.TestCase):
                     payload = json.loads(response.read().decode("utf-8"))
                     self.assertEqual(payload["task"]["status"], "in_progress")
 
+                failure = server.core.agent.memory_v4.record_action_outcome({
+                    "id": "server-failure-1",
+                    "tool": "disk.create_folder",
+                    "status": "failed",
+                    "error": "Папка уже существует",
+                })
+                failure_body = json.dumps({
+                    "cause": "Имя папки уже занято",
+                    "resolution": "Сначала проверить существование папки",
+                    "prevention": "Не повторять create без read-only проверки",
+                }).encode("utf-8")
+                request = urllib.request.Request(
+                    base + f"/api/sayuri/memory/v4/failures/{failure['id']}/resolve",
+                    data=failure_body,
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(request, timeout=2) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+                    self.assertEqual(payload["failure"]["status"], "resolved")
+                    self.assertIn("read-only", payload["failure"]["prevention"])
+
                 trust_body = json.dumps({
                     "source_key": "personal_cabinet",
                     "score": 0.91,
