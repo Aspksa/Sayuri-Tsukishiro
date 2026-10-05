@@ -6,11 +6,12 @@ import platform
 import time
 from typing import Any
 
-from agent import AgentCoreContract
+from agent import AgentRuntimeError, SayuriAgent
 from disk import DiskService
 
 from .config import Settings
 from .database import Database
+from .errors import ProviderError
 from .system_settings import SystemSettings
 
 
@@ -20,6 +21,7 @@ class SayuriCore:
         self.settings.ensure_runtime_dirs()
         self.database = Database(settings.database_path)
         self.system_settings = SystemSettings(self.database)
+        self.agent = SayuriAgent(settings.root)
         self.disk = DiskService(settings.database_path, settings.disk_dir)
         self.started_monotonic = time.monotonic()
 
@@ -73,6 +75,45 @@ class SayuriCore:
         )
         return {"status": "сохранено", "settings": settings}
 
+    def sayuri_profile(self) -> dict[str, Any]:
+        return self.agent.profile()
+
+    def configure_sayuri_provider(self, *, api_key: str | None, clear: bool = False) -> dict[str, Any]:
+        try:
+            result = self.agent.configure_provider(api_key=api_key, clear=clear)
+        except AgentRuntimeError as exc:
+            raise ProviderError(str(exc), status=400) from exc
+        self.database.record_event(
+            "Sayuri",
+            "Настройки Cloud.ru изменены",
+            details={"configured": result["provider"]["configured"], "model": result["provider"]["model"]},
+        )
+        return result
+
+    def test_sayuri_provider(self) -> dict[str, Any]:
+        try:
+            result = self.agent.test_provider()
+        except AgentRuntimeError as exc:
+            raise ProviderError(str(exc), status=502) from exc
+        self.database.record_event(
+            "Sayuri",
+            "Cloud.ru подключение проверено",
+            details={"model": result["model"], "available": result["model_available"]},
+        )
+        return result
+
+    def sayuri_chat(self, *, message: str, history: Any = None, context: Any = None) -> dict[str, Any]:
+        try:
+            result = self.agent.chat(message=message, history=history, context=context)
+        except AgentRuntimeError as exc:
+            raise ProviderError(str(exc), status=502) from exc
+        self.database.record_event(
+            "Sayuri",
+            "Ответ DeepSeek-V4-Flash получен",
+            details={"model": result["model"], "usage": result.get("usage", {})},
+        )
+        return result
+
     def health(self, *, port: int | None = None) -> dict[str, Any]:
         return {
             "status": "готово",
@@ -91,7 +132,7 @@ class SayuriCore:
                 "port": port,
                 "loopback_only": True,
             },
-            "agent": AgentCoreContract.snapshot(),
+            "agent": self.agent.snapshot(),
             "disk": self.disk.health(),
             "uptime_seconds": round(time.monotonic() - self.started_monotonic, 3),
             "time_utc": datetime.now(timezone.utc).isoformat(),
