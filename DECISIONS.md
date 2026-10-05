@@ -436,3 +436,13 @@
 - Повтор той же ошибки после resolved состояния автоматически переоткрывает failure pattern.
 - Повтор одинакового подтверждения resolution должен быть идемпотентным и не увеличивать `resolved_count`.
 
+## D-047 — recall считается использованным только после успешного AI-ответа
+
+- Дата: 2026-10-06.
+- Статус: принято.
+- Memory retrieval выполняется в две фазы: `prepare recall` -> успешный ответ Cloud.ru -> `commit recall`.
+- На prepare-фазе Semantic Memory и Memory 4.0 не увеличивают `use_count`, `recall_count` и не создают `memory_recall_audit`.
+- Только после успешного ответа DeepSeek-V4-Flash выбранные memory IDs фиксируются как реально использованные и получают recall audit.
+- Timeout, network error, provider error, неверный ключ или другой сбой до AI-ответа не должны обучать utility/frequency памяти.
+- `response_id` связывается только с уже committed recall ID.
+
