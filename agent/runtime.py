@@ -385,6 +385,7 @@ class SayuriAgent:
                     scopes=scopes,
                     limit=limit,
                     for_cloud=False,
+                    record_usage=False,
                 )
                 entries = [
                     item
@@ -532,6 +533,28 @@ class SayuriAgent:
             return {
                 "status": "разрешено",
                 "question": self.memory_v4.resolve_question(question_id, resolution),
+                "dashboard": self.memory_v4.dashboard(),
+            }
+        except MemorySystemV4Error as exc:
+            raise AgentRuntimeError(str(exc)) from exc
+
+    def resolve_memory_v4_failure(
+        self,
+        failure_id: str,
+        *,
+        resolution: str,
+        cause: str = "",
+        prevention: str = "",
+    ) -> dict[str, Any]:
+        try:
+            return {
+                "status": "разрешено",
+                "failure": self.memory_v4.resolve_failure(
+                    failure_id,
+                    resolution=resolution,
+                    cause=cause,
+                    prevention=prevention,
+                ),
                 "dashboard": self.memory_v4.dashboard(),
             }
         except MemorySystemV4Error as exc:
@@ -902,14 +925,18 @@ class SayuriAgent:
             if memory_saved is not None:
                 self.memory_v3.ingest_memory(memory_saved, event_type="memory_explicit")
                 self.memory_v4.ingest_memory(memory_saved)
-            memory_v4_context = self.memory_v4.context(text)
+            memory_v4_context = self.memory_v4.context(text, record_usage=False)
             memory_context = {
                 "retrieval": memory_v4_context["engine"],
                 "personal": memory_v4_context["personal"],
                 "project": memory_v4_context["project"],
             }
-            memory_v3_context = self.memory_v3.context(text)
-            experience_context = self.experience.context(text, limit=6)
+            memory_v3_context = self.memory_v4.sanitize_memory_v3_context(
+                self.memory_v3.context(text)
+            )
+            experience_context = self.memory_v4.sanitize_experience_context(
+                self.experience.context(text, limit=6)
+            )
             memory_candidates = self.memory_intelligence.analyze_message(text, context)
             for candidate in memory_candidates:
                 if candidate.get("status") != "auto_saved" or not candidate.get("related_memory_id"):
@@ -1012,6 +1039,10 @@ class SayuriAgent:
         messages.extend(self._normalized_history(history))
         messages.append({"role": "user", "content": text})
         result = CloudRuClient(api_key).chat(messages)
+        recall_id = self.memory_v4.commit_prepared_recall(
+            text,
+            memory_v4_context.get("_prepared_recall"),
+        )
         memory_used = sum(
             len(items)
             for key, items in memory_context.items()
@@ -1034,7 +1065,7 @@ class SayuriAgent:
             + len(memory_v4_context.get("questions", []))
         )
         response_id = uuid.uuid4().hex
-        self.memory_v4.bind_response(response_id, memory_v4_context.get("recall_id"))
+        self.memory_v4.bind_response(response_id, recall_id)
         self.experience.record_chat_response(
             response_id,
             self._experience_context(context),
