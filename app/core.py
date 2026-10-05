@@ -243,6 +243,34 @@ class SayuriCore:
         )
         return result
 
+    def resolve_sayuri_memory_v4_failure(
+        self,
+        failure_id: str,
+        *,
+        resolution: str,
+        cause: str = "",
+        prevention: str = "",
+    ) -> dict[str, Any]:
+        try:
+            result = self.agent.resolve_memory_v4_failure(
+                failure_id,
+                resolution=resolution,
+                cause=cause,
+                prevention=prevention,
+            )
+        except AgentRuntimeError as exc:
+            raise BadRequestError(str(exc)) from exc
+        self.database.record_event(
+            "Sayuri",
+            "Ошибка Failure Memory подтверждённо разрешена",
+            details={
+                "failure_id": failure_id,
+                "has_cause": bool(cause.strip()),
+                "has_prevention": bool(prevention.strip()),
+            },
+        )
+        return result
+
     def create_sayuri_memory_v4_snapshot(self, reason: str = "manual") -> dict[str, Any]:
         result = self.agent.create_memory_v4_snapshot(reason)
         self.database.record_event(
