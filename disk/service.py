@@ -8,6 +8,8 @@ import json
 import mimetypes
 import os
 import sqlite3
+import zipfile
+import xml.etree.ElementTree as ET
 from typing import BinaryIO, Any, Iterable
 import uuid
 
@@ -1099,6 +1101,135 @@ class DiskService:
             )
         result.sort(key=lambda item: item["path"].casefold())
         return result
+
+    @staticmethod
+    def _decode_text(data: bytes) -> str:
+        for encoding in ("utf-8-sig", "utf-16", "cp1251", "latin-1"):
+            try:
+                return data.decode(encoding)
+            except UnicodeDecodeError:
+                continue
+        return data.decode("utf-8", errors="replace")
+
+    @staticmethod
+    def _zip_xml_text(path: Path, member_names: list[str], text_tags: set[str]) -> str:
+        chunks: list[str] = []
+        with zipfile.ZipFile(path) as archive:
+            names = set(archive.namelist())
+            for member in member_names:
+                if member not in names:
+                    continue
+                root = ET.fromstring(archive.read(member))
+                current: list[str] = []
+                for element in root.iter():
+                    tag = element.tag.rsplit("}", 1)[-1]
+                    if tag in text_tags and element.text:
+                        current.append(element.text)
+                    if tag in {"p", "tr"} and current:
+                        chunks.append(" ".join(current).strip())
+                        current = []
+                if current:
+                    chunks.append(" ".join(current).strip())
+        return "\n".join(line for line in chunks if line)
+
+    def preview(self, file_id: str) -> dict[str, Any]:
+        item = self.get_file(file_id)
+        path: Path = item["path"]
+        suffix = path.suffix.lower() if path.suffix else Path(item["name"]).suffix.lower()
+        content_type = item["content_type"]
+
+        base = {
+            "id": item["id"],
+            "name": item["name"],
+            "content_type": content_type,
+            "size_bytes": item["size_bytes"],
+            "sha256": item["sha256"],
+            "category": item["category"],
+        }
+
+        if content_type == "application/pdf" or suffix == ".pdf":
+            return {**base, "mode": "pdf", "url": f"/api/disk/files/{file_id}/view"}
+        if content_type.startswith("image/"):
+            return {**base, "mode": "image", "url": f"/api/disk/files/{file_id}/view"}
+        if content_type.startswith("video/"):
+            return {**base, "mode": "video", "url": f"/api/disk/files/{file_id}/view"}
+        if content_type.startswith("audio/"):
+            return {**base, "mode": "audio", "url": f"/api/disk/files/{file_id}/view"}
+
+        if suffix in {".txt", ".md", ".json", ".xml", ".csv", ".log", ".ini", ".cfg", ".yaml", ".yml"}:
+            limit = 4 * 1024 * 1024
+            data = path.read_bytes()
+            truncated = len(data) > limit
+            text = self._decode_text(data[:limit])
+            return {**base, "mode": "text", "text": text, "truncated": truncated}
+
+        if suffix == ".docx":
+            text = self._zip_xml_text(path, ["word/document.xml"], {"t"})
+            return {**base, "mode": "document", "text": text or "Документ не содержит извлекаемого текста."}
+
+        if suffix == ".pptx":
+            with zipfile.ZipFile(path) as archive:
+                slides = sorted(
+                    name for name in archive.namelist()
+                    if name.startswith("ppt/slides/slide") and name.endswith(".xml")
+                )
+            text = self._zip_xml_text(path, slides, {"t"})
+            return {**base, "mode": "presentation", "text": text or "Презентация не содержит извлекаемого текста."}
+
+        if suffix == ".xlsx":
+            rows: list[list[str]] = []
+            sheet_name = "Лист"
+            with zipfile.ZipFile(path) as archive:
+                names = set(archive.namelist())
+                shared: list[str] = []
+                if "xl/sharedStrings.xml" in names:
+                    root = ET.fromstring(archive.read("xl/sharedStrings.xml"))
+                    for si in root:
+                        parts = [
+                            node.text or ""
+                            for node in si.iter()
+                            if node.tag.rsplit("}", 1)[-1] == "t"
+                        ]
+                        shared.append("".join(parts))
+                sheets = sorted(
+                    name for name in names
+                    if name.startswith("xl/worksheets/sheet") and name.endswith(".xml")
+                )
+                if sheets:
+                    root = ET.fromstring(archive.read(sheets[0]))
+                    for row in root.iter():
+                        if row.tag.rsplit("}", 1)[-1] != "row":
+                            continue
+                        values: list[str] = []
+                        for cell in row:
+                            if cell.tag.rsplit("}", 1)[-1] != "c":
+                                continue
+                            cell_type = cell.attrib.get("t")
+                            value_node = next(
+                                (node for node in cell if node.tag.rsplit("}", 1)[-1] == "v"),
+                                None,
+                            )
+                            raw = value_node.text if value_node is not None and value_node.text else ""
+                            if cell_type == "s" and raw.isdigit():
+                                index = int(raw)
+                                raw = shared[index] if index < len(shared) else raw
+                            values.append(raw)
+                        if values:
+                            rows.append(values[:50])
+                        if len(rows) >= 200:
+                            break
+            return {**base, "mode": "table", "sheet": sheet_name, "rows": rows, "truncated": len(rows) >= 200}
+
+        if suffix in {".odt", ".ods", ".odp"}:
+            text = self._zip_xml_text(path, ["content.xml"], {"p", "h"})
+            mode = {".odt": "document", ".ods": "table-text", ".odp": "presentation"}[suffix]
+            return {**base, "mode": mode, "text": text or "Файл не содержит извлекаемого текста."}
+
+        return {
+            **base,
+            "mode": "unsupported",
+            "message": "Для этого формата встроенный предпросмотр пока недоступен. Файл можно скачать или открыть внешним приложением.",
+        }
 
     def recent_actions(self, limit: int = 30) -> list[dict[str, Any]]:
         safe_limit = min(max(int(limit), 1), 100)

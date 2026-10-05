@@ -107,6 +107,21 @@ class DiskApiTests(unittest.TestCase):
         )
 
         with urllib.request.urlopen(
+            self.base + f"/api/disk/files/{uploaded['id']}/preview",
+            timeout=3,
+        ) as response:
+            preview = json.loads(response.read().decode("utf-8"))
+            self.assertEqual(preview["mode"], "text")
+            self.assertIn("disk api 0.2", preview["text"])
+
+        with urllib.request.urlopen(
+            self.base + f"/api/disk/files/{uploaded['id']}/view",
+            timeout=3,
+        ) as response:
+            self.assertEqual(response.read(), payload)
+            self.assertIn("inline", response.headers["Content-Disposition"])
+
+        with urllib.request.urlopen(
             self.base + f"/api/disk/files/{uploaded['id']}/download",
             timeout=3,
         ) as response:

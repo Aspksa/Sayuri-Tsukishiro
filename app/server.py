@@ -155,6 +155,28 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
                 exc.__class__.__name__,
             )
 
+    def _send_inline_file(self, item: dict) -> None:
+        path = item["path"]
+        headers = {
+            "Content-Disposition": f"inline; filename*=UTF-8''{quote(item['name'])}",
+            "ETag": f'"{item["sha256"]}"',
+            "X-Sayuri-SHA256": item["sha256"],
+        }
+        try:
+            self._headers(HTTPStatus.OK, item["content_type"], item["size_bytes"], headers)
+            with path.open("rb") as source:
+                while True:
+                    chunk = source.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+        except CLIENT_DISCONNECT_ERRORS as exc:
+            self.server.logger.info(
+                "HTTP | просмотр прерван клиентом | файл=%s | %s",
+                item["id"],
+                exc.__class__.__name__,
+            )
+
     def _disk_error(self, error: Exception, request_id: str) -> None:
         if isinstance(error, FileNotFoundError):
             self._error(StaticFileError(str(error)), request_id)
@@ -235,6 +257,18 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
                 if len(parts) != 5 or parts[:3] != ["api", "disk", "items"]:
                     raise FileNotFoundError("Объект не найден.")
                 self._json(self.server.core.disk.properties(parts[3], parts[4]))
+                return
+            if parsed.path.startswith("/api/disk/files/") and parsed.path.endswith("/preview"):
+                file_id = parsed.path[len("/api/disk/files/"):-len("/preview")].strip("/")
+                if not file_id:
+                    raise FileNotFoundError("Файл не найден.")
+                self._json(self.server.core.disk.preview(file_id))
+                return
+            if parsed.path.startswith("/api/disk/files/") and parsed.path.endswith("/view"):
+                file_id = parsed.path[len("/api/disk/files/"):-len("/view")].strip("/")
+                if not file_id:
+                    raise FileNotFoundError("Файл не найден.")
+                self._send_inline_file(self.server.core.disk.get_file(file_id))
                 return
             if parsed.path.startswith("/api/disk/files/") and parsed.path.endswith("/download"):
                 file_id = parsed.path[len("/api/disk/files/"):-len("/download")].strip("/")

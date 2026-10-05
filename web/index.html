@@ -13,22 +13,13 @@
     <aside class="sidebar">
       <div class="sidebar-brand">
         <div class="sigil" aria-hidden="true">月</div>
-        <div>
-          <strong>Саюри</strong>
-          <span>Цукисиро</span>
-        </div>
+        <div><strong>Саюри</strong><span>Цукисиро</span></div>
       </div>
 
       <nav class="main-nav" aria-label="Главное меню">
-        <button class="nav-item active" type="button" data-view="home">
-          <span class="nav-icon">⌂</span><span>Главная</span>
-        </button>
-        <button class="nav-item" type="button" data-view="disk">
-          <span class="nav-icon">◫</span><span>Диск Sayuri</span>
-        </button>
-        <button class="nav-item" type="button" data-view="settings">
-          <span class="nav-icon">⚙</span><span>Настройки</span>
-        </button>
+        <button class="nav-item active" type="button" data-view="home"><span class="nav-icon">⌂</span><span>Главная</span></button>
+        <button class="nav-item" type="button" data-view="disk"><span class="nav-icon">◫</span><span>Диск Sayuri</span></button>
+        <button class="nav-item" type="button" data-view="settings"><span class="nav-icon">⚙</span><span>Настройки</span></button>
       </nav>
 
       <div class="sidebar-bottom">
@@ -39,10 +30,7 @@
 
     <main class="workspace">
       <header class="topbar">
-        <div>
-          <p class="eyebrow" id="page-eyebrow">СИСТЕМА</p>
-          <h1 id="page-title">Главная</h1>
-        </div>
+        <div><p class="eyebrow" id="page-eyebrow">СИСТЕМА</p><h1 id="page-title">Главная</h1></div>
         <div class="status-pill" id="status-pill"><span></span><strong>Проверка…</strong></div>
       </header>
 
@@ -51,31 +39,17 @@
           <div>
             <p class="eyebrow">ЯДРО САЮРИ · ЭТАП 2</p>
             <h2>Локальная основа Саюри работает.</h2>
-            <p class="lead">Ядро, база данных, системные настройки и профессиональный файловый модуль работают локально внутри проекта.</p>
+            <p class="lead">Ядро, база данных, системные настройки и файловый модуль работают локально внутри проекта.</p>
           </div>
           <div class="version-box">
-            <span>Версия проекта</span>
-            <strong id="project-version">—</strong>
-            <small id="runtime-version">Python —</small>
+            <span>Версия проекта</span><strong id="project-version">—</strong><small id="runtime-version">Python —</small>
           </div>
         </section>
 
         <section class="home-grid">
-          <article class="summary-card">
-            <span class="summary-label">Состояние</span>
-            <strong id="home-system-status">—</strong>
-            <small>ядро и база данных</small>
-          </article>
-          <article class="summary-card">
-            <span class="summary-label">Агентное ядро</span>
-            <strong id="home-agent-status">—</strong>
-            <small id="home-agent-detail">контракт</small>
-          </article>
-          <article class="summary-card">
-            <span class="summary-label">Диск Sayuri</span>
-            <strong id="home-disk-status">—</strong>
-            <small id="home-disk-detail">локальное хранилище</small>
-          </article>
+          <article class="summary-card"><span class="summary-label">Состояние</span><strong id="home-system-status">—</strong><small>ядро и база данных</small></article>
+          <article class="summary-card"><span class="summary-label">Агентное ядро</span><strong id="home-agent-status">—</strong><small id="home-agent-detail">контракт</small></article>
+          <article class="summary-card"><span class="summary-label">Диск Sayuri</span><strong id="home-disk-status">—</strong><small id="home-disk-detail">локальное хранилище</small></article>
         </section>
       </section>
 
@@ -84,12 +58,20 @@
           <div>
             <p class="eyebrow">ПРОФЕССИОНАЛЬНЫЙ ФАЙЛОВЫЙ МЕНЕДЖЕР</p>
             <h2>Диск Sayuri</h2>
-            <p>Файлы, папки, избранное, история действий и корзина — локально, с контролем целостности и подготовкой к умному документному слою.</p>
+            <p>Локальное файловое пространство с удобным просмотром, папками, корзиной и полными свойствами файлов.</p>
           </div>
           <div class="disk-actions">
             <button class="secondary-button" id="new-folder-button" type="button">Новая папка</button>
             <button class="primary-button" id="upload-button" type="button">Загрузить файлы</button>
             <input id="disk-file-input" type="file" multiple hidden>
+          </div>
+        </div>
+
+        <div class="drop-zone disk-drop-top" id="disk-drop-zone">
+          <div class="drop-zone-icon">⇧</div>
+          <div>
+            <strong>Перетащите файлы сюда</strong>
+            <span>PDF, Office, изображения, таблицы, презентации, текст, аудио, видео и другие файлы · до 1 ГБ каждый</span>
           </div>
         </div>
 
@@ -103,37 +85,31 @@
 
         <div class="disk-manager">
           <aside class="disk-rail">
-            <button class="disk-scope active" type="button" data-disk-scope="all">
-              <span>▦</span><strong>Мой диск</strong>
-            </button>
-            <button class="disk-scope" type="button" data-disk-scope="favorites">
-              <span>☆</span><strong>Избранное</strong><em id="disk-scope-favorites">0</em>
-            </button>
-            <button class="disk-scope" type="button" data-disk-scope="recent">
-              <span>◷</span><strong>Недавние</strong>
-            </button>
-            <button class="disk-scope" type="button" data-disk-scope="trash">
-              <span>⌫</span><strong>Корзина</strong><em id="disk-scope-trash">0</em>
-            </button>
+            <div class="disk-rail-section">
+              <button class="disk-scope active" type="button" data-disk-scope="all"><span>▦</span><strong>Мой диск</strong></button>
+              <button class="disk-scope" type="button" data-disk-scope="favorites"><span>☆</span><strong>Избранное</strong><em id="disk-scope-favorites">0</em></button>
+              <button class="disk-scope" type="button" data-disk-scope="recent"><span>◷</span><strong>Недавние</strong></button>
+              <button class="disk-scope" type="button" data-disk-scope="trash"><span>⌫</span><strong>Корзина</strong><em id="disk-scope-trash">0</em></button>
+            </div>
+
+            <div class="folder-tree-block">
+              <div class="folder-tree-head"><span>ПАПКИ</span><button id="refresh-folder-tree" type="button" title="Обновить">↻</button></div>
+              <div id="disk-folder-tree" class="folder-tree">
+                <p class="muted">Загрузка папок…</p>
+              </div>
+            </div>
 
             <div class="disk-rail-note">
-              <span>Хранилище</span>
-              <strong id="disk-rail-used">0 Б</strong>
-              <small>локально на носителе</small>
+              <span>Хранилище</span><strong id="disk-rail-used">0 Б</strong><small>локально на носителе</small>
             </div>
           </aside>
 
           <section class="disk-panel">
             <div class="disk-toolbar">
-              <nav class="breadcrumbs" id="disk-breadcrumbs" aria-label="Путь">
-                <button type="button">Диск Sayuri</button>
-              </nav>
+              <nav class="breadcrumbs" id="disk-breadcrumbs" aria-label="Путь"><button type="button">Диск Sayuri</button></nav>
 
               <div class="disk-toolbar-controls">
-                <label class="disk-search">
-                  <span>⌕</span>
-                  <input id="disk-search-input" type="search" placeholder="Поиск">
-                </label>
+                <label class="disk-search"><span>⌕</span><input id="disk-search-input" type="search" placeholder="Поиск"></label>
                 <select id="disk-category-filter" class="disk-select" aria-label="Фильтр типа">
                   <option value="all">Все типы</option>
                   <option value="folders">Папки</option>
@@ -177,57 +153,76 @@
             </div>
 
             <div class="upload-queue hidden" id="upload-queue">
-              <div class="upload-queue-head">
-                <strong>Загрузка файлов</strong>
-                <span id="upload-summary">0 из 0</span>
-              </div>
+              <div class="upload-queue-head"><strong>Загрузка файлов</strong><span id="upload-summary">0 из 0</span></div>
               <div id="upload-items"></div>
-            </div>
-
-            <div class="drop-zone" id="disk-drop-zone">
-              <strong>Перетащите файлы сюда</strong>
-              <span>Можно загрузить несколько файлов одновременно · до 1 ГБ каждый</span>
             </div>
 
             <div class="disk-message" id="disk-message" aria-live="polite"></div>
 
             <div class="disk-list-head">
               <label class="disk-check"><input id="disk-select-all" type="checkbox"><span></span></label>
-              <span>Имя</span>
-              <span>Размер</span>
-              <span>Тип</span>
-              <span>Изменён</span>
-              <span></span>
+              <span>Имя</span><span>Размер</span><span>Тип</span><span>Изменён</span><span></span>
             </div>
-            <div class="disk-list" id="disk-list">
-              <p class="muted">Загрузка содержимого…</p>
-            </div>
-
-            <section class="disk-activity">
-              <div class="section-head">
-                <div>
-                  <p class="eyebrow">ИСТОРИЯ</p>
-                  <h3>Недавние действия</h3>
-                </div>
-                <button class="secondary-button" id="refresh-disk-actions" type="button">Обновить</button>
-              </div>
-              <div id="disk-actions-list" class="disk-actions-list">
-                <p class="muted">Загрузка истории…</p>
-              </div>
-            </section>
+            <div class="disk-list" id="disk-list"><p class="muted">Загрузка содержимого…</p></div>
           </section>
         </div>
 
-        <aside class="properties-drawer" id="disk-properties" aria-hidden="true">
-          <div class="properties-head">
-            <div>
-              <p class="eyebrow">СВОЙСТВА</p>
-              <h3 id="properties-title">Объект</h3>
+        <div class="modal-backdrop hidden" id="file-viewer-modal">
+          <section class="file-viewer-dialog" role="dialog" aria-modal="true" aria-labelledby="file-viewer-title">
+            <header class="file-viewer-head">
+              <div class="file-viewer-heading">
+                <span class="viewer-file-badge" id="file-viewer-badge">ФАЙЛ</span>
+                <div>
+                  <p class="eyebrow" id="file-viewer-kind">ПРОСМОТР</p>
+                  <h3 id="file-viewer-title">Файл</h3>
+                </div>
+              </div>
+              <div class="viewer-head-actions">
+                <button id="file-viewer-download" class="secondary-button" type="button">Скачать</button>
+                <button id="file-viewer-close" class="icon-button" type="button" aria-label="Закрыть">×</button>
+              </div>
+            </header>
+
+            <nav class="viewer-tabs">
+              <button class="active" type="button" data-viewer-tab="preview">Просмотр</button>
+              <button type="button" data-viewer-tab="properties">Свойства</button>
+            </nav>
+
+            <div class="viewer-content">
+              <section class="viewer-tab active" id="viewer-tab-preview">
+                <div class="preview-stage" id="file-preview-stage"><p class="muted">Загрузка предпросмотра…</p></div>
+              </section>
+
+              <section class="viewer-tab" id="viewer-tab-properties">
+                <div class="property-hero">
+                  <div class="property-hero-icon" id="property-hero-icon">Ф</div>
+                  <div>
+                    <span>Полное имя</span>
+                    <strong id="property-full-name">—</strong>
+                  </div>
+                </div>
+
+                <div class="property-grid" id="properties-body"></div>
+
+                <div class="property-editor">
+                  <div>
+                    <span class="property-editor-label">Название</span>
+                    <div class="property-name-edit">
+                      <input id="property-name-input" type="text" maxlength="255">
+                      <button id="property-rename-save" class="primary-button" type="button">Сохранить имя</button>
+                    </div>
+                  </div>
+                  <label class="property-favorite-edit">
+                    <input id="property-favorite-toggle" type="checkbox">
+                    <span>Добавить в избранное</span>
+                  </label>
+                </div>
+
+                <div class="properties-actions" id="properties-actions"></div>
+              </section>
             </div>
-            <button id="properties-close" type="button" aria-label="Закрыть">×</button>
-          </div>
-          <div id="properties-body" class="properties-body"></div>
-        </aside>
+          </section>
+        </div>
 
         <div class="modal-backdrop hidden" id="move-modal">
           <section class="move-dialog" role="dialog" aria-modal="true" aria-labelledby="move-dialog-title">
@@ -235,10 +230,7 @@
               <div><p class="eyebrow">ПЕРЕМЕЩЕНИЕ</p><h3 id="move-dialog-title">Куда переместить?</h3></div>
               <button class="icon-button" id="move-close" type="button">×</button>
             </div>
-            <label class="move-root-option">
-              <input type="radio" name="move-destination" value="" checked>
-              <span>Диск Sayuri</span>
-            </label>
+            <label class="move-root-option"><input type="radio" name="move-destination" value="" checked><span>Диск Sayuri</span></label>
             <div id="move-folder-list" class="move-folder-list"></div>
             <div class="move-dialog-actions">
               <button class="secondary-button" id="move-cancel" type="button">Отмена</button>
@@ -246,38 +238,27 @@
             </div>
           </section>
         </div>
+
+        <div class="disk-context-menu hidden" id="disk-context-menu" role="menu"></div>
       </section>
 
       <section class="view" id="view-settings">
         <div class="settings-intro">
-          <div>
-            <p class="eyebrow">УПРАВЛЕНИЕ СИСТЕМОЙ</p>
-            <h2>Настройки</h2>
-            <p>Конфигурация, состояние, события и архитектура Саюри в одном месте.</p>
-          </div>
+          <div><p class="eyebrow">УПРАВЛЕНИЕ СИСТЕМОЙ</p><h2>Настройки</h2><p>Конфигурация, состояние, события и архитектура Саюри в одном месте.</p></div>
           <div class="save-state" id="save-state" aria-live="polite"></div>
         </div>
 
         <nav class="settings-nav" aria-label="Разделы настроек">
-          <a href="#system-settings">Система</a>
-          <a href="#system-state">Состояние</a>
-          <a href="#system-events">События</a>
-          <a href="#system-architecture">Архитектура</a>
+          <a href="#system-settings">Система</a><a href="#system-state">Состояние</a><a href="#system-events">События</a><a href="#system-architecture">Архитектура</a>
         </nav>
 
         <section class="settings-section" id="system-settings">
-          <div class="section-head">
-            <div><p class="eyebrow">КОНФИГУРАЦИЯ</p><h3>Настройки системы</h3></div>
-            <button class="primary-button" id="save-settings" type="button">Сохранить</button>
-          </div>
+          <div class="section-head"><div><p class="eyebrow">КОНФИГУРАЦИЯ</p><h3>Настройки системы</h3></div><button class="primary-button" id="save-settings" type="button">Сохранить</button></div>
           <div class="settings-form" id="settings-form"><p class="muted">Загрузка настроек…</p></div>
         </section>
 
         <section class="settings-section" id="system-state">
-          <div class="section-head">
-            <div><p class="eyebrow">ДИАГНОСТИКА</p><h3>Состояние системы</h3></div>
-            <button class="secondary-button" id="refresh-system" type="button">Обновить</button>
-          </div>
+          <div class="section-head"><div><p class="eyebrow">ДИАГНОСТИКА</p><h3>Состояние системы</h3></div><button class="secondary-button" id="refresh-system" type="button">Обновить</button></div>
           <div class="metrics settings-metrics">
             <article class="metric-card"><span>Ядро</span><strong id="core-state">—</strong><small id="core-detail">—</small></article>
             <article class="metric-card"><span>База данных</span><strong id="db-state">—</strong><small id="db-detail">—</small></article>
@@ -286,38 +267,23 @@
           </div>
 
           <div class="agent-panel">
-            <div>
-              <p class="eyebrow">АГЕНТНОЕ ЯДРО</p>
-              <h4>Агентное ядро</h4>
-              <p id="agent-message">Загрузка…</p>
-            </div>
-            <div class="agent-flags">
-              <span id="agent-provider">ИИ-провайдер —</span>
-              <span id="agent-memory">Память —</span>
-              <span id="agent-tools">Инструменты —</span>
-            </div>
+            <div><p class="eyebrow">АГЕНТНОЕ ЯДРО</p><h4>Агентное ядро</h4><p id="agent-message">Загрузка…</p></div>
+            <div class="agent-flags"><span id="agent-provider">ИИ-провайдер —</span><span id="agent-memory">Память —</span><span id="agent-tools">Инструменты —</span></div>
           </div>
         </section>
 
         <section class="settings-section" id="system-events">
-          <div class="section-head">
-            <div><p class="eyebrow">ЖУРНАЛ</p><h3>Последние события</h3></div>
-          </div>
+          <div class="section-head"><div><p class="eyebrow">ЖУРНАЛ</p><h3>Последние события</h3></div></div>
           <div id="events" class="event-list"><p class="muted">Загрузка событий…</p></div>
         </section>
 
         <section class="settings-section" id="system-architecture">
-          <div class="section-head">
-            <div><p class="eyebrow">АРХИТЕКТУРА</p><h3>Модули системы</h3></div>
-          </div>
+          <div class="section-head"><div><p class="eyebrow">АРХИТЕКТУРА</p><h3>Модули системы</h3></div></div>
           <div id="architecture" class="architecture-list"><p class="muted">Загрузка архитектуры…</p></div>
         </section>
       </section>
 
-      <footer>
-        <span>Саюри Цукисиро · локальная система</span>
-        <span id="updated-at">—</span>
-      </footer>
+      <footer><span>Саюри Цукисиро · локальная система</span><span id="updated-at">—</span></footer>
     </main>
   </div>
 

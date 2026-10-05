@@ -3,6 +3,7 @@ from __future__ import annotations
 from io import BytesIO
 from pathlib import Path
 import sqlite3
+import zipfile
 import tempfile
 import unittest
 
@@ -173,6 +174,78 @@ class DiskServiceTests(unittest.TestCase):
             self.assertEqual(listing["files"][0]["name"], "старый.txt")
             self.assertFalse(listing["files"][0]["favorite"])
             self.assertEqual(service.health()["schema_version"], 2)
+
+
+    def test_office_and_text_previews(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            service = self.make_service(root)
+
+            text_item = service.store_stream(
+                name="заметка.txt",
+                content_type="text/plain",
+                size_bytes=len("Привет, Sayuri".encode("utf-8")),
+                stream=BytesIO("Привет, Sayuri".encode("utf-8")),
+            )
+            text_preview = service.preview(text_item["id"])
+            self.assertEqual(text_preview["mode"], "text")
+            self.assertIn("Привет", text_preview["text"])
+
+            def make_zip(files: dict[str, str]) -> bytes:
+                buffer = BytesIO()
+                with zipfile.ZipFile(buffer, "w") as archive:
+                    for name, body in files.items():
+                        archive.writestr(name, body)
+                return buffer.getvalue()
+
+            docx = make_zip({
+                "word/document.xml":
+                    '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+                    '<w:body><w:p><w:r><w:t>Документ Sayuri</w:t></w:r></w:p></w:body></w:document>'
+            })
+            docx_item = service.store_stream(
+                name="пример.docx",
+                content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                size_bytes=len(docx),
+                stream=BytesIO(docx),
+            )
+            docx_preview = service.preview(docx_item["id"])
+            self.assertEqual(docx_preview["mode"], "document")
+            self.assertIn("Документ Sayuri", docx_preview["text"])
+
+            pptx = make_zip({
+                "ppt/slides/slide1.xml":
+                    '<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" '
+                    'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">'
+                    '<p:cSld><a:t>Слайд Sayuri</a:t></p:cSld></p:sld>'
+            })
+            pptx_item = service.store_stream(
+                name="пример.pptx",
+                content_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                size_bytes=len(pptx),
+                stream=BytesIO(pptx),
+            )
+            pptx_preview = service.preview(pptx_item["id"])
+            self.assertEqual(pptx_preview["mode"], "presentation")
+            self.assertIn("Слайд Sayuri", pptx_preview["text"])
+
+            xlsx = make_zip({
+                "xl/sharedStrings.xml":
+                    '<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+                    '<si><t>Ячейка Sayuri</t></si></sst>',
+                "xl/worksheets/sheet1.xml":
+                    '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+                    '<sheetData><row r="1"><c r="A1" t="s"><v>0</v></c></row></sheetData></worksheet>'
+            })
+            xlsx_item = service.store_stream(
+                name="пример.xlsx",
+                content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                size_bytes=len(xlsx),
+                stream=BytesIO(xlsx),
+            )
+            xlsx_preview = service.preview(xlsx_item["id"])
+            self.assertEqual(xlsx_preview["mode"], "table")
+            self.assertEqual(xlsx_preview["rows"][0][0], "Ячейка Sayuri")
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@ let settingsByKey = {};
 let refreshTimer = null;
 let diskSearchTimer = null;
 let moveItems = [];
+let viewerItem = null;
 
 const diskState = {
   folderId: null,
@@ -24,9 +25,7 @@ function setStatus(kind, text) {
 function formatTime(value) {
   try {
     return new Date(value).toLocaleTimeString('ru-RU', {
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit'
+      hour: '2-digit', minute: '2-digit', second: '2-digit'
     });
   } catch {
     return value;
@@ -37,24 +36,12 @@ function formatDate(value) {
   if (!value) return '—';
   try {
     return new Date(value).toLocaleString('ru-RU', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit'
     });
   } catch {
     return value;
   }
-}
-
-function formatUptime(seconds) {
-  const total = Math.max(0, Math.floor(Number(seconds) || 0));
-  const hours = Math.floor(total / 3600);
-  const minutes = Math.floor((total % 3600) / 60);
-  if (hours > 0) return `${hours} ч ${minutes} мин`;
-  if (minutes > 0) return `${minutes} мин`;
-  return `${total} сек`;
 }
 
 function formatBytes(value) {
@@ -63,6 +50,14 @@ function formatBytes(value) {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} КБ`;
   if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} МБ`;
   return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} ГБ`;
+}
+
+function diskKey(kind, id) {
+  return `${kind}:${id}`;
+}
+
+function selectedDiskItems() {
+  return Array.from(diskState.selected.values()).map(({kind, id}) => ({kind, id}));
 }
 
 function showView(name) {
@@ -84,7 +79,7 @@ function showView(name) {
 
   if (name === 'disk') {
     history.replaceState(null, '', '#disk');
-    Promise.all([loadDisk(), loadDiskActions()]).catch(showDiskError);
+    Promise.all([loadDisk(), loadFolderTree()]).catch(showDiskError);
   } else if (name === 'settings') {
     history.replaceState(null, '', '#settings');
   } else {
@@ -103,10 +98,8 @@ function renderSettings(settings) {
 
     const copy = document.createElement('span');
     copy.className = 'setting-copy';
-
     const title = document.createElement('strong');
     title.textContent = item.label;
-
     const description = document.createElement('small');
     description.textContent = item.description;
     copy.append(title, description);
@@ -164,6 +157,7 @@ function renderEvents(events) {
     container.append(empty);
     return;
   }
+
   for (const event of events) {
     const row = document.createElement('div');
     row.className = 'event';
@@ -179,11 +173,9 @@ function renderEvents(events) {
 function renderArchitecture(modules) {
   const container = byId('architecture');
   container.replaceChildren();
-
   for (const module of modules) {
     const row = document.createElement('article');
     row.className = 'architecture-item';
-
     const head = document.createElement('div');
     const title = document.createElement('strong');
     title.textContent = module.name;
@@ -198,18 +190,128 @@ function renderArchitecture(modules) {
     const status = document.createElement('span');
     status.textContent = module.status;
     meta.append(version, status);
-
     row.append(head, meta);
     container.append(row);
   }
 }
 
-function diskKey(kind, id) {
-  return `${kind}:${id}`;
+function applyDiskScopeUI() {
+  document.querySelectorAll('.disk-scope').forEach((button) => {
+    button.classList.toggle('active', button.dataset.diskScope === diskState.scope);
+  });
+  const normalActions = diskState.scope === 'all';
+  byId('new-folder-button').disabled = !normalActions;
+  byId('upload-button').disabled = !normalActions;
+  byId('disk-drop-zone').classList.toggle('hidden', !normalActions);
+  if (!normalActions) byId('new-folder-form').classList.add('hidden');
 }
 
-function selectedDiskItems() {
-  return Array.from(diskState.selected.values()).map(({kind, id}) => ({kind, id}));
+function setDiskScope(scope) {
+  diskState.scope = scope;
+  diskState.folderId = null;
+  diskState.selected.clear();
+  byId('disk-search-input').value = '';
+  applyDiskScopeUI();
+  clearDiskSelection();
+  loadDisk().catch(showDiskError);
+}
+
+function openDiskFolder(folderId) {
+  diskState.scope = 'all';
+  diskState.folderId = folderId || null;
+  byId('disk-search-input').value = '';
+  applyDiskScopeUI();
+  clearDiskSelection();
+  Promise.all([loadDisk(), loadFolderTree()]).catch(showDiskError);
+}
+
+function renderBreadcrumbs(items) {
+  const container = byId('disk-breadcrumbs');
+  container.replaceChildren();
+
+  if (diskState.scope !== 'all') {
+    const labels = {favorites: 'Избранное', recent: 'Недавние', trash: 'Корзина'};
+    const label = document.createElement('strong');
+    label.textContent = labels[diskState.scope] || 'Диск Sayuri';
+    container.append(label);
+    return;
+  }
+
+  const root = document.createElement('button');
+  root.type = 'button';
+  root.textContent = 'Диск Sayuri';
+  root.addEventListener('click', () => openDiskFolder(null));
+  container.append(root);
+
+  for (const item of items) {
+    const separator = document.createElement('span');
+    separator.textContent = '›';
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = item.name;
+    button.title = item.name;
+    button.addEventListener('click', () => openDiskFolder(item.id));
+    container.append(separator, button);
+  }
+}
+
+async function loadFolderTree() {
+  const response = await fetch('/api/disk/folders-tree', {cache: 'no-store'});
+  const data = await response.json();
+  if (!response.ok) throw new Error(data?.error?.message || `HTTP ${response.status}`);
+
+  const container = byId('disk-folder-tree');
+  container.replaceChildren();
+
+  const root = document.createElement('button');
+  root.type = 'button';
+  root.className = `folder-tree-item root ${diskState.scope === 'all' && !diskState.folderId ? 'active' : ''}`;
+  root.innerHTML = '<span class="folder-tree-chevron">⌂</span><strong>Диск Sayuri</strong>';
+  root.addEventListener('click', () => openDiskFolder(null));
+  container.append(root);
+
+  if (!data.folders.length) {
+    const empty = document.createElement('p');
+    empty.className = 'folder-tree-empty';
+    empty.textContent = 'Папок пока нет';
+    container.append(empty);
+    return;
+  }
+
+  for (const folder of data.folders) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = `folder-tree-item ${diskState.folderId === folder.id ? 'active' : ''}`;
+    button.style.setProperty('--depth', String(folder.depth || 0));
+    button.title = folder.path;
+
+    const icon = document.createElement('span');
+    icon.className = 'folder-tree-chevron';
+    icon.textContent = '▸';
+
+    const name = document.createElement('strong');
+    name.textContent = folder.name;
+
+    button.append(icon, name);
+    button.addEventListener('click', () => openDiskFolder(folder.id));
+    container.append(button);
+  }
+}
+
+function diskTypeLabel(item) {
+  if (item.kind === 'folder') return 'ПАПКА';
+  const extension = item.name.includes('.') ? item.name.split('.').pop().toUpperCase().slice(0, 5) : '';
+  return extension || 'ФАЙЛ';
+}
+
+function diskCategoryLabel(item) {
+  if (item.kind === 'folder') return 'Папка';
+  const labels = {
+    documents: 'Документ', pdf: 'PDF', tables: 'Таблица',
+    presentations: 'Презентация', images: 'Изображение',
+    video: 'Видео', audio: 'Аудио', archives: 'Архив', other: 'Файл'
+  };
+  return labels[item.category] || 'Файл';
 }
 
 function clearDiskSelection() {
@@ -234,83 +336,12 @@ function updateBulkToolbar() {
   });
 }
 
-function setDiskScope(scope) {
-  diskState.scope = scope;
-  diskState.folderId = null;
-  diskState.selected.clear();
-  byId('disk-search-input').value = '';
-  document.querySelectorAll('.disk-scope').forEach((button) => {
-    button.classList.toggle('active', button.dataset.diskScope === scope);
-  });
-  const normalActions = scope === 'all';
-  byId('new-folder-button').disabled = !normalActions;
-  byId('upload-button').disabled = !normalActions;
-  byId('disk-drop-zone').classList.toggle('hidden', !normalActions);
-  byId('new-folder-form').classList.add('hidden');
-  loadDisk().catch(showDiskError);
-}
-
-function openDiskFolder(folderId) {
-  if (diskState.scope !== 'all') setDiskScope('all');
-  diskState.folderId = folderId || null;
-  byId('disk-search-input').value = '';
-  clearDiskSelection();
-  loadDisk().catch(showDiskError);
-}
-
-function renderBreadcrumbs(items) {
-  const container = byId('disk-breadcrumbs');
-  container.replaceChildren();
-
-  if (diskState.scope !== 'all') {
-    const labels = {
-      favorites: 'Избранное',
-      recent: 'Недавние',
-      trash: 'Корзина'
-    };
-    const label = document.createElement('strong');
-    label.textContent = labels[diskState.scope] || 'Диск Sayuri';
-    container.append(label);
-    return;
-  }
-
-  const root = document.createElement('button');
-  root.type = 'button';
-  root.textContent = 'Диск Sayuri';
-  root.addEventListener('click', () => openDiskFolder(null));
-  container.append(root);
-
-  for (const item of items) {
-    const separator = document.createElement('span');
-    separator.textContent = '›';
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.textContent = item.name;
-    button.addEventListener('click', () => openDiskFolder(item.id));
-    container.append(separator, button);
-  }
-}
-
-function diskTypeLabel(item) {
-  if (item.kind === 'folder') return 'ПАПКА';
-  const extension = item.name.includes('.') ? item.name.split('.').pop().toUpperCase().slice(0, 5) : '';
-  return extension || 'ФАЙЛ';
-}
-
-function diskCategoryLabel(item) {
-  if (item.kind === 'folder') return 'Папка';
-  const labels = {
-    documents: 'Документ',
-    pdf: 'PDF',
-    tables: 'Таблица',
-    presentations: 'Презентация',
-    images: 'Изображение',
-    video: 'Видео',
-    audio: 'Аудио',
-    archives: 'Архив',
-    other: 'Файл'
-  };
-  return labels[item.category] || 'Файл';
+function syncSelectAllState() {
+  const allRows = Array.from(document.querySelectorAll('.disk-row'));
+  const checked = allRows.filter((row) => diskState.selected.has(diskKey(row.dataset.kind, row.dataset.id))).length;
+  const selectAll = byId('disk-select-all');
+  selectAll.checked = allRows.length > 0 && checked === allRows.length;
+  selectAll.indeterminate = checked > 0 && checked < allRows.length;
 }
 
 function createMenuButton(label, handler, className = '') {
@@ -322,9 +353,66 @@ function createMenuButton(label, handler, className = '') {
     event.preventDefault();
     const details = button.closest('details');
     if (details) details.open = false;
+    closeContextMenu();
     handler();
   });
   return button;
+}
+
+function contextActionsFor(item) {
+  const actions = [];
+  if (diskState.scope === 'trash') {
+    actions.push(
+      ['Восстановить', () => runDiskMutation('/api/disk/restore', {items: [{kind: item.kind, id: item.id}]}, 'Объект восстановлен.')],
+      ['Удалить навсегда', () => permanentlyDelete([{kind: item.kind, id: item.id}], item.name), 'danger-action']
+    );
+    return actions;
+  }
+
+  if (item.kind === 'folder') {
+    actions.push(['Открыть', () => openDiskFolder(item.id)]);
+  } else {
+    actions.push(['Открыть', () => openViewer(item.kind, item.id, 'preview')]);
+    actions.push(['Скачать', () => {
+      window.location.href = `/api/disk/files/${encodeURIComponent(item.id)}/download`;
+    }]);
+  }
+  actions.push(
+    ['Свойства', () => openViewer(item.kind, item.id, 'properties')],
+    [item.favorite ? 'Убрать из избранного' : 'В избранное', () =>
+      runDiskMutation('/api/disk/favorite', {
+        items: [{kind: item.kind, id: item.id}], favorite: !item.favorite
+      }, 'Избранное обновлено.')
+    ],
+    ['Переименовать', () => renameDiskItem(item)],
+    ['Переместить', () => openMoveModal([{kind: item.kind, id: item.id}])],
+    ['В корзину', () => trashDiskItems([{kind: item.kind, id: item.id}], item.name), 'danger-action']
+  );
+  return actions;
+}
+
+function showContextMenu(event, item) {
+  event.preventDefault();
+  const menu = byId('disk-context-menu');
+  menu.replaceChildren();
+
+  for (const [label, handler, className = ''] of contextActionsFor(item)) {
+    const button = createMenuButton(label, handler, className);
+    menu.append(button);
+  }
+
+  menu.classList.remove('hidden');
+  const margin = 8;
+  const width = 190;
+  const estimatedHeight = Math.min(360, menu.children.length * 36 + 12);
+  const left = Math.min(event.clientX, window.innerWidth - width - margin);
+  const top = Math.min(event.clientY, window.innerHeight - estimatedHeight - margin);
+  menu.style.left = `${Math.max(margin, left)}px`;
+  menu.style.top = `${Math.max(margin, top)}px`;
+}
+
+function closeContextMenu() {
+  byId('disk-context-menu').classList.add('hidden');
 }
 
 function createDiskRow(item) {
@@ -332,6 +420,7 @@ function createDiskRow(item) {
   row.className = 'disk-row';
   row.dataset.kind = item.kind;
   row.dataset.id = item.id;
+  row.addEventListener('contextmenu', (event) => showContextMenu(event, item));
 
   const check = document.createElement('label');
   check.className = 'disk-check';
@@ -360,13 +449,19 @@ function createDiskRow(item) {
 
   const textWrap = document.createElement('div');
   textWrap.className = 'disk-name-wrap';
-  const name = document.createElement(item.kind === 'folder' && diskState.scope !== 'trash' ? 'button' : 'strong');
-  name.className = 'disk-name';
+
+  const name = document.createElement('button');
+  name.className = 'disk-name disk-name-button';
+  name.type = 'button';
   name.textContent = item.name;
-  if (name.tagName === 'BUTTON') {
-    name.type = 'button';
-    name.addEventListener('click', () => openDiskFolder(item.id));
-  }
+  name.title = item.name;
+  name.addEventListener('click', () => {
+    if (item.kind === 'folder' && diskState.scope !== 'trash') {
+      openDiskFolder(item.id);
+    } else {
+      openViewer(item.kind, item.id, item.kind === 'file' ? 'preview' : 'properties');
+    }
+  });
   textWrap.append(name);
 
   if (item.favorite) {
@@ -393,59 +488,23 @@ function createDiskRow(item) {
   const actions = document.createElement('div');
   actions.className = 'disk-row-actions';
 
-  const info = document.createElement('button');
-  info.type = 'button';
-  info.className = 'icon-action';
-  info.textContent = 'ⓘ';
-  info.title = 'Свойства';
-  info.addEventListener('click', () => openProperties(item.kind, item.id));
-  actions.append(info);
-
-  const menu = document.createElement('details');
-  menu.className = 'disk-menu';
-  const summary = document.createElement('summary');
-  summary.textContent = '•••';
-  summary.title = 'Действия';
-  const menuBody = document.createElement('div');
-  menuBody.className = 'disk-menu-body';
-
-  if (diskState.scope === 'trash') {
-    menuBody.append(
-      createMenuButton('Восстановить', () => runDiskMutation('/api/disk/restore', {items: [{kind: item.kind, id: item.id}]}, 'Объект восстановлен.')),
-      createMenuButton('Удалить навсегда', () => permanentlyDelete([{kind: item.kind, id: item.id}], item.name), 'danger-action')
-    );
-  } else {
-    if (item.kind === 'file') {
-      menuBody.append(createMenuButton('Скачать', () => {
-        window.location.href = `/api/disk/files/${encodeURIComponent(item.id)}/download`;
-      }));
-    }
-    menuBody.append(
-      createMenuButton(item.favorite ? 'Убрать из избранного' : 'В избранное', () =>
-        runDiskMutation('/api/disk/favorite', {
-          items: [{kind: item.kind, id: item.id}],
-          favorite: !item.favorite
-        }, item.favorite ? 'Убрано из избранного.' : 'Добавлено в избранное.')
-      ),
-      createMenuButton('Переименовать', () => renameDiskItem(item)),
-      createMenuButton('Переместить', () => openMoveModal([{kind: item.kind, id: item.id}])),
-      createMenuButton('В корзину', () => trashDiskItems([{kind: item.kind, id: item.id}], item.name), 'danger-action')
-    );
-  }
-
-  menu.append(summary, menuBody);
-  actions.append(menu);
+  const more = document.createElement('button');
+  more.type = 'button';
+  more.className = 'icon-action';
+  more.textContent = '•••';
+  more.title = 'Действия';
+  more.addEventListener('click', (event) => {
+    const rect = more.getBoundingClientRect();
+    showContextMenu({
+      preventDefault() {},
+      clientX: rect.right,
+      clientY: rect.bottom
+    }, item);
+  });
+  actions.append(more);
 
   row.append(check, nameCell, size, type, date, actions);
   return row;
-}
-
-function syncSelectAllState() {
-  const allRows = Array.from(document.querySelectorAll('.disk-row'));
-  const checked = allRows.filter((row) => diskState.selected.has(diskKey(row.dataset.kind, row.dataset.id))).length;
-  const selectAll = byId('disk-select-all');
-  selectAll.checked = allRows.length > 0 && checked === allRows.length;
-  selectAll.indeterminate = checked > 0 && checked < allRows.length;
 }
 
 function renderDisk(data) {
@@ -461,9 +520,9 @@ function renderDisk(data) {
   renderBreadcrumbs(data.breadcrumb);
 
   clearDiskSelection();
-
   const container = byId('disk-list');
   container.replaceChildren();
+
   const entries = [
     ...data.folders.map((item) => ({...item, kind: 'folder'})),
     ...data.files.map((item) => ({...item, kind: 'file'}))
@@ -478,16 +537,14 @@ function renderDisk(data) {
       : (diskState.scope === 'trash' ? 'Корзина пуста' : 'Здесь пока пусто');
     const copy = document.createElement('span');
     copy.textContent = diskState.scope === 'all'
-      ? 'Загрузите файлы или создайте новую папку.'
+      ? 'Перетащите файлы наверх или создайте папку.'
       : 'В этом разделе пока нет объектов.';
     empty.append(title, copy);
     container.append(empty);
     return;
   }
 
-  for (const item of entries) {
-    container.append(createDiskRow(item));
-  }
+  for (const item of entries) container.append(createDiskRow(item));
   syncSelectAllState();
 }
 
@@ -534,8 +591,8 @@ async function runDiskMutation(url, body, message) {
   try {
     await postJson(url, body);
     showDiskMessage(message);
-    closeProperties();
-    await Promise.all([loadDisk(), loadDiskActions(), loadSystem()]);
+    closeViewer();
+    await Promise.all([loadDisk(), loadFolderTree(), loadSystem()]);
   } catch (error) {
     showDiskError(error);
   }
@@ -574,7 +631,7 @@ async function createDiskFolder(event) {
     input.value = '';
     byId('new-folder-form').classList.add('hidden');
     showDiskMessage('Папка создана.');
-    await Promise.all([loadDisk(), loadDiskActions()]);
+    await Promise.all([loadDisk(), loadFolderTree()]);
   } catch (error) {
     showDiskError(error);
   }
@@ -591,6 +648,7 @@ function uploadOneFile(file, index, total) {
     label.className = 'upload-item-label';
     const name = document.createElement('strong');
     name.textContent = file.name;
+    name.title = file.name;
     const status = document.createElement('span');
     status.textContent = 'Подготовка…';
     label.append(name, status);
@@ -665,94 +723,268 @@ async function uploadDiskFiles(files) {
   byId('disk-file-input').value = '';
   if (completed) {
     showDiskMessage(`Загружено файлов: ${completed}.`);
-    await Promise.all([loadDisk(), loadDiskActions(), loadSystem()]);
+    await Promise.all([loadDisk(), loadFolderTree(), loadSystem()]);
   }
 }
 
-async function openProperties(kind, id) {
+function switchViewerTab(tab) {
+  document.querySelectorAll('[data-viewer-tab]').forEach((button) => {
+    button.classList.toggle('active', button.dataset.viewerTab === tab);
+  });
+  document.querySelectorAll('.viewer-tab').forEach((section) => {
+    section.classList.toggle('active', section.id === `viewer-tab-${tab}`);
+  });
+}
+
+function renderPropertyFields(item) {
+  const body = byId('properties-body');
+  body.replaceChildren();
+
+  const fields = [
+    ['Тип', item.kind === 'folder' ? 'Папка' : diskCategoryLabel(item)],
+    ['Размер', formatBytes(item.size_bytes)],
+    ['Путь', ['Диск Sayuri', ...(item.path || []).map((part) => part.name)].join(' / ')],
+    ['Создан', formatDate(item.created_at)],
+    ['Изменён', formatDate(item.updated_at)]
+  ];
+
+  if (item.kind === 'file') {
+    fields.push(
+      ['Формат', item.content_type || '—'],
+      ['SHA-256', item.sha256 || '—'],
+      ['Совпадений', String(item.duplicate_count || 0)]
+    );
+  } else {
+    fields.push(
+      ['Файлов внутри', String(item.direct_files || 0)],
+      ['Папок внутри', String(item.direct_folders || 0)]
+    );
+  }
+  if (item.trashed_at) fields.push(['В корзине с', formatDate(item.trashed_at)]);
+
+  for (const [labelText, valueText] of fields) {
+    const field = document.createElement('article');
+    field.className = 'property-card';
+    const label = document.createElement('span');
+    label.textContent = labelText;
+    const value = document.createElement('strong');
+    value.textContent = valueText;
+    if (labelText === 'SHA-256') value.className = 'property-hash';
+    field.append(label, value);
+    body.append(field);
+  }
+}
+
+function renderViewerActions(item) {
+  const actions = byId('properties-actions');
+  actions.replaceChildren();
+
+  if (item.trashed_at) {
+    actions.append(
+      createMenuButton('Восстановить', () =>
+        runDiskMutation('/api/disk/restore', {items: [{kind: item.kind, id: item.id}]}, 'Объект восстановлен.')
+      ),
+      createMenuButton('Удалить навсегда', () =>
+        permanentlyDelete([{kind: item.kind, id: item.id}], item.name), 'danger-action'
+      )
+    );
+    return;
+  }
+
+  if (item.kind === 'file') {
+    actions.append(createMenuButton('Скачать', () => {
+      window.location.href = `/api/disk/files/${encodeURIComponent(item.id)}/download`;
+    }));
+  }
+  actions.append(
+    createMenuButton('Переместить', () => openMoveModal([{kind: item.kind, id: item.id}])),
+    createMenuButton('В корзину', () => trashDiskItems([{kind: item.kind, id: item.id}], item.name), 'danger-action')
+  );
+}
+
+function renderPreview(preview) {
+  const stage = byId('file-preview-stage');
+  stage.replaceChildren();
+
+  if (preview.mode === 'pdf') {
+    const frame = document.createElement('iframe');
+    frame.className = 'preview-frame';
+    frame.src = preview.url;
+    frame.title = preview.name;
+    stage.append(frame);
+    return;
+  }
+
+  if (preview.mode === 'image') {
+    const image = document.createElement('img');
+    image.className = 'preview-image';
+    image.src = preview.url;
+    image.alt = preview.name;
+    stage.append(image);
+    return;
+  }
+
+  if (preview.mode === 'video') {
+    const video = document.createElement('video');
+    video.className = 'preview-media';
+    video.src = preview.url;
+    video.controls = true;
+    stage.append(video);
+    return;
+  }
+
+  if (preview.mode === 'audio') {
+    const audioWrap = document.createElement('div');
+    audioWrap.className = 'preview-audio';
+    const audio = document.createElement('audio');
+    audio.src = preview.url;
+    audio.controls = true;
+    audioWrap.append(audio);
+    stage.append(audioWrap);
+    return;
+  }
+
+  if (preview.mode === 'table') {
+    const tableWrap = document.createElement('div');
+    tableWrap.className = 'preview-table-wrap';
+    const table = document.createElement('table');
+    table.className = 'preview-table';
+    for (const row of preview.rows || []) {
+      const tr = document.createElement('tr');
+      for (const value of row) {
+        const td = document.createElement('td');
+        td.textContent = value;
+        tr.append(td);
+      }
+      table.append(tr);
+    }
+    if (!table.children.length) {
+      const empty = document.createElement('p');
+      empty.className = 'muted';
+      empty.textContent = 'В таблице не найдено отображаемых значений.';
+      stage.append(empty);
+      return;
+    }
+    tableWrap.append(table);
+    stage.append(tableWrap);
+    return;
+  }
+
+  if (['text', 'document', 'presentation', 'table-text'].includes(preview.mode)) {
+    const pre = document.createElement('pre');
+    pre.className = 'preview-text';
+    pre.textContent = preview.text || 'Нет текста для отображения.';
+    stage.append(pre);
+    if (preview.truncated) {
+      const note = document.createElement('div');
+      note.className = 'preview-note';
+      note.textContent = 'Показана только часть большого файла.';
+      stage.append(note);
+    }
+    return;
+  }
+
+  const unsupported = document.createElement('div');
+  unsupported.className = 'preview-unsupported';
+  const icon = document.createElement('span');
+  icon.textContent = '◇';
+  const title = document.createElement('strong');
+  title.textContent = 'Встроенный просмотр недоступен';
+  const text = document.createElement('p');
+  text.textContent = preview.message || 'Файл можно скачать и открыть внешним приложением.';
+  unsupported.append(icon, title, text);
+  stage.append(unsupported);
+}
+
+async function openViewer(kind, id, tab = 'preview') {
   try {
     const response = await fetch(`/api/disk/items/${encodeURIComponent(kind)}/${encodeURIComponent(id)}`, {cache: 'no-store'});
     const item = await response.json();
     if (!response.ok) throw new Error(item?.error?.message || `HTTP ${response.status}`);
+    item.kind = kind;
+    viewerItem = item;
 
-    byId('properties-title').textContent = item.name;
-    const body = byId('properties-body');
-    body.replaceChildren();
+    byId('file-viewer-title').textContent = item.name;
+    byId('file-viewer-title').title = item.name;
+    byId('file-viewer-kind').textContent = kind === 'folder' ? 'СВОЙСТВА ПАПКИ' : 'ПРОСМОТР ФАЙЛА';
+    byId('file-viewer-badge').textContent = kind === 'folder' ? 'ПАПКА' : diskTypeLabel(item);
+    byId('property-hero-icon').textContent = kind === 'folder' ? 'П' : diskTypeLabel(item);
+    byId('property-full-name').textContent = item.name;
+    byId('property-name-input').value = item.name;
+    byId('property-favorite-toggle').checked = Boolean(item.favorite);
 
-    const fields = [
-      ['Тип', kind === 'folder' ? 'Папка' : diskCategoryLabel({...item, kind})],
-      ['Размер', formatBytes(item.size_bytes)],
-      ['Путь', ['Диск Sayuri', ...(item.path || []).map((part) => part.name)].join(' / ')],
-      ['Создан', formatDate(item.created_at)],
-      ['Изменён', formatDate(item.updated_at)],
-      ['Избранное', item.favorite ? 'Да' : 'Нет']
-    ];
+    const downloadButton = byId('file-viewer-download');
+    downloadButton.classList.toggle('hidden', kind !== 'file');
+    downloadButton.onclick = () => {
+      window.location.href = `/api/disk/files/${encodeURIComponent(item.id)}/download`;
+    };
+
+    renderPropertyFields(item);
+    renderViewerActions(item);
+
+    const previewTab = document.querySelector('[data-viewer-tab="preview"]');
+    previewTab.classList.toggle('hidden', kind !== 'file');
+    if (kind === 'folder') tab = 'properties';
+
+    const modal = byId('file-viewer-modal');
+    modal.classList.remove('hidden');
+    document.body.classList.add('modal-open');
+    switchViewerTab(tab);
+
     if (kind === 'file') {
-      fields.push(
-        ['MIME-тип', item.content_type || '—'],
-        ['SHA-256', item.sha256 || '—'],
-        ['Совпадений по SHA-256', String(item.duplicate_count || 0)]
-      );
+      const stage = byId('file-preview-stage');
+      stage.innerHTML = '<p class="muted">Загрузка предпросмотра…</p>';
+      const previewResponse = await fetch(`/api/disk/files/${encodeURIComponent(id)}/preview`, {cache: 'no-store'});
+      const preview = await previewResponse.json();
+      if (!previewResponse.ok) throw new Error(preview?.error?.message || `HTTP ${previewResponse.status}`);
+      renderPreview(preview);
     } else {
-      fields.push(
-        ['Файлов внутри', String(item.direct_files || 0)],
-        ['Папок внутри', String(item.direct_folders || 0)]
-      );
+      byId('file-preview-stage').replaceChildren();
     }
-    if (item.trashed_at) fields.push(['В корзине с', formatDate(item.trashed_at)]);
-
-    for (const [labelText, valueText] of fields) {
-      const field = document.createElement('div');
-      field.className = 'property-field';
-      const label = document.createElement('span');
-      label.textContent = labelText;
-      const value = document.createElement('strong');
-      value.textContent = valueText;
-      if (labelText === 'SHA-256') value.className = 'property-hash';
-      field.append(label, value);
-      body.append(field);
-    }
-
-    const actions = document.createElement('div');
-    actions.className = 'properties-actions';
-    if (item.trashed_at) {
-      actions.append(
-        createMenuButton('Восстановить', () =>
-          runDiskMutation('/api/disk/restore', {items: [{kind, id}]}, 'Объект восстановлен.')
-        ),
-        createMenuButton('Удалить навсегда', () =>
-          permanentlyDelete([{kind, id}], item.name), 'danger-action'
-        )
-      );
-    } else {
-      if (kind === 'file') {
-        actions.append(createMenuButton('Скачать', () => {
-          window.location.href = `/api/disk/files/${encodeURIComponent(id)}/download`;
-        }));
-      }
-      actions.append(
-        createMenuButton(item.favorite ? 'Убрать из избранного' : 'В избранное', () =>
-          runDiskMutation('/api/disk/favorite', {items: [{kind, id}], favorite: !item.favorite}, 'Избранное обновлено.')
-        ),
-        createMenuButton('Переименовать', () => renameDiskItem({...item, kind})),
-        createMenuButton('Переместить', () => openMoveModal([{kind, id}])),
-        createMenuButton('В корзину', () => trashDiskItems([{kind, id}], item.name), 'danger-action')
-      );
-    }
-    body.append(actions);
-
-    const drawer = byId('disk-properties');
-    drawer.classList.add('open');
-    drawer.setAttribute('aria-hidden', 'false');
   } catch (error) {
     showDiskError(error);
   }
 }
 
-function closeProperties() {
-  const drawer = byId('disk-properties');
-  drawer.classList.remove('open');
-  drawer.setAttribute('aria-hidden', 'true');
+function closeViewer() {
+  byId('file-viewer-modal').classList.add('hidden');
+  document.body.classList.remove('modal-open');
+  viewerItem = null;
+}
+
+async function saveViewerName() {
+  if (!viewerItem) return;
+  const name = byId('property-name-input').value.trim();
+  if (!name || name === viewerItem.name) return;
+  try {
+    await postJson('/api/disk/rename', {
+      kind: viewerItem.kind,
+      id: viewerItem.id,
+      name
+    });
+    showDiskMessage('Название сохранено.');
+    await Promise.all([loadDisk(), loadFolderTree()]);
+    await openViewer(viewerItem.kind, viewerItem.id, 'properties');
+  } catch (error) {
+    showDiskError(error);
+  }
+}
+
+async function saveViewerFavorite() {
+  if (!viewerItem) return;
+  const favorite = byId('property-favorite-toggle').checked;
+  try {
+    await postJson('/api/disk/favorite', {
+      items: [{kind: viewerItem.kind, id: viewerItem.id}],
+      favorite
+    });
+    viewerItem.favorite = favorite;
+    showDiskMessage('Избранное обновлено.');
+    await loadDisk();
+  } catch (error) {
+    byId('property-favorite-toggle').checked = !favorite;
+    showDiskError(error);
+  }
 }
 
 async function openMoveModal(items) {
@@ -798,51 +1030,6 @@ async function confirmMove() {
   const items = moveItems.slice();
   closeMoveModal();
   await runDiskMutation('/api/disk/move', {items, destination_id: destinationId}, 'Объекты перемещены.');
-}
-
-async function loadDiskActions() {
-  const response = await fetch('/api/disk/actions?limit=12', {cache: 'no-store'});
-  const data = await response.json();
-  if (!response.ok) throw new Error(data?.error?.message || `HTTP ${response.status}`);
-
-  const labels = {
-    created: 'Создана папка',
-    uploaded: 'Загружен файл',
-    renamed: 'Переименовано',
-    moved: 'Перемещено',
-    favorite_on: 'Добавлено в избранное',
-    favorite_off: 'Убрано из избранного',
-    trashed: 'Перемещено в корзину',
-    restored: 'Восстановлено',
-    deleted: 'Удалено навсегда'
-  };
-
-  const container = byId('disk-actions-list');
-  container.replaceChildren();
-  if (!data.actions.length) {
-    const empty = document.createElement('p');
-    empty.className = 'muted';
-    empty.textContent = 'Действий пока нет.';
-    container.append(empty);
-    return;
-  }
-
-  for (const action of data.actions) {
-    const row = document.createElement('div');
-    row.className = 'disk-action-row';
-    const dot = document.createElement('span');
-    dot.className = 'disk-action-dot';
-    const body = document.createElement('div');
-    const title = document.createElement('strong');
-    title.textContent = labels[action.action] || action.action;
-    const copy = document.createElement('span');
-    copy.textContent = action.object_name;
-    body.append(title, copy);
-    const time = document.createElement('time');
-    time.textContent = formatDate(action.created_at);
-    row.append(dot, body, time);
-    container.append(row);
-  }
 }
 
 async function handleBulkAction(action) {
@@ -913,13 +1100,11 @@ async function loadSystem() {
   byId('project-version').textContent = data.project.version;
   byId('sidebar-version').textContent = `версия ${data.project.version}`;
   byId('runtime-version').textContent = `Python ${data.core.python}`;
-
   byId('home-system-status').textContent = data.status.toUpperCase();
   byId('home-agent-status').textContent = data.agent.status.toUpperCase();
   byId('home-agent-detail').textContent = data.agent.execution_enabled ? 'выполнение включено' : 'выполнение пока отключено';
   byId('home-disk-status').textContent = data.disk.status.toUpperCase();
   byId('home-disk-detail').textContent = `${data.disk.files} файлов · ${formatBytes(data.disk.bytes)}`;
-
   byId('core-state').textContent = data.core.status.toUpperCase();
   byId('core-detail').textContent = `версия ${data.core.version} · Python ${data.core.python}`;
   byId('db-state').textContent = data.database.status.toUpperCase();
@@ -928,12 +1113,10 @@ async function loadSystem() {
   byId('server-detail').textContent = `${data.server.host} · только локально`;
   byId('event-count').textContent = String(data.events.count);
   byId('event-errors').textContent = `ошибок: ${data.events.errors}`;
-
   byId('agent-message').textContent = data.agent.message;
   byId('agent-provider').textContent = `ИИ-провайдер: ${data.agent.provider_connected ? 'подключён' : 'не подключён'}`;
   byId('agent-memory').textContent = `Память: ${data.agent.memory_connected ? 'подключена' : 'не подключена'}`;
   byId('agent-tools').textContent = `Инструменты: ${data.agent.tools_connected ? 'подключены' : 'не подключены'}`;
-
   renderArchitecture(data.architecture);
   byId('updated-at').textContent = `Обновлено ${formatTime(data.time_utc)}`;
 }
@@ -962,10 +1145,12 @@ document.querySelectorAll('.disk-scope').forEach((button) => {
 document.querySelectorAll('[data-bulk-action]').forEach((button) => {
   button.addEventListener('click', () => handleBulkAction(button.dataset.bulkAction));
 });
+document.querySelectorAll('[data-viewer-tab]').forEach((button) => {
+  button.addEventListener('click', () => switchViewerTab(button.dataset.viewerTab));
+});
 
 byId('save-settings').addEventListener('click', saveSettings);
 byId('refresh-system').addEventListener('click', refreshSystem);
-
 byId('upload-button').addEventListener('click', () => byId('disk-file-input').click());
 byId('disk-file-input').addEventListener('change', (event) => uploadDiskFiles(event.target.files));
 byId('new-folder-button').addEventListener('click', () => {
@@ -978,6 +1163,7 @@ byId('cancel-folder-button').addEventListener('click', () => {
   byId('new-folder-name').value = '';
 });
 byId('new-folder-form').addEventListener('submit', createDiskFolder);
+byId('refresh-folder-tree').addEventListener('click', () => loadFolderTree().catch(showDiskError));
 
 byId('disk-search-input').addEventListener('input', () => {
   if (diskSearchTimer) window.clearTimeout(diskSearchTimer);
@@ -1008,11 +1194,12 @@ byId('disk-select-all').addEventListener('change', (event) => {
   updateBulkToolbar();
 });
 
-byId('properties-close').addEventListener('click', closeProperties);
+byId('file-viewer-close').addEventListener('click', closeViewer);
+byId('property-rename-save').addEventListener('click', saveViewerName);
+byId('property-favorite-toggle').addEventListener('change', saveViewerFavorite);
 byId('move-close').addEventListener('click', closeMoveModal);
 byId('move-cancel').addEventListener('click', closeMoveModal);
 byId('move-confirm').addEventListener('click', confirmMove);
-byId('refresh-disk-actions').addEventListener('click', () => loadDiskActions().catch(showDiskError));
 
 const dropZone = byId('disk-drop-zone');
 for (const eventName of ['dragenter', 'dragover']) {
@@ -1028,6 +1215,29 @@ for (const eventName of ['dragleave', 'drop']) {
   });
 }
 dropZone.addEventListener('drop', (event) => uploadDiskFiles(event.dataTransfer.files));
+
+document.addEventListener('click', (event) => {
+  if (!event.target.closest('#disk-context-menu') && !event.target.closest('.icon-action')) {
+    closeContextMenu();
+  }
+});
+window.addEventListener('resize', closeContextMenu);
+window.addEventListener('scroll', closeContextMenu, true);
+
+byId('file-viewer-modal').addEventListener('click', (event) => {
+  if (event.target === byId('file-viewer-modal')) closeViewer();
+});
+byId('move-modal').addEventListener('click', (event) => {
+  if (event.target === byId('move-modal')) closeMoveModal();
+});
+
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') {
+    closeContextMenu();
+    if (!byId('move-modal').classList.contains('hidden')) closeMoveModal();
+    if (!byId('file-viewer-modal').classList.contains('hidden')) closeViewer();
+  }
+});
 
 const initialHash = location.hash;
 const initialView = initialHash === '#disk'
