@@ -2,6 +2,22 @@
 
 ## Невыпущенные изменения
 
+### 0.1.42 — 2026-10-06 — Semantic Memory + Experience Learning
+
+- Добавлен локальный hybrid semantic поиск памяти `hybrid-semantic-v1`.
+- Поиск учитывает формы слов, смысловые concepts, character n-grams, importance и confidence.
+- Semantic retrieval подключён к контексту DeepSeek-V4-Flash без второй облачной модели.
+- Добавлена отдельная локальная память опыта `data/sayuri-experience.db`.
+- Sayuri учится на финальных исходах инструментов, review кандидатов памяти и явной оценке ответов.
+- После достаточного числа примеров опыт мягко калибрует confidence Memory Intelligence в пределах ±8 п.п.
+- Релевантный прошлый опыт делится на `helpful` и `avoid` и передаётся модели как недоверенный справочный контекст.
+- В чате добавлена явная оценка «Полезно / Не помогло».
+- В Личном кабинете добавлены Semantic Memory status, relevance поиска и статистика Experience Learning.
+- Добавлены API `/api/sayuri/experience` и `/api/sayuri/experience/feedback`.
+- Добавлены тесты semantic retrieval, feedback idempotency, relevant experience context, calibration и action learning.
+- Проект: `0.1.42`; Ядро: `0.1.34`; Agent Core: `0.6.0`; Web UI: `0.19.0`.
+
+
 ### 0.1.42 — 2026-10-05 — Semantic Memory + Experience Learning
 
 - Добавлен локальный `hybrid-semantic-v1` для смыслового поиска памяти без второй AI-модели.
