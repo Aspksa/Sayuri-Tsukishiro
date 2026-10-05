@@ -4280,3 +4280,93 @@ footer {
   }
 }
 
+/* ==========================================================================
+   SAYURI UI 0.17 — DNA Upload & Analysis Reliability
+   ========================================================================== */
+
+.dna-load-state {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 3px 10px;
+  align-items: center;
+  margin-top: 12px;
+  padding: 11px 12px;
+  border: 1px solid #dfe4ea;
+  border-radius: 12px;
+  background: #f8f9fb;
+}
+
+.dna-load-state strong {
+  font-size: 11.5px;
+}
+
+.dna-load-state > span {
+  grid-column: 1 / 2;
+  color: var(--ui-muted, #6f7b8c);
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+
+.dna-load-state > button {
+  grid-column: 2 / 3;
+  grid-row: 1 / 3;
+  align-self: center;
+}
+
+.dna-load-state.loading {
+  border-color: #d7dfec;
+  background: #f6f8fc;
+}
+
+.dna-load-state.loading strong {
+  color: #526b92;
+}
+
+.dna-load-state.ready {
+  border-color: #cbe5d5;
+  background: #f3fbf6;
+}
+
+.dna-load-state.ready strong {
+  color: #31714d;
+}
+
+.dna-load-state.error {
+  border-color: #eccaca;
+  background: #fff6f6;
+}
+
+.dna-load-state.error strong,
+.dna-load-state.error > span {
+  color: #974141;
+}
+
+.upload-item.dna-ready .upload-item-label span {
+  color: #31714d;
+}
+
+.upload-item.dna-error {
+  border-color: #e7c9c9;
+  background: #fffafa;
+}
+
+.upload-item.dna-error .upload-item-label span {
+  color: #9a4242;
+}
+
+@media (max-width: 640px) {
+  .dna-load-state {
+    grid-template-columns: 1fr;
+  }
+
+  .dna-load-state > span,
+  .dna-load-state > button {
+    grid-column: auto;
+    grid-row: auto;
+  }
+
+  .dna-load-state > button {
+    justify-self: start;
+  }
+}
+

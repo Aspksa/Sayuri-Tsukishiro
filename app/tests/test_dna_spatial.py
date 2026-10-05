@@ -224,6 +224,7 @@ class SpatialDNAServiceTests(unittest.TestCase):
                 image_module=FakeImageModule(),
                 ocr_runner=fake_ocr_runner,
             )
+            self.assertEqual(service.spatial_status()["status"], "готово")
 
             payload = b"%PDF-fake-scan"
             item = service.store_stream(

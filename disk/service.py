@@ -1630,7 +1630,7 @@ class DiskService:
             table_count += int((spatial.get("tables") or {}).get("count") or 0)
 
         return {
-            "status": "готово" if capabilities.get("pymupdf_available") else "ограничено",
+            "status": "готово" if capabilities.get("pdfium_available") else "ограничено",
             "engine_version": SPATIAL_ENGINE_VERSION,
             "capabilities": capabilities,
             "cached_documents": len(rows),
