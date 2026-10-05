@@ -303,7 +303,7 @@ class DiskServiceTests(unittest.TestCase):
             self.assertTrue(cached["cached"])
             self.assertEqual(cached["analyzed_at"], dna["analyzed_at"])
 
-            forced = service.document_dna(item["id"], force=True)
+            forced = service.document_dna(item["id"], force=True, bypass_cooldown=True)
             self.assertFalse(forced["cached"])
             self.assertEqual(forced["molecules"]["total"], dna["molecules"]["total"])
             self.assertEqual(service.health()["dna_analyzer_version"], "0.5.0")
