@@ -14,7 +14,7 @@ from agent.semantic_memory import SemanticMemoryIndex
 
 class MemoryV4Tests(unittest.TestCase):
     def _build(self, root: Path):
-        (root / "VERSION").write_text("0.1.44\n", encoding="utf-8")
+        (root / "VERSION").write_text("0.1.45\n", encoding="utf-8")
         memory = SayuriMemory(root / "data" / "sayuri-memory.db")
         memory.initialize()
         semantic = SemanticMemoryIndex(memory)
@@ -159,7 +159,7 @@ class MemoryV4Tests(unittest.TestCase):
             self.assertEqual(updated["goal_id"], goal["id"])
             self.assertIsNotNone(result["decision"])
             self.assertIn("архитектура должна оставаться управляемой", result["decision"]["rationale"])
-            self.assertEqual(result["decision"]["project_version"], "0.1.44")
+            self.assertEqual(result["decision"]["project_version"], "0.1.45")
             self.assertIn("goal", {node["type"] for node in graph["nodes"]})
             self.assertIn("task", {node["type"] for node in graph["nodes"]})
             self.assertIn("has_task", {edge["relation"] for edge in graph["edges"]})
@@ -192,7 +192,7 @@ class MemoryV4Tests(unittest.TestCase):
             self.assertEqual(len(v4.tasks()), 1)
             self.assertEqual(len(v4.goals()), 1)
 
-    def test_failure_memory_is_resolved_by_later_success_and_creates_causal_link(self):
+    def test_later_success_is_only_observation_until_user_confirms_resolution(self):
         with tempfile.TemporaryDirectory() as tmp:
             memory, semantic, v3, v4 = self._build(Path(tmp))
             failed = {
@@ -211,21 +211,158 @@ class MemoryV4Tests(unittest.TestCase):
             }
 
             failure = v4.record_action_outcome(failed)
-            resolved = v4.record_action_outcome(completed)
+            observed = v4.record_action_outcome(completed)
 
             self.assertEqual(failure["status"], "open")
-            self.assertEqual(resolved["status"], "resolved")
-            self.assertEqual(resolved["resolved_count"], 1)
+            self.assertEqual(observed["status"], "open")
+            self.assertEqual(observed["resolved_count"], 0)
             with v4._connect() as db:
                 causal = db.execute(
                     """
-                    SELECT relation FROM memory_causal_links
+                    SELECT relation, confidence, evidence_json
+                    FROM memory_causal_links
                     WHERE cause_id=? AND effect_id=?
                     """,
                     (failure["id"], "action-success"),
                 ).fetchone()
             self.assertIsNotNone(causal)
-            self.assertEqual(causal["relation"], "resolved_by")
+            self.assertEqual(causal["relation"], "followed_by_success")
+            self.assertLess(causal["confidence"], 0.5)
+            self.assertIn("correlation_only", causal["evidence_json"])
+
+            resolved = v4.resolve_failure(
+                failure["id"],
+                cause="Папка с таким именем уже существовала",
+                resolution="Проверять наличие папки перед созданием",
+                prevention="Сначала выполнять read-only проверку.",
+            )
+            self.assertEqual(resolved["status"], "resolved")
+            self.assertEqual(resolved["resolved_count"], 1)
+            self.assertIn("read-only", resolved["prevention"])
+
+    def test_local_browsing_recall_does_not_train_usage_or_create_recall_audit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            memory, semantic, v3, v4 = self._build(Path(tmp))
+            entry = memory.add(
+                scope="project",
+                kind="fact",
+                content="Редкий факт для локального поиска Memory 4.0",
+                importance=4,
+                confidence=0.9,
+                source="manual",
+            )
+            v4.ingest_memory(entry)
+            before = v4.state_for(entry["id"])
+            audit_before = len(v4.recall_audit())
+
+            result = v4.recall(
+                "редкий факт локального поиска",
+                scopes=("project",),
+                for_cloud=False,
+                record_usage=False,
+            )
+            after = v4.state_for(entry["id"])
+
+            self.assertTrue(result["project"])
+            self.assertIsNone(result["recall_id"])
+            self.assertEqual(before["recall_count"], after["recall_count"])
+            self.assertEqual(audit_before, len(v4.recall_audit()))
+            refreshed = memory.get(entry["id"])
+            self.assertEqual(refreshed["use_count"], 0)
+
+    def test_cloud_sanitizers_block_protected_v3_and_experience_context(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            memory, semantic, v3, v4 = self._build(Path(tmp))
+            secret = memory.add(
+                scope="personal",
+                kind="note",
+                content="API key: super-secret-123456789",
+                importance=5,
+                source="manual",
+            )
+            v4.ingest_memory(secret)
+
+            v3_payload = {
+                "working": [
+                    {"key": "safe", "value": {"message": "обычная задача"}},
+                    {"key": "secret", "value": {"message": "API key: super-secret-123456789"}},
+                ],
+                "knowledge": [
+                    {
+                        "statement": "Секретное знание",
+                        "source_memory_ids": [secret["id"]],
+                    }
+                ],
+                "episodes": [
+                    {"summary": "API key: super-secret-123456789", "details": None}
+                ],
+                "conflicts": [
+                    {
+                        "old_memory_id": secret["id"],
+                        "new_memory_id": secret["id"],
+                        "old_content": "API key: super-secret-123456789",
+                        "new_content": "другое значение",
+                    }
+                ],
+                "engine": "memory-v3",
+            }
+            safe_v3 = v4.sanitize_memory_v3_context(v3_payload)
+            safe_experience = v4.sanitize_experience_context({
+                "retrieval": "hybrid_semantic_v1",
+                "helpful": [
+                    {
+                        "strategy": "chat.deepseek_v4_flash",
+                        "category": "chat_feedback",
+                        "details": {"prompt": "API key: super-secret-123456789"},
+                    },
+                    {
+                        "strategy": "tool.disk",
+                        "category": "action",
+                        "details": {"note": "обычная полезная стратегия"},
+                    },
+                ],
+                "avoid": [],
+            })
+
+            self.assertEqual(len(safe_v3["working"]), 1)
+            self.assertEqual(safe_v3["knowledge"], [])
+            self.assertEqual(safe_v3["episodes"], [])
+            self.assertEqual(safe_v3["conflicts"], [])
+            self.assertEqual(safe_v3["open_conflicts"], 0)
+            self.assertEqual(len(safe_experience["helpful"]), 1)
+            self.assertEqual(safe_experience["helpful"][0]["strategy"], "tool.disk")
+
+    def test_cloud_context_filters_sensitive_goal_task_failure_and_question(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            memory, semantic, v3, v4 = self._build(Path(tmp))
+            v4.create_goal(
+                "API key: secret-goal-123456789",
+                scope="personal",
+                priority=5,
+            )
+            v4.create_task(
+                "Позвонить +7 999 123-45-67",
+                scope="personal",
+                priority=4,
+            )
+            v4.open_question(
+                "Пароль: question-secret-123456789?",
+                scope="personal",
+                reason="uncertainty",
+            )
+            v4.record_action_outcome({
+                "id": "failed-secret",
+                "tool": "disk.create_folder",
+                "status": "failed",
+                "error": "Bearer abcdefghijklmnopqrstuvwxyz",
+            })
+
+            context = v4.context("что важно сейчас")
+
+            self.assertEqual(context["goals"], [])
+            self.assertEqual(context["tasks"], [])
+            self.assertEqual(context["questions"], [])
+            self.assertEqual(context["failures_to_avoid"], [])
 
     def test_conflict_opens_question_and_resolution_closes_it(self):
         with tempfile.TemporaryDirectory() as tmp:
