@@ -113,6 +113,160 @@ class SayuriCore:
         )
         return result
 
+    def sayuri_memory_v4(self) -> dict[str, Any]:
+        return self.agent.memory_v4_payload()
+
+    def maintain_sayuri_memory_v4(self, *, create_snapshot: bool = False) -> dict[str, Any]:
+        result = self.agent.memory_v4_maintenance(create_snapshot=create_snapshot)
+        self.database.record_event(
+            "Sayuri",
+            "Memory 4.0 обслужена",
+            details={
+                "hot": result["stats"]["hot"],
+                "warm": result["stats"]["warm"],
+                "cold": result["stats"]["cold"],
+                "integrity": result["integrity"]["status"],
+                "snapshot": bool(result.get("snapshot")),
+            },
+        )
+        return result
+
+    def create_sayuri_memory_v4_goal(
+        self,
+        *,
+        title: str,
+        description: str = "",
+        scope: str = "project",
+        priority: int = 4,
+    ) -> dict[str, Any]:
+        try:
+            result = self.agent.create_memory_v4_goal(
+                title=title,
+                description=description,
+                scope=scope,
+                priority=priority,
+            )
+        except AgentRuntimeError as exc:
+            raise BadRequestError(str(exc)) from exc
+        self.database.record_event(
+            "Sayuri",
+            "Цель памяти создана",
+            details={"goal_id": result["goal"]["id"], "scope": result["goal"]["scope"]},
+        )
+        return result
+
+    def update_sayuri_memory_v4_goal(self, goal_id: str, *, status: str | None = None) -> dict[str, Any]:
+        try:
+            result = self.agent.update_memory_v4_goal(goal_id, status=status)
+        except AgentRuntimeError as exc:
+            raise BadRequestError(str(exc)) from exc
+        self.database.record_event(
+            "Sayuri",
+            "Цель памяти обновлена",
+            details={"goal_id": goal_id, "status": result["goal"]["status"]},
+        )
+        return result
+
+    def create_sayuri_memory_v4_task(
+        self,
+        *,
+        title: str,
+        scope: str = "project",
+        goal_id: str | None = None,
+        priority: int = 3,
+        next_action: str = "",
+        context: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        try:
+            result = self.agent.create_memory_v4_task(
+                title=title,
+                scope=scope,
+                goal_id=goal_id,
+                priority=priority,
+                next_action=next_action,
+                context=context,
+            )
+        except AgentRuntimeError as exc:
+            raise BadRequestError(str(exc)) from exc
+        self.database.record_event(
+            "Sayuri",
+            "Задача памяти создана",
+            details={"task_id": result["task"]["id"], "goal_id": result["task"].get("goal_id")},
+        )
+        return result
+
+    def update_sayuri_memory_v4_task(
+        self,
+        task_id: str,
+        *,
+        status: str | None = None,
+        next_action: str | None = None,
+        blocked_reason: str | None = None,
+    ) -> dict[str, Any]:
+        try:
+            result = self.agent.update_memory_v4_task(
+                task_id,
+                status=status,
+                next_action=next_action,
+                blocked_reason=blocked_reason,
+            )
+        except AgentRuntimeError as exc:
+            raise BadRequestError(str(exc)) from exc
+        self.database.record_event(
+            "Sayuri",
+            "Задача памяти обновлена",
+            details={"task_id": task_id, "status": result["task"]["status"]},
+        )
+        return result
+
+    def set_sayuri_memory_v4_source_trust(self, source_key: str, score: float | None) -> dict[str, Any]:
+        try:
+            result = self.agent.set_memory_v4_source_trust(source_key, score)
+        except AgentRuntimeError as exc:
+            raise BadRequestError(str(exc)) from exc
+        self.database.record_event(
+            "Sayuri",
+            "Доверие к источнику памяти изменено",
+            details={"source_key": source_key, "manual_override": score},
+        )
+        return result
+
+    def resolve_sayuri_memory_v4_question(self, question_id: str, resolution: str) -> dict[str, Any]:
+        try:
+            result = self.agent.resolve_memory_v4_question(question_id, resolution)
+        except AgentRuntimeError as exc:
+            raise BadRequestError(str(exc)) from exc
+        self.database.record_event(
+            "Sayuri",
+            "Вопрос памяти разрешён",
+            details={"question_id": question_id},
+        )
+        return result
+
+    def create_sayuri_memory_v4_snapshot(self, reason: str = "manual") -> dict[str, Any]:
+        result = self.agent.create_memory_v4_snapshot(reason)
+        self.database.record_event(
+            "Sayuri",
+            "Снимок памяти создан",
+            details={"snapshot_id": result["snapshot"]["id"], "reason": reason},
+        )
+        return result
+
+    def restore_sayuri_memory_v4_snapshot(self, snapshot_id: str, confirmation: str) -> dict[str, Any]:
+        try:
+            result = self.agent.restore_memory_v4_snapshot(snapshot_id, confirmation)
+        except AgentRuntimeError as exc:
+            raise BadRequestError(str(exc)) from exc
+        self.database.record_event(
+            "Sayuri",
+            "Снимок памяти восстановлен",
+            details={"snapshot_id": snapshot_id, "pre_restore_snapshot": result["pre_restore_snapshot"]["id"]},
+        )
+        return result
+
+    def check_sayuri_memory_v4_integrity(self) -> dict[str, Any]:
+        return self.agent.memory_v4_integrity()
+
     def sayuri_memory_candidates(self, *, status: str | None = None, limit: int = 100) -> dict[str, Any]:
         try:
             return self.agent.memory_candidates(status=status, limit=limit)
