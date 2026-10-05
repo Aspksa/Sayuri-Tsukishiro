@@ -2143,7 +2143,7 @@ class MemorySystemV4:
             meta = db.execute(
                 "SELECT value FROM memory_v4_meta WHERE key='bootstrap_version'"
             ).fetchone()
-        if meta and meta["value"] == "4.0":
+        if meta and meta["value"] == "4.1":
             return {
                 "entries": len(entries),
                 "ingested": 0,
@@ -2160,8 +2160,8 @@ class MemorySystemV4:
             db.execute(
                 """
                 INSERT INTO memory_v4_meta(key, value, updated_at)
-                VALUES('bootstrap_version', '4.0', ?)
-                ON CONFLICT(key) DO UPDATE SET value='4.0', updated_at=excluded.updated_at
+                VALUES('bootstrap_version', '4.1', ?)
+                ON CONFLICT(key) DO UPDATE SET value='4.1', updated_at=excluded.updated_at
                 """,
                 (now,),
             )
@@ -2171,10 +2171,25 @@ class MemorySystemV4:
             None,
             {"entries": len(entries), "ingested": ingested},
         )
+        states = self.refresh_memory_states()
+        verification = self.refresh_verification_questions()
+        completed = self._now()
+        with self._connect() as db:
+            db.execute(
+                """
+                INSERT INTO memory_v4_meta(key, value, updated_at)
+                VALUES('last_quality_maintenance', ?, ?)
+                ON CONFLICT(key) DO UPDATE SET
+                    value=excluded.value,
+                    updated_at=excluded.updated_at
+                """,
+                (completed, completed),
+            )
         return {
             "entries": len(entries),
             "ingested": ingested,
-            "states": self.refresh_memory_states(),
+            "states": states,
+            "verification": verification,
             "already_bootstrapped": False,
         }
 
@@ -2231,6 +2246,54 @@ class MemorySystemV4:
                 opened += 1
         return {"checked": checked, "opened": opened}
 
+
+    def maybe_maintain(self, *, interval_hours: int = 24) -> dict[str, Any]:
+        interval_hours = min(max(int(interval_hours), 1), 168)
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT value FROM memory_v4_meta WHERE key='last_quality_maintenance'"
+            ).fetchone()
+        last = self._parse_time(row["value"]) if row else None
+        now = self._now_dt()
+        if last and now - last < timedelta(hours=interval_hours):
+            return {
+                "ran": False,
+                "last_maintenance": last.isoformat(),
+                "next_after": (last + timedelta(hours=interval_hours)).isoformat(),
+            }
+
+        states = self.refresh_memory_states()
+        verification = self.refresh_verification_questions()
+        integrity = self.integrity_check(audit=False)
+        completed = self._now()
+        with self._connect() as db:
+            db.execute(
+                """
+                INSERT INTO memory_v4_meta(key, value, updated_at)
+                VALUES('last_quality_maintenance', ?, ?)
+                ON CONFLICT(key) DO UPDATE SET
+                    value=excluded.value,
+                    updated_at=excluded.updated_at
+                """,
+                (completed, completed),
+            )
+        self._audit(
+            "memory_quality_maintenance",
+            "system",
+            None,
+            {
+                "states": states,
+                "verification": verification,
+                "integrity": integrity["status"],
+            },
+        )
+        return {
+            "ran": True,
+            "last_maintenance": completed,
+            "states": states,
+            "verification": verification,
+            "integrity": integrity,
+        }
 
     def maintenance(self, *, create_snapshot: bool = False) -> dict[str, Any]:
         snapshot = self.create_snapshot("memory_v4_maintenance") if create_snapshot else None
