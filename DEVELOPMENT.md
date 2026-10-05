@@ -747,6 +747,8 @@ Threshold: `0.72` по `SemanticMemoryIndex.score()`.
 
 `SemanticMemoryIndex.search()` применяет retention multiplier `0.70 + retention*0.30`.
 
+Для large local memory semantic retrieval использует `scan_active(scope=..., limit<=5000)`, а не только первые 300 rows из пользовательского списка. Scope-фильтр применяется до scoring.
+
 ### Conflict resolver
 
 После принятия candidate с `relation=conflict` runtime регистрирует old/new memory pair.
@@ -757,6 +759,8 @@ Threshold: `0.72` по `SemanticMemoryIndex.score()`.
 - `keep_both`.
 
 Проигравшая memory переводится в `active=0`, то есть мягко архивируется. Связанные confirmed knowledge items получают `valid_to`.
+
+Перед показом конфликта обе memory гарантированно materialized в graph и получают edge `conflicts_with`. Архивированный graph node не удаляется: metadata обновляется до `active=false` с `archived_at`, чтобы граф сохранял temporal history.
 
 ### Automation
 
@@ -796,7 +800,7 @@ Graph extraction дополнительно создаёт company nodes для 
 
 ### Idempotency episodic
 
-`episodic_memory.fingerprint` имеет частичный UNIQUE index. Для chat feedback используется `chat_feedback:{response_id}`, для Safe Action — `action:{action_id}`, для review candidate — `memory_candidate:{candidate_id}`. Retry обновляет существующий эпизод вместо создания дубля.
+`episodic_memory.fingerprint` имеет частичный UNIQUE index. Для chat feedback используется `chat_feedback:{response_id}`, для Safe Action — `action:{action_id}`, для review candidate — `memory_candidate:{candidate_id}`. Retry обновляет существующий эпизод вместо создания дубля. Точный повтор без изменения payload не создаёт новый timeline event; изменившийся повтор фиксируется как `episode_updated`.
 
 ### Archive propagation
 
@@ -806,3 +810,5 @@ Graph extraction дополнительно создаёт company nodes для 
 - сохраняет timeline события.
 
 AI-context открытого конфликта содержит ограниченные old/new значения и отдельный точный `open_conflicts` count.
+
+Graph source-memory nodes всегда сохраняют реальный label исходной записи. Технические fallback-подписи вроде «Источник знания» не могут перезаписать существующий содержательный label.
