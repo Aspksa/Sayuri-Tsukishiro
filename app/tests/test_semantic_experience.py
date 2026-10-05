@@ -9,7 +9,7 @@ from unittest.mock import patch
 from agent.experience import ExperienceStore
 from agent.memory import SayuriMemory
 from agent.memory_intelligence import MemoryIntelligence
-from agent.runtime import CloudRuClient, SayuriAgent
+from agent.runtime import AgentRuntimeError, CloudRuClient, SayuriAgent
 from agent.semantic_memory import SemanticMemoryIndex
 
 
@@ -262,6 +262,38 @@ class ExperienceLearningTests(unittest.TestCase):
             )
             self.assertNotIn(secret_value, system_text)
             self.assertNotIn("Использовать сохранённый секрет", system_text)
+
+    def test_failed_cloud_call_does_not_commit_memory_recall_usage(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            agent = SayuriAgent(root)
+            entry = agent.memory.add(
+                scope="project",
+                kind="fact",
+                content="Тестовый архив договоров хранится в северной папке",
+                importance=4,
+                confidence=0.9,
+                source="manual",
+            )
+            agent.memory_v3.ingest_memory(entry)
+            agent.memory_v4.ingest_memory(entry)
+
+            def fail_chat(self, messages):
+                raise AgentRuntimeError("Имитированная ошибка Cloud.ru")
+
+            with patch.dict(os.environ, {"SAYURI_CLOUDRU_API_KEY": "test-key-1234567890"}):
+                with patch.object(CloudRuClient, "chat", fail_chat):
+                    with self.assertRaises(AgentRuntimeError):
+                        agent.chat(
+                            message="Где хранится тестовый архив договоров?",
+                            context={"view": "sayuri"},
+                        )
+
+            state = agent.memory_v4.state_for(entry["id"])
+            stored = agent.memory.get(entry["id"])
+            self.assertEqual(state["recall_count"], 0)
+            self.assertEqual(stored["use_count"], 0)
+            self.assertEqual(agent.memory_v4.recall_audit(), [])
 
     def test_strategy_adjustment_requires_evidence_and_is_bounded(self):
         with tempfile.TemporaryDirectory() as tmp:
