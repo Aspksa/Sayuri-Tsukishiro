@@ -113,3 +113,76 @@ python scripts/versioning.py check
 ```
 
 Windows launcher отдельно проверяется GitHub Actions.
+
+
+## Диск Sayuri 0.6 — DNA Evolution Core
+
+### Версии
+
+- схема Диска: `6`;
+- Evolution Core: `0.6.0`;
+- базовый Evidence Engine остаётся `0.5.0`;
+- Advanced DNA остаётся `0.5.0`.
+
+### Новый модуль
+
+`disk/dna_evolution.py`
+
+Контуры:
+- `self_review`;
+- `adaptive_profile`;
+- `regression_guard`;
+- `rule_lifecycle`;
+- `hypotheses`;
+- `active_learning`;
+- `experience`.
+
+### Новые таблицы
+
+```text
+disk_dna_entities
+  entity_id
+  category
+  canonical_id
+  display_name
+  first_seen_at
+  last_seen_at
+  document_count
+  confidence
+  attributes_json
+
+disk_dna_entity_mentions
+  file_id
+  entity_id
+  fact_ids_json
+  evidence_json
+  confidence
+  updated_at
+```
+
+### Reanalysis cooldown
+
+`REANALYZE_COOLDOWN_SECONDS = 10`.
+
+`document_dna(..., force=True)` возвращает кэшированный результат, если предыдущий анализ того же SHA/анализатора был менее 10 секунд назад.
+
+`document_dna(..., force=True, bypass_cooldown=True)` всегда выполняет новый анализ.
+
+HTTP:
+- обычный `POST /dna/analyze` — защищён от дублей;
+- `POST /dna/analyze` с `{"deep": true}` — обход cooldown.
+
+### Evolution API
+
+- `GET /api/disk/dna/evolution`
+- `GET /api/disk/dna/reanalysis-plan?limit=N`
+
+Оба API диагностические и не добавлены в пользовательское меню.
+
+### Границы
+
+- Evolution Core не является самостоятельной LLM.
+- Он не создаёт причинность из корреляции.
+- Он не запускает автоматический массовый переанализ.
+- Он не меняет пользовательские документы.
+- OCR и реальный AI остаются отдельными слоями.

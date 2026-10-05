@@ -137,7 +137,19 @@ class DiskApiTests(unittest.TestCase):
         )
         with urllib.request.urlopen(reanalyze_request, timeout=3) as response:
             dna = json.loads(response.read().decode("utf-8"))
+            self.assertTrue(dna["cached"])
+            self.assertTrue(dna["reanalysis_deduplicated"])
+
+        deep_reanalyze_request = urllib.request.Request(
+            self.base + f"/api/disk/files/{uploaded['id']}/dna/analyze",
+            data=json.dumps({"deep": True}).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(deep_reanalyze_request, timeout=3) as response:
+            dna = json.loads(response.read().decode("utf-8"))
             self.assertFalse(dna["cached"])
+            self.assertFalse(dna["reanalysis_deduplicated"])
 
         with urllib.request.urlopen(
             self.base + f"/api/disk/files/{uploaded['id']}/view",
@@ -259,6 +271,66 @@ class DiskApiTests(unittest.TestCase):
         self.assertEqual(package["analyzed"], 1)
         self.assertEqual(package["pending"], [])
         self.assertEqual(package["documents"][0]["file_id"], uploaded["id"])
+
+
+    def test_dna_06_evolution_status_reanalysis_plan_and_cooldown_api(self):
+        payload = (
+            "ДОГОВОР № 906\n"
+            "Дата: 05.10.2026\n"
+            "ООО Ромашка ИНН 1234567890\n"
+            "Итого 90 000 руб.\n"
+        ).encode("utf-8")
+        upload_request = urllib.request.Request(
+            self.base + "/api/disk/upload",
+            data=payload,
+            headers={
+                "Content-Type": "text/plain",
+                "X-Sayuri-Filename": quote("договор 906.txt"),
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(upload_request, timeout=3) as response:
+            uploaded = json.loads(response.read().decode("utf-8"))["file"]
+
+        with urllib.request.urlopen(
+            self.base + f"/api/disk/files/{uploaded['id']}/dna",
+            timeout=3,
+        ) as response:
+            dna = json.loads(response.read().decode("utf-8"))
+        self.assertEqual(dna["evolution"]["engine_version"], "0.6.0")
+        self.assertIn("self_review", dna["evolution"])
+        self.assertIn("adaptive_profile", dna["evolution"])
+        self.assertIn("regression_guard", dna["evolution"])
+        self.assertIn("active_learning", dna["evolution"])
+
+        with urllib.request.urlopen(
+            self.base + "/api/disk/dna/evolution",
+            timeout=3,
+        ) as response:
+            status = json.loads(response.read().decode("utf-8"))
+        self.assertEqual(status["engine_version"], "0.6.0")
+        self.assertGreaterEqual(status["documents"], 1)
+
+        with urllib.request.urlopen(
+            self.base + "/api/disk/dna/reanalysis-plan?limit=20",
+            timeout=3,
+        ) as response:
+            plan = json.loads(response.read().decode("utf-8"))
+        self.assertEqual(plan["engine_version"], "0.6.0")
+        self.assertEqual(plan["count"], 0)
+
+        ordinary = self.post_json(
+            f"/api/disk/files/{uploaded['id']}/dna/analyze",
+            {},
+        )
+        self.assertTrue(ordinary["reanalysis_deduplicated"])
+
+        deep = self.post_json(
+            f"/api/disk/files/{uploaded['id']}/dna/analyze",
+            {"deep": True},
+        )
+        self.assertFalse(deep["reanalysis_deduplicated"])
+        self.assertEqual(deep["version_delta"]["reason"], "deep_reanalysis")
 
 
 if __name__ == "__main__":

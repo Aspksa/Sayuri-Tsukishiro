@@ -190,7 +190,7 @@ class DiskServiceTests(unittest.TestCase):
             listing = service.list_entries("f1")
             self.assertEqual(listing["files"][0]["name"], "старый.txt")
             self.assertFalse(listing["files"][0]["favorite"])
-            self.assertEqual(service.health()["schema_version"], 5)
+            self.assertEqual(service.health()["schema_version"], 6)
 
     def test_office_and_text_previews(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -307,6 +307,7 @@ class DiskServiceTests(unittest.TestCase):
             self.assertFalse(forced["cached"])
             self.assertEqual(forced["molecules"]["total"], dna["molecules"]["total"])
             self.assertEqual(service.health()["dna_analyzer_version"], "0.5.0")
+            self.assertEqual(service.health()["dna_evolution_version"], "0.6.0")
 
 
     def test_dna_04_normalization_profile_fingerprint_graph_and_feedback(self):

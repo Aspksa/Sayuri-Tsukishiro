@@ -262,6 +262,17 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
                     )
                 )
                 return
+            if parsed.path == "/api/disk/dna/evolution":
+                self._json(self.server.core.disk.evolution_status())
+                return
+            if parsed.path == "/api/disk/dna/reanalysis-plan":
+                raw_limit = query.get("limit", ["100"])[0]
+                try:
+                    limit = int(raw_limit)
+                except ValueError:
+                    limit = 100
+                self._json(self.server.core.disk.reanalysis_plan(limit))
+                return
             if parsed.path.startswith("/api/disk/items/"):
                 parts = parsed.path.strip("/").split("/")
                 if len(parts) != 5 or parts[:3] != ["api", "disk", "items"]:
@@ -398,8 +409,13 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
                 file_id = parsed.path[len("/api/disk/files/"):-len("/dna/analyze")].strip("/")
                 if not file_id:
                     raise FileNotFoundError("Файл не найден.")
-                self._read_json()
-                dna = self.server.core.disk.document_dna(file_id, force=True)
+                payload = self._read_json()
+                deep = payload.get("deep") is True
+                dna = self.server.core.disk.document_dna(
+                    file_id,
+                    force=True,
+                    bypass_cooldown=deep,
+                )
                 self.server.core.database.record_event(
                     "ДНК документа",
                     "Документ переизучен",

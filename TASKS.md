@@ -43,7 +43,26 @@
   - package DNA для папки.
 - Версии после CI-исправления: проект `0.1.15`, ядро `0.1.11`, Диск Sayuri `0.5.1`, веб `0.3.0`.
 
-## DISK-006 — OCR и Spatial Evidence 2.0
+## DISK-006 — DNA Evolution Core
+- Статус: `done` после успешного CI.
+- Источник: прямой запрос пользователя на «супер мощное эволюционное профессиональное обновление мозгов ДНК».
+- UI: без новых пунктов меню и без новых постоянных визуальных блоков.
+- Реализовано:
+  - Self Review;
+  - Regression Guard;
+  - Adaptive Profiles;
+  - Rule Lifecycle;
+  - Hypothesis Lab;
+  - Active Learning queue;
+  - Experience Snapshot;
+  - глобальный реестр сущностей;
+  - reanalysis planner;
+  - evolution status API;
+  - защита от повторного переизучения;
+  - deep reanalysis override.
+- Версии: проект `0.1.16`, ядро `0.1.12`, Диск Sayuri `0.6.0`, веб `0.3.0`.
+
+## DISK-007 — OCR и Spatial Evidence 2.0
 - Статус: `proposed`.
 - Цель: OCR сканов/PDF, страница + реальные координаты блоков/таблиц/подписей и качество OCR.
 

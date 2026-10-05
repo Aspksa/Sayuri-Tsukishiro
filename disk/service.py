@@ -17,13 +17,15 @@ import uuid
 
 from .dna import DNA_ANALYZER_VERSION, DocumentDNAAnalyzer
 from .dna_advanced import ADVANCED_DNA_VERSION, AdvancedDNAEngine
+from .dna_evolution import EVOLUTION_ENGINE_VERSION, DNAEvolutionEngine
 
 
-DISK_SCHEMA_VERSION = 5
+DISK_SCHEMA_VERSION = 6
 CHUNK_SIZE = 1024 * 1024
 MAX_FILE_SIZE = 1024 * 1024 * 1024  # 1 ГБ
 MAX_PREVIEW_XML_BYTES = 16 * 1024 * 1024
 DEFAULT_RECENT_LIMIT = 30
+REANALYZE_COOLDOWN_SECONDS = 10
 
 
 class DiskService:
@@ -34,6 +36,7 @@ class DiskService:
         self.temp_dir = storage_root / "temp"
         self.dna_analyzer = DocumentDNAAnalyzer()
         self.advanced_dna = AdvancedDNAEngine()
+        self.evolution_dna = DNAEvolutionEngine()
 
     def _connect(self) -> sqlite3.Connection:
         db = sqlite3.connect(self.database_path, timeout=5.0)
@@ -261,6 +264,41 @@ class DiskService:
                     updated_at TEXT NOT NULL,
                     PRIMARY KEY(fact_type, original_canonical, corrected_json)
                 )
+                """
+            )
+            db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS disk_dna_entities (
+                    entity_id TEXT PRIMARY KEY,
+                    category TEXT NOT NULL,
+                    canonical_id TEXT NOT NULL,
+                    display_name TEXT NOT NULL,
+                    first_seen_at TEXT NOT NULL,
+                    last_seen_at TEXT NOT NULL,
+                    document_count INTEGER NOT NULL DEFAULT 0,
+                    confidence REAL NOT NULL DEFAULT 0.0,
+                    attributes_json TEXT NOT NULL DEFAULT '{}',
+                    UNIQUE(category, canonical_id)
+                )
+                """
+            )
+            db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS disk_dna_entity_mentions (
+                    file_id TEXT NOT NULL REFERENCES disk_files(id) ON DELETE CASCADE,
+                    entity_id TEXT NOT NULL REFERENCES disk_dna_entities(entity_id) ON DELETE CASCADE,
+                    fact_ids_json TEXT NOT NULL DEFAULT '[]',
+                    evidence_json TEXT NOT NULL DEFAULT '[]',
+                    confidence REAL NOT NULL DEFAULT 0.0,
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY(file_id, entity_id)
+                )
+                """
+            )
+            db.execute(
+                """
+                CREATE INDEX IF NOT EXISTS ix_disk_dna_entity_mentions_entity
+                ON disk_dna_entity_mentions(entity_id, file_id)
                 """
             )
             db.execute(
@@ -2047,6 +2085,360 @@ class DiskService:
         }
 
     @staticmethod
+    def _all_correction_rules(db: sqlite3.Connection) -> list[dict[str, Any]]:
+        rows = db.execute(
+            """
+            SELECT fact_type, original_canonical, corrected_json, support_count
+            FROM disk_dna_correction_rules
+            ORDER BY fact_type, original_canonical, support_count DESC
+            """
+        ).fetchall()
+        result = []
+        for row in rows:
+            try:
+                corrected = json.loads(row["corrected_json"])
+            except json.JSONDecodeError:
+                continue
+            result.append(
+                {
+                    "fact_type": row["fact_type"],
+                    "original_canonical": row["original_canonical"],
+                    "corrected": corrected,
+                    "support_count": int(row["support_count"]),
+                }
+            )
+        return result
+
+    @staticmethod
+    def _load_dna_corpus(
+        db: sqlite3.Connection,
+        *,
+        exclude_file_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        if exclude_file_id:
+            rows = db.execute(
+                """
+                SELECT d.dna_json
+                FROM disk_dna d
+                JOIN disk_files f ON f.id = d.file_id
+                WHERE f.trashed_at IS NULL AND d.file_id <> ?
+                """,
+                (exclude_file_id,),
+            ).fetchall()
+        else:
+            rows = db.execute(
+                """
+                SELECT d.dna_json
+                FROM disk_dna d
+                JOIN disk_files f ON f.id = d.file_id
+                WHERE f.trashed_at IS NULL
+                """
+            ).fetchall()
+        corpus = []
+        for row in rows:
+            try:
+                corpus.append(json.loads(row["dna_json"]))
+            except (TypeError, json.JSONDecodeError):
+                continue
+        return corpus
+
+    @staticmethod
+    def _previous_history_dna(
+        db: sqlite3.Connection,
+        file_id: str,
+    ) -> dict[str, Any] | None:
+        row = db.execute(
+            """
+            SELECT dna_json
+            FROM disk_dna_history
+            WHERE file_id = ?
+            ORDER BY version_no DESC
+            LIMIT 1 OFFSET 1
+            """,
+            (file_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        try:
+            return json.loads(row["dna_json"])
+        except json.JSONDecodeError:
+            return None
+
+    def _sync_global_entities(
+        self,
+        db: sqlite3.Connection,
+        file_id: str,
+        dna: dict[str, Any],
+    ) -> None:
+        old_rows = db.execute(
+            "SELECT entity_id FROM disk_dna_entity_mentions WHERE file_id = ?",
+            (file_id,),
+        ).fetchall()
+        affected = {row["entity_id"] for row in old_rows}
+        db.execute(
+            "DELETE FROM disk_dna_entity_mentions WHERE file_id = ?",
+            (file_id,),
+        )
+
+        facts = {
+            str(fact.get("id")): fact
+            for fact in dna.get("molecules", {}).get("facts", [])
+            if fact.get("id")
+        }
+        global_refs = []
+        now = self._now()
+
+        for cluster in dna.get("entity_resolution", {}).get("clusters", []):
+            category = str(cluster.get("category") or "Факт")
+            canonical_id = str(cluster.get("canonical_id") or "").strip()
+            if not canonical_id:
+                continue
+            entity_id = "global-" + hashlib.sha1(
+                f"{category}|{canonical_id}".encode("utf-8")
+            ).hexdigest()[:20]
+            affected.add(entity_id)
+            values = [str(value) for value in (cluster.get("values") or []) if value]
+            display_name = values[0] if values else canonical_id
+            fact_ids = [
+                str(value)
+                for value in (cluster.get("evidence_fact_ids") or [])
+                if value
+            ]
+            evidence = [
+                facts[fact_id].get("source")
+                for fact_id in fact_ids
+                if fact_id in facts
+            ]
+            confidences = [
+                float(facts[fact_id].get("calibrated_confidence", facts[fact_id].get("confidence") or 0))
+                for fact_id in fact_ids
+                if fact_id in facts
+            ]
+            confidence = max(confidences, default=0.0)
+            attributes = {
+                "values": sorted(set(values)),
+                "resolution": cluster.get("resolution"),
+            }
+
+            db.execute(
+                """
+                INSERT INTO disk_dna_entities(
+                    entity_id, category, canonical_id, display_name,
+                    first_seen_at, last_seen_at, document_count,
+                    confidence, attributes_json
+                ) VALUES(?, ?, ?, ?, ?, ?, 0, ?, ?)
+                ON CONFLICT(entity_id) DO UPDATE SET
+                    display_name = excluded.display_name,
+                    last_seen_at = excluded.last_seen_at,
+                    confidence = MAX(disk_dna_entities.confidence, excluded.confidence),
+                    attributes_json = excluded.attributes_json
+                """,
+                (
+                    entity_id,
+                    category,
+                    canonical_id,
+                    display_name,
+                    now,
+                    now,
+                    confidence,
+                    json.dumps(attributes, ensure_ascii=False),
+                ),
+            )
+            db.execute(
+                """
+                INSERT INTO disk_dna_entity_mentions(
+                    file_id, entity_id, fact_ids_json, evidence_json,
+                    confidence, updated_at
+                ) VALUES(?, ?, ?, ?, ?, ?)
+                ON CONFLICT(file_id, entity_id) DO UPDATE SET
+                    fact_ids_json = excluded.fact_ids_json,
+                    evidence_json = excluded.evidence_json,
+                    confidence = excluded.confidence,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    file_id,
+                    entity_id,
+                    json.dumps(fact_ids, ensure_ascii=False),
+                    json.dumps(evidence, ensure_ascii=False),
+                    confidence,
+                    now,
+                ),
+            )
+            cluster["global_entity_id"] = entity_id
+            global_refs.append(
+                {
+                    "entity_id": entity_id,
+                    "category": category,
+                    "canonical_id": canonical_id,
+                    "display_name": display_name,
+                    "confidence": round(confidence, 3),
+                }
+            )
+
+        for entity_id in affected:
+            row = db.execute(
+                """
+                SELECT COUNT(*) AS document_count, MAX(updated_at) AS last_seen_at
+                FROM disk_dna_entity_mentions
+                WHERE entity_id = ?
+                """,
+                (entity_id,),
+            ).fetchone()
+            count = int(row["document_count"] if row else 0)
+            if count <= 0:
+                db.execute(
+                    "DELETE FROM disk_dna_entities WHERE entity_id = ?",
+                    (entity_id,),
+                )
+            else:
+                db.execute(
+                    """
+                    UPDATE disk_dna_entities
+                    SET document_count = ?, last_seen_at = COALESCE(?, last_seen_at)
+                    WHERE entity_id = ?
+                    """,
+                    (count, row["last_seen_at"], entity_id),
+                )
+
+        dna["global_entities"] = {
+            "items": global_refs,
+            "count": len(global_refs),
+            "registry": "disk_dna_entities",
+        }
+
+    def _enrich_evolution(
+        self,
+        db: sqlite3.Connection,
+        file_id: str,
+        dna: dict[str, Any],
+        *,
+        previous: dict[str, Any] | None,
+    ) -> None:
+        corpus = self._load_dna_corpus(db, exclude_file_id=file_id)
+        feedback_metrics = self._feedback_calibration(db)
+        correction_rules = self._all_correction_rules(db)
+        self.evolution_dna.enrich(
+            dna,
+            previous=previous,
+            corpus=corpus,
+            correction_rules=correction_rules,
+            feedback_metrics=feedback_metrics,
+        )
+        self._sync_global_entities(db, file_id, dna)
+
+    def evolution_status(self) -> dict[str, Any]:
+        with self._session() as db:
+            corpus = self._load_dna_corpus(db)
+            correction_rules = self._all_correction_rules(db)
+            feedback = self._feedback_calibration(db)
+            entity_count = int(
+                db.execute("SELECT COUNT(*) AS n FROM disk_dna_entities").fetchone()["n"]
+            )
+            mention_count = int(
+                db.execute("SELECT COUNT(*) AS n FROM disk_dna_entity_mentions").fetchone()["n"]
+            )
+            feedback_count = int(
+                db.execute("SELECT COUNT(*) AS n FROM disk_dna_feedback").fetchone()["n"]
+            )
+
+        current = 0
+        self_review_failed = 0
+        regression_blocked = 0
+        maturity = []
+        for dna in corpus:
+            evolution = dna.get("evolution") or {}
+            if evolution.get("engine_version") == EVOLUTION_ENGINE_VERSION:
+                current += 1
+            if evolution.get("self_review", {}).get("passed") is False:
+                self_review_failed += 1
+            if evolution.get("regression_guard", {}).get("status") == "blocked":
+                regression_blocked += 1
+            score = evolution.get("experience", {}).get("maturity_score")
+            if isinstance(score, (int, float)):
+                maturity.append(float(score))
+
+        lifecycle = self.evolution_dna._rule_lifecycle(correction_rules)
+        return {
+            "status": "готово",
+            "engine_version": EVOLUTION_ENGINE_VERSION,
+            "documents": len(corpus),
+            "documents_current": current,
+            "self_review_failed": self_review_failed,
+            "regression_blocked": regression_blocked,
+            "global_entities": entity_count,
+            "entity_mentions": mention_count,
+            "feedback_events": feedback_count,
+            "feedback_types": feedback,
+            "rule_lifecycle": lifecycle.get("counts", {}),
+            "average_maturity_score": round(sum(maturity) / len(maturity), 2) if maturity else 0.0,
+            "principle": "Эволюция допускается только через проверяемый опыт и не превращает гипотезы в факты.",
+        }
+
+    def reanalysis_plan(self, limit: int = 100) -> dict[str, Any]:
+        safe_limit = min(max(int(limit), 1), 500)
+        with self._session() as db:
+            rows = db.execute(
+                """
+                SELECT d.file_id, d.analyzer_version, d.dna_json, f.name
+                FROM disk_dna d
+                JOIN disk_files f ON f.id = d.file_id
+                WHERE f.trashed_at IS NULL
+                ORDER BY d.analyzed_at ASC
+                """
+            ).fetchall()
+
+        items = []
+        for row in rows:
+            try:
+                dna = json.loads(row["dna_json"])
+            except json.JSONDecodeError:
+                items.append({
+                    "file_id": row["file_id"],
+                    "name": row["name"],
+                    "priority": 100,
+                    "reasons": ["invalid_dna_json"],
+                })
+                continue
+
+            reasons = []
+            priority = 0
+            if row["analyzer_version"] != DNA_ANALYZER_VERSION:
+                reasons.append("analyzer_version")
+                priority += 60
+            if dna.get("advanced_engine_version") != ADVANCED_DNA_VERSION:
+                reasons.append("advanced_engine_version")
+                priority += 40
+            if dna.get("evolution", {}).get("engine_version") != EVOLUTION_ENGINE_VERSION:
+                reasons.append("evolution_engine_version")
+                priority += 35
+            if dna.get("evolution", {}).get("self_review", {}).get("passed") is False:
+                reasons.append("self_review_failed")
+                priority += 70
+            if dna.get("evolution", {}).get("regression_guard", {}).get("status") == "blocked":
+                reasons.append("regression_blocked")
+                priority += 90
+            if not dna.get("integrity", {}).get("matches", True):
+                reasons.append("integrity_failed")
+                priority += 100
+
+            if reasons:
+                items.append({
+                    "file_id": row["file_id"],
+                    "name": row["name"],
+                    "priority": priority,
+                    "reasons": reasons,
+                })
+
+        items.sort(key=lambda item: (-item["priority"], item["name"].casefold()))
+        return {
+            "engine_version": EVOLUTION_ENGINE_VERSION,
+            "count": len(items),
+            "items": items[:safe_limit],
+            "policy": "План только рекомендует переанализ; сам массовый переанализ автоматически не запускается.",
+        }
+
+    @staticmethod
     def _dna_fact_values(
         dna: dict[str, Any],
         fact_type: str,
@@ -2574,75 +2966,99 @@ class DiskService:
             "ledger_sequence": ledger["sequence_no"],
         }
 
-    def document_dna(self, file_id: str, *, force: bool = False) -> dict[str, Any]:
+    def document_dna(
+        self,
+        file_id: str,
+        *,
+        force: bool = False,
+        bypass_cooldown: bool = False,
+    ) -> dict[str, Any]:
         item = self.get_file(file_id)
         properties = self.properties("file", file_id)
         source_updated_at = item.get("updated_at") or item.get("created_at") or ""
 
-        if not force:
-            with self._session() as db:
-                row = db.execute(
-                    """
-                    SELECT sha256, source_updated_at, analyzer_version, analyzed_at, dna_json
-                    FROM disk_dna
-                    WHERE file_id = ?
-                    """,
-                    (file_id,),
-                ).fetchone()
-                if (
-                    row is not None
-                    and row["sha256"] == item["sha256"]
-                    and row["analyzer_version"] == DNA_ANALYZER_VERSION
-                ):
-                    cached = json.loads(row["dna_json"])
-                    self._refresh_dna_metadata(cached, item, properties)
-                    self._apply_dna_feedback(db, file_id, cached)
-                    self._enrich_cross_document(db, file_id, cached)
-                    self._enrich_corpus_intelligence(db, file_id, cached)
-                    cached["analyzed_at"] = row["analyzed_at"]
-                    cached["cached"] = True
-                    cached["content_reused"] = row["source_updated_at"] != source_updated_at
-                    ledger_row = db.execute(
-                        """
-                        SELECT sequence_no, chain_hash
-                        FROM disk_dna_ledger
-                        WHERE file_id = ?
-                        ORDER BY sequence_no DESC
-                        LIMIT 1
-                        """,
-                        (file_id,),
-                    ).fetchone()
-                    cached["evidence_ledger"] = {
-                        "sequence_no": int(ledger_row["sequence_no"]) if ledger_row else 0,
-                        "chain_head": ledger_row["chain_hash"] if ledger_row else None,
-                    }
-                    if row["source_updated_at"] != source_updated_at:
-                        db.execute(
-                            """
-                            UPDATE disk_dna
-                            SET source_updated_at = ?, dna_json = ?
-                            WHERE file_id = ?
-                            """,
-                            (source_updated_at, json.dumps(cached, ensure_ascii=False), file_id),
-                        )
-                    return cached
-
         with self._session() as db:
-            previous_row = db.execute(
+            current_row = db.execute(
                 """
-                SELECT sha256, analyzer_version, analyzed_at, dna_json
+                SELECT sha256, source_updated_at, analyzer_version, analyzed_at, dna_json
                 FROM disk_dna
                 WHERE file_id = ?
                 """,
                 (file_id,),
             ).fetchone()
+
+            same_analysis = (
+                current_row is not None
+                and current_row["sha256"] == item["sha256"]
+                and current_row["analyzer_version"] == DNA_ANALYZER_VERSION
+            )
+            cooldown_hit = False
+            if force and same_analysis and not bypass_cooldown:
+                try:
+                    last_analyzed = datetime.fromisoformat(current_row["analyzed_at"])
+                    now = datetime.now(timezone.utc)
+                    if last_analyzed.tzinfo is None:
+                        last_analyzed = last_analyzed.replace(tzinfo=timezone.utc)
+                    cooldown_hit = (
+                        0 <= (now - last_analyzed).total_seconds()
+                        < REANALYZE_COOLDOWN_SECONDS
+                    )
+                except (TypeError, ValueError):
+                    cooldown_hit = False
+
+            if same_analysis and (not force or cooldown_hit):
+                cached = json.loads(current_row["dna_json"])
+                self._refresh_dna_metadata(cached, item, properties)
+                self._apply_dna_feedback(db, file_id, cached)
+                self._enrich_cross_document(db, file_id, cached)
+                self._enrich_corpus_intelligence(db, file_id, cached)
+                previous_history = self._previous_history_dna(db, file_id)
+                self._enrich_evolution(
+                    db,
+                    file_id,
+                    cached,
+                    previous=previous_history,
+                )
+                cached["analyzed_at"] = current_row["analyzed_at"]
+                cached["cached"] = True
+                cached["content_reused"] = current_row["source_updated_at"] != source_updated_at
+                cached["reanalysis_deduplicated"] = bool(cooldown_hit)
+                cached["reanalysis_cooldown_seconds"] = REANALYZE_COOLDOWN_SECONDS
+                ledger_row = db.execute(
+                    """
+                    SELECT sequence_no, chain_hash
+                    FROM disk_dna_ledger
+                    WHERE file_id = ?
+                    ORDER BY sequence_no DESC
+                    LIMIT 1
+                    """,
+                    (file_id,),
+                ).fetchone()
+                cached["evidence_ledger"] = {
+                    "sequence_no": int(ledger_row["sequence_no"]) if ledger_row else 0,
+                    "chain_head": ledger_row["chain_hash"] if ledger_row else None,
+                }
+                db.execute(
+                    """
+                    UPDATE disk_dna
+                    SET source_updated_at = ?, dna_json = ?
+                    WHERE file_id = ?
+                    """,
+                    (
+                        source_updated_at,
+                        json.dumps(cached, ensure_ascii=False),
+                        file_id,
+                    ),
+                )
+                return cached
+
             calibration = self._feedback_calibration(db)
             learned_rules = self._learned_correction_rules(db)
 
         previous_dna: dict[str, Any] | None = None
-        if previous_row is not None:
+        if current_row is not None:
             try:
-                previous_dna = json.loads(previous_row["dna_json"])
+                previous_dna = json.loads(current_row["dna_json"])
             except json.JSONDecodeError:
                 previous_dna = None
 
@@ -2663,13 +3079,17 @@ class DiskService:
         dna["analyzed_at"] = analyzed_at
         dna["cached"] = False
         dna["content_reused"] = False
+        dna["reanalysis_deduplicated"] = False
+        dna["reanalysis_cooldown_seconds"] = REANALYZE_COOLDOWN_SECONDS
 
-        if previous_row is None:
+        if current_row is None:
             reason = "initial"
-        elif previous_row["sha256"] != item["sha256"]:
+        elif current_row["sha256"] != item["sha256"]:
             reason = "content_changed"
-        elif previous_row["analyzer_version"] != DNA_ANALYZER_VERSION:
+        elif current_row["analyzer_version"] != DNA_ANALYZER_VERSION:
             reason = "analyzer_upgrade"
+        elif bypass_cooldown:
+            reason = "deep_reanalysis"
         else:
             reason = "reanalyzed"
 
@@ -2683,6 +3103,12 @@ class DiskService:
             )
             self._enrich_cross_document(db, file_id, dna)
             self._enrich_corpus_intelligence(db, file_id, dna)
+            self._enrich_evolution(
+                db,
+                file_id,
+                dna,
+                previous=previous_dna,
+            )
 
             version_row = db.execute(
                 "SELECT COALESCE(MAX(version_no), 0) AS version_no FROM disk_dna_history WHERE file_id = ?",
@@ -2705,9 +3131,12 @@ class DiskService:
                     "sha256": item["sha256"],
                     "analyzer_version": DNA_ANALYZER_VERSION,
                     "advanced_engine_version": ADVANCED_DNA_VERSION,
+                    "evolution_engine_version": EVOLUTION_ENGINE_VERSION,
                     "semantic_sha256": dna.get("fingerprint", {}).get("semantic_sha256"),
                     "facts": dna.get("molecules", {}).get("total", 0),
                     "memory_ready": dna.get("quality_gate", {}).get("memory_ready", False),
+                    "self_review_score": dna.get("evolution", {}).get("self_review", {}).get("score"),
+                    "regression_guard": dna.get("evolution", {}).get("regression_guard", {}).get("status"),
                 },
             )
             dna["evidence_ledger"] = {
@@ -2768,6 +3197,7 @@ class DiskService:
                     "reason": reason,
                     "memory_ready": dna.get("quality_gate", {}).get("memory_ready", False),
                     "ledger_sequence": ledger["sequence_no"],
+                    "evolution_engine_version": EVOLUTION_ENGINE_VERSION,
                 },
             )
         return dna
@@ -2798,6 +3228,7 @@ class DiskService:
             "schema_version": DISK_SCHEMA_VERSION,
             "dna_analyzer_version": DNA_ANALYZER_VERSION,
             "dna_advanced_version": ADVANCED_DNA_VERSION,
+            "dna_evolution_version": EVOLUTION_ENGINE_VERSION,
             "files": listing["stats"]["files"],
             "folders": listing["stats"]["folders"],
             "bytes": listing["stats"]["bytes"],
