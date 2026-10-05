@@ -570,3 +570,86 @@ Floating UI имеет явное состояние:
 - `КЛАВ: ТЕЛЕФОН` — keydown внутри phone stage направляется в Android.
 
 Нативный режим использует UHID и остаётся способом для полного IME/Unicode до появления собственного control-protocol bridge.
+
+
+## Телефон Sayuri 0.5 — H.264 WebCodecs
+
+### Backend flow
+
+```text
+browser
+  GET /api/phone/stream?serial=...&profile=quality
+    ↓
+PhoneService.h264_stream
+    ↓
+adb push pinned scrcpy-server 4.1
+    ↓
+adb forward tcp:0 localabstract:scrcpy_<SCID>
+    ↓
+app_process com.genymobile.scrcpy.Server 4.1
+  audio=false
+  control=false
+  video_codec=h264
+  send_device_meta=false
+  send_dummy_byte=false
+    ↓
+localhost TCP socket
+    ↓
+phone/h264.py
+    ↓
+sayuri-h264-v1
+    ↓
+HTTP stream
+```
+
+### sayuri-h264-v1
+
+Stream starts with:
+`SYH1`.
+
+Record types:
+- `0x01 + width:u32be + height:u32be` — video session;
+- `0x02 + flags:u8 + pts:u64be + size:u32be + payload` — H.264 media packet.
+
+Flag bit 0 = keyframe.
+
+scrcpy config packets are not emitted separately. SPS/PPS are buffered and prepended to the next media packet.
+
+Limits:
+- media packet <= 32 MiB;
+- accumulated config <= 2 MiB;
+- exactly H.264 codec id `0x68323634`.
+
+### Browser
+
+Requirements for high-FPS path:
+- Fetch ReadableStream;
+- WebCodecs `VideoDecoder`;
+- `EncodedVideoChunk`.
+
+SPS is parsed to obtain the `avc1.PPCCLL` codec string.
+Decoder config prefers hardware acceleration and low latency.
+
+If unavailable or failed:
+`fallbackPhoneVideo() -> PNG /api/phone/frame`.
+
+### Resource lifecycle
+
+When floating phone is:
+- closed;
+- minimized;
+- switched to another device;
+- switched to native scrcpy;
+- disconnected;
+- quality profile changed;
+
+the active H.264 fetch is aborted, VideoDecoder is closed and the backend request closes its TCP socket/process/ADB forward.
+
+### Security
+
+- HTTP remains loopback-only;
+- no arbitrary ADB shell is added;
+- SCID is generated internally;
+- quality profile is allow-listed;
+- H.264 server args are generated internally;
+- browser cannot choose server command or ADB destination.

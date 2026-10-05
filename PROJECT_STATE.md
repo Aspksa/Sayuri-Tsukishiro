@@ -628,3 +628,50 @@ Preflight теперь отдельно выводит `диск_sayuri`, что
 Единственный сбой: safety-test передал вредоносное имя Android-пакета при отсутствии mock-устройства. `launch_app()` сначала обращался к устройству, поэтому возвращал disconnect раньше validation error.
 
 В `0.1.27 / Телефон Sayuri 0.4.1` package name валидируется до любого обращения к ADB. Это усиливает security boundary; функциональность PHONE-004A не ослаблялась.
+
+
+## PHONE-004B — H.264 WebCodecs Media Bridge
+
+- Дата: 2026-10-05.
+- Исходная ревизия: `a47b6c640c4c4f68348348b2dbd9651e53ab34e2`.
+- Целевая версия: проект `0.1.28`, Ядро `0.1.22`, Телефон Sayuri `0.5.0`, Web UI `0.8.0`.
+- Источник: пользователь потребовал хорошее качество картинки и продолжение профессионального развития Телефон Sayuri.
+- Реализация основана на официальном standalone protocol scrcpy 4.1 и жёстко привязана к версии runtime.
+- Новый `phone/h264.py`:
+  - принимает официальный scrcpy codec id;
+  - обрабатывает video session packets;
+  - обрабатывает media packet headers;
+  - объединяет H.264 config SPS/PPS с первым media packet так же, как официальный scrcpy client;
+  - передаёт в браузер стабильный внутренний протокол `sayuri-h264-v1`;
+  - ограничивает media packet до 32 MiB и config до 2 MiB.
+- `PhoneService.h264_stream()`:
+  - использует закреплённый `scrcpy-server 4.1`;
+  - отдельный SCID;
+  - ADB forward `tcp:0 -> localabstract:scrcpy_<scid>`;
+  - слушается/используется только локально;
+  - server запускается с video H.264, `audio=false`, `control=false`;
+  - профили качества используют существующие ECO/BAL/HQ;
+  - на один serial допускается один embedded H.264 stream;
+  - tunnel/socket/process очищаются при закрытии HTTP-клиента.
+- API:
+  - `GET /api/phone/stream?serial=...&profile=economy|balanced|quality`;
+  - Content-Type: `application/x-sayuri-h264`;
+  - header: `X-Sayuri-Stream-Protocol: sayuri-h264-v1`.
+- Browser:
+  - Fetch ReadableStream;
+  - WebCodecs `VideoDecoder`;
+  - codec string `avc1.*` извлекается из SPS;
+  - декодирование ориентировано на low latency и hardware acceleration;
+  - кадр рисуется в canvas;
+  - при decoder backlog delta frames могут пропускаться;
+  - профиль качества переключает H.264 stream с перезапуском;
+  - session packet меняет размер при rotation/fold;
+  - существующая ручная rotation 0/90/180/270 продолжает работать;
+  - мышь/свайпы используют геометрию активной поверхности canvas или PNG.
+- Fallback:
+  - если нет WebCodecs;
+  - если scrcpy-server отсутствует;
+  - если stream/protocol/decoder завершается ошибкой;
+  - автоматически включается существующий PNG screencap transport.
+- Нативный scrcpy 60 FPS остаётся независимым резервным high-performance режимом.
+- Embedded audio в этой контрольной версии ещё не заявлен.

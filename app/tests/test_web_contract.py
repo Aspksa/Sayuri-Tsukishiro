@@ -88,6 +88,7 @@ class WebContractTests(unittest.TestCase):
         self.assertIn('id="phone-float-rotate"', html)
         self.assertIn('id="phone-float-minimize"', html)
         self.assertIn('id="phone-screen"', html)
+        self.assertIn('id="phone-video-canvas"', html)
         self.assertIn('id="phone-text-form"', html)
         self.assertIn('id="phone-keyboard-capture"', html)
         self.assertIn('id="phone-quality-profile"', html)
@@ -100,6 +101,7 @@ class WebContractTests(unittest.TestCase):
         self.assertIn('data-phone-key="BACK"', html)
 
         self.assertIn("/api/phone/frame", script)
+        self.assertIn("/api/phone/stream", script)
         self.assertIn("/api/phone/input/tap", script)
         self.assertIn("/api/phone/input/swipe", script)
         self.assertIn("/api/phone/input/key", script)
@@ -124,6 +126,11 @@ class WebContractTests(unittest.TestCase):
         self.assertIn("handlePhoneKeyboard", script)
         self.assertIn("sayuri-phone-float-layout", script)
         self.assertIn("handlePhoneDisconnected", script)
+        self.assertIn("VideoDecoder", script)
+        self.assertIn("EncodedVideoChunk", script)
+        self.assertIn("consumePhoneH264Stream", script)
+        self.assertIn("findH264SpsCodec", script)
+        self.assertIn("startPreferredPhoneVideo", script)
         self.assertIn("SAYURI-PHONE-409", script)
 
         self.assertIn(".phone-float", css)
@@ -135,6 +142,8 @@ class WebContractTests(unittest.TestCase):
         self.assertIn(".phone-pro-tools", css)
         self.assertIn(".phone-app-drawer", css)
         self.assertIn(".phone-file-drop-active", css)
+        self.assertIn(".phone-video-canvas", css)
+        self.assertIn(".phone-live-badge.h264", css)
 
 
 if __name__ == "__main__":

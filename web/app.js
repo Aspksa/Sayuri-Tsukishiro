@@ -20,6 +20,15 @@ const phoneState = {
   frameLoading: false,
   frameGeneration: 0,
   frameUrl: null,
+  h264Available: false,
+  h264Abort: null,
+  h264Decoder: null,
+  h264Generation: 0,
+  h264Width: 0,
+  h264Height: 0,
+  h264Frames: 0,
+  h264StartedAt: 0,
+  videoMode: 'png',
   pointer: null,
   viewActive: false,
   floatingOpen: localStorage.getItem('sayuri-phone-float-open') === '1',
@@ -94,7 +103,7 @@ function selectedDiskItems() {
 function showView(name) {
   phoneState.viewActive = name === 'phone';
   if (!phoneState.viewActive && !phoneState.floatingOpen) {
-    stopPhoneFrameLoop();
+    stopPhoneVideo();
     stopPhoneReconnectLoop();
   }
 
@@ -1473,6 +1482,37 @@ function stopPhoneFrameLoop() {
   phoneState.frameLoading = false;
 }
 
+function stopPhoneH264Stream() {
+  phoneState.h264Generation += 1;
+  if (phoneState.h264Abort) {
+    phoneState.h264Abort.abort();
+    phoneState.h264Abort = null;
+  }
+  if (phoneState.h264Decoder) {
+    try {
+      phoneState.h264Decoder.close();
+    } catch {}
+    phoneState.h264Decoder = null;
+  }
+  phoneState.h264Width = 0;
+  phoneState.h264Height = 0;
+  phoneState.h264Frames = 0;
+  phoneState.h264StartedAt = 0;
+  if (phoneState.videoMode === 'h264') phoneState.videoMode = 'png';
+  const canvas = byId('phone-video-canvas');
+  canvas.classList.add('hidden');
+  canvas.style.width = '';
+  canvas.style.height = '';
+  canvas.style.transform = '';
+  byId('phone-screen-shell').classList.remove('h264-active');
+  byId('phone-live-badge').classList.remove('h264');
+}
+
+function stopPhoneVideo() {
+  stopPhoneH264Stream();
+  stopPhoneFrameLoop();
+}
+
 function stopPhoneReconnectLoop() {
   if (phoneState.reconnectTimer) {
     window.clearTimeout(phoneState.reconnectTimer);
@@ -1498,10 +1538,16 @@ function schedulePhoneReconnect(delay = 2500) {
 
 function clearPhoneFrameImage() {
   const image = byId('phone-screen');
+  const canvas = byId('phone-video-canvas');
   image.classList.add('hidden');
   image.removeAttribute('src');
   image.style.width = '';
   image.style.height = '';
+  canvas.classList.add('hidden');
+  canvas.style.width = '';
+  canvas.style.height = '';
+  canvas.style.transform = '';
+  byId('phone-screen-shell').classList.remove('h264-active');
   byId('phone-screen-placeholder').classList.remove('hidden');
   if (phoneState.frameUrl) {
     URL.revokeObjectURL(phoneState.frameUrl);
@@ -1510,7 +1556,7 @@ function clearPhoneFrameImage() {
 }
 
 function handlePhoneDisconnected(message = 'Телефон отключён.') {
-  stopPhoneFrameLoop();
+  stopPhoneVideo();
   phoneState.selectedSerial = null;
   phoneState.selectedDevice = null;
   phoneState.pointer = null;
@@ -1540,22 +1586,283 @@ function schedulePhoneFrame(delay = 420) {
   phoneState.frameTimer = window.setTimeout(() => refreshPhoneFrame(), delay);
 }
 
-function fitPhoneImage() {
+function activePhoneSurface() {
+  const canvas = byId('phone-video-canvas');
+  if (!canvas.classList.contains('hidden') && canvas.width && canvas.height) {
+    return {
+      element: canvas,
+      width: canvas.width,
+      height: canvas.height
+    };
+  }
   const image = byId('phone-screen');
+  if (!image.classList.contains('hidden') && image.naturalWidth && image.naturalHeight) {
+    return {
+      element: image,
+      width: image.naturalWidth,
+      height: image.naturalHeight
+    };
+  }
+  return null;
+}
+
+function fitPhoneImage() {
+  const surface = activePhoneSurface();
   const stage = byId('phone-screen-shell');
-  if (image.classList.contains('hidden') || !image.naturalWidth || !image.naturalHeight) return;
+  if (!surface) return;
 
   const stageWidth = Math.max(1, stage.clientWidth - 18);
   const stageHeight = Math.max(1, stage.clientHeight - 18);
   const sideways = phoneState.rotation === 90 || phoneState.rotation === 270;
-  const visualWidth = sideways ? image.naturalHeight : image.naturalWidth;
-  const visualHeight = sideways ? image.naturalWidth : image.naturalHeight;
+  const visualWidth = sideways ? surface.height : surface.width;
+  const visualHeight = sideways ? surface.width : surface.height;
   const scale = Math.min(stageWidth / visualWidth, stageHeight / visualHeight);
 
-  image.style.width = `${Math.max(1, image.naturalWidth * scale)}px`;
-  image.style.height = `${Math.max(1, image.naturalHeight * scale)}px`;
-  image.style.transform = `rotate(${phoneState.rotation}deg)`;
+  surface.element.style.width = `${Math.max(1, surface.width * scale)}px`;
+  surface.element.style.height = `${Math.max(1, surface.height * scale)}px`;
+  surface.element.style.transform = `rotate(${phoneState.rotation}deg)`;
   byId('phone-rotation-state').textContent = `${phoneState.rotation}°`;
+}
+
+
+function readPhoneStreamExact(readerState, size) {
+  return (async () => {
+    while (readerState.length < size) {
+      const {value, done} = await readerState.reader.read();
+      if (done) throw new Error('H.264 поток завершился.');
+      if (!value?.length) continue;
+      readerState.chunks.push(value);
+      readerState.length += value.length;
+    }
+
+    const output = new Uint8Array(size);
+    let offset = 0;
+    while (offset < size) {
+      const chunk = readerState.chunks[0];
+      const take = Math.min(chunk.length, size - offset);
+      output.set(chunk.subarray(0, take), offset);
+      offset += take;
+      readerState.length -= take;
+      if (take === chunk.length) {
+        readerState.chunks.shift();
+      } else {
+        readerState.chunks[0] = chunk.subarray(take);
+      }
+    }
+    return output;
+  })();
+}
+
+function phoneReadUint32(bytes, offset = 0) {
+  return new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(offset, false);
+}
+
+function phoneReadUint64(bytes, offset = 0) {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (typeof view.getBigUint64 === 'function') return Number(view.getBigUint64(offset, false));
+  return view.getUint32(offset, false) * 4294967296 + view.getUint32(offset + 4, false);
+}
+
+function findH264SpsCodec(data) {
+  for (let i = 0; i + 7 < data.length; i += 1) {
+    let nal = -1;
+    if (data[i] === 0 && data[i + 1] === 0 && data[i + 2] === 1) {
+      nal = i + 3;
+    } else if (
+      data[i] === 0 && data[i + 1] === 0 && data[i + 2] === 0 && data[i + 3] === 1
+    ) {
+      nal = i + 4;
+    }
+    if (nal < 0 || nal + 3 >= data.length || (data[nal] & 0x1f) !== 7) continue;
+    const hex = (value) => value.toString(16).padStart(2, '0');
+    return `avc1.${hex(data[nal + 1])}${hex(data[nal + 2])}${hex(data[nal + 3])}`;
+  }
+  return null;
+}
+
+function configurePhoneVideoDecoder(payload, generation) {
+  if (phoneState.h264Decoder) return phoneState.h264Decoder;
+  const codec = findH264SpsCodec(payload);
+  if (!codec) throw new Error('В первом H.264 keyframe не найден SPS.');
+
+  const canvas = byId('phone-video-canvas');
+  const context = canvas.getContext('2d', {alpha: false, desynchronized: true});
+  if (!context) throw new Error('Canvas 2D недоступен.');
+
+  const decoder = new VideoDecoder({
+    output(frame) {
+      try {
+        if (generation !== phoneState.h264Generation || !phoneStreamActive()) return;
+        if (canvas.width !== frame.displayWidth || canvas.height !== frame.displayHeight) {
+          canvas.width = frame.displayWidth;
+          canvas.height = frame.displayHeight;
+          fitPhoneImage();
+        }
+        context.drawImage(frame, 0, 0, canvas.width, canvas.height);
+        phoneState.h264Frames += 1;
+        if (!phoneState.h264StartedAt) phoneState.h264StartedAt = performance.now();
+        const elapsed = Math.max(1, performance.now() - phoneState.h264StartedAt);
+        const fps = Math.min(120, phoneState.h264Frames * 1000 / elapsed);
+        byId('phone-frame-status').textContent =
+          `H.264 · ${canvas.width}×${canvas.height} · ~${fps.toFixed(0)} FPS`;
+        byId('phone-live-badge').textContent = phoneState.qualityProfile === 'economy' ? 'H264 30' : 'H264 60';
+        byId('phone-live-badge').classList.add('live', 'h264');
+      } finally {
+        frame.close();
+      }
+    },
+    error(error) {
+      if (generation !== phoneState.h264Generation) return;
+      fallbackPhoneVideo(`WebCodecs: ${error?.message || String(error)}`);
+    }
+  });
+
+  decoder.configure({
+    codec,
+    codedWidth: phoneState.h264Width || undefined,
+    codedHeight: phoneState.h264Height || undefined,
+    hardwareAcceleration: 'prefer-hardware',
+    optimizeForLatency: true
+  });
+  phoneState.h264Decoder = decoder;
+  return decoder;
+}
+
+async function consumePhoneH264Stream(response, generation) {
+  if (!response.body) throw new Error('Браузер не поддерживает streaming fetch.');
+  const readerState = {
+    reader: response.body.getReader(),
+    chunks: [],
+    length: 0
+  };
+
+  const magic = await readPhoneStreamExact(readerState, 4);
+  if (String.fromCharCode(...magic) !== 'SYH1') {
+    throw new Error('Неизвестный протокол H.264 Sayuri.');
+  }
+
+  while (generation === phoneState.h264Generation && phoneStreamActive()) {
+    const typeBytes = await readPhoneStreamExact(readerState, 1);
+    const type = typeBytes[0];
+
+    if (type === 1) {
+      const payload = await readPhoneStreamExact(readerState, 8);
+      phoneState.h264Width = phoneReadUint32(payload, 0);
+      phoneState.h264Height = phoneReadUint32(payload, 4);
+      if (!phoneState.h264Width || !phoneState.h264Height) {
+        throw new Error('Некорректный размер H.264 сессии.');
+      }
+      const canvas = byId('phone-video-canvas');
+      canvas.width = phoneState.h264Width;
+      canvas.height = phoneState.h264Height;
+      byId('phone-screen').classList.add('hidden');
+      byId('phone-screen-placeholder').classList.add('hidden');
+      canvas.classList.remove('hidden');
+      byId('phone-screen-shell').classList.add('h264-active');
+      fitPhoneImage();
+      continue;
+    }
+
+    if (type !== 2) throw new Error(`Неизвестная запись H.264: ${type}`);
+    const header = await readPhoneStreamExact(readerState, 13);
+    const flags = header[0];
+    const pts = phoneReadUint64(header, 1);
+    const size = phoneReadUint32(header, 9);
+    if (!size || size > 32 * 1024 * 1024) throw new Error('Некорректный размер H.264 кадра.');
+    const payload = await readPhoneStreamExact(readerState, size);
+
+    const decoder = configurePhoneVideoDecoder(payload, generation);
+    const key = Boolean(flags & 1);
+    if (!key && decoder.decodeQueueSize > 3) continue;
+    decoder.decode(new EncodedVideoChunk({
+      type: key ? 'key' : 'delta',
+      timestamp: pts,
+      data: payload
+    }));
+  }
+}
+
+function canUsePhoneH264() {
+  return Boolean(
+    phoneState.h264Available
+    && typeof window.VideoDecoder === 'function'
+    && typeof window.EncodedVideoChunk === 'function'
+    && window.ReadableStream
+  );
+}
+
+async function startPhoneH264Stream() {
+  stopPhoneVideo();
+  if (!phoneStreamActive() || !phoneState.selectedSerial || !canUsePhoneH264()) {
+    startPhoneFrameLoop();
+    return;
+  }
+  if (phoneState.nativeSessions.has(phoneState.selectedSerial)) return;
+
+  const generation = phoneState.h264Generation;
+  const controller = new AbortController();
+  phoneState.h264Abort = controller;
+  phoneState.videoMode = 'h264';
+  phoneState.h264Frames = 0;
+  phoneState.h264StartedAt = 0;
+  byId('phone-frame-status').textContent = 'Запускаю H.264 поток…';
+  byId('phone-live-badge').textContent = 'H264';
+  byId('phone-live-badge').classList.add('h264');
+
+  try {
+    const response = await fetch(
+      `/api/phone/stream?serial=${encodeURIComponent(phoneState.selectedSerial)}&profile=${encodeURIComponent(phoneState.qualityProfile)}`,
+      {cache: 'no-store', signal: controller.signal}
+    );
+    if (!response.ok) {
+      let message = `HTTP ${response.status}`;
+      let code = null;
+      try {
+        const data = await response.json();
+        message = data?.error?.message || message;
+        code = data?.error?.code || null;
+      } catch {}
+      if (response.status === 409 || code === 'SAYURI-PHONE-409') {
+        handlePhoneDisconnected(message);
+        return;
+      }
+      throw new Error(message);
+    }
+    await consumePhoneH264Stream(response, generation);
+    if (generation === phoneState.h264Generation && phoneStreamActive()) {
+      throw new Error('H.264 поток завершился.');
+    }
+  } catch (error) {
+    if (controller.signal.aborted || generation !== phoneState.h264Generation) return;
+    fallbackPhoneVideo(error instanceof Error ? error.message : String(error));
+  }
+}
+
+function fallbackPhoneVideo(reason) {
+  stopPhoneH264Stream();
+  if (!phoneStreamActive() || !phoneState.selectedSerial) return;
+  phoneState.videoMode = 'png';
+  byId('phone-frame-status').textContent = `PNG fallback · ${reason}`;
+  byId('phone-live-badge').textContent = 'PNG';
+  byId('phone-live-badge').classList.remove('h264');
+  startPhoneFrameLoop();
+}
+
+function startPreferredPhoneVideo() {
+  stopPhoneVideo();
+  if (!phoneStreamActive() || !phoneState.selectedSerial) return;
+  if (phoneState.nativeSessions.has(phoneState.selectedSerial)) {
+    byId('phone-frame-status').textContent = 'Встроенный экран на паузе: открыт scrcpy 60 FPS';
+    byId('phone-live-badge').textContent = '60 FPS';
+    byId('phone-live-badge').classList.remove('live', 'h264');
+    return;
+  }
+  if (canUsePhoneH264()) {
+    startPhoneH264Stream();
+  } else {
+    phoneState.videoMode = 'png';
+    startPhoneFrameLoop();
+  }
 }
 
 async function refreshPhoneFrame() {
@@ -1648,7 +1955,7 @@ function updatePhoneFloatingState() {
   );
 
   if (!device) {
-    stopPhoneFrameLoop();
+    stopPhoneVideo();
     phoneState.selectedSerial = null;
     phoneState.selectedDevice = null;
     byId('phone-selected-device').textContent = '—';
@@ -1685,12 +1992,16 @@ function updatePhoneFloatingState() {
   recordButton.textContent = recording ? '■ Стоп' : '● Запись';
 
   if (nativeOpen) {
-    stopPhoneFrameLoop();
+    stopPhoneVideo();
     byId('phone-frame-status').textContent = 'Пауза встроенного экрана: открыт scrcpy 60 FPS';
     byId('phone-live-badge').textContent = '60 FPS';
     byId('phone-live-badge').classList.remove('live');
-  } else if (phoneStreamActive() && !phoneState.frameTimer) {
-    startPhoneFrameLoop();
+  } else if (
+    phoneStreamActive()
+    && !phoneState.frameTimer
+    && !phoneState.h264Abort
+  ) {
+    startPreferredPhoneVideo();
   }
 }
 
@@ -1704,7 +2015,7 @@ function selectPhone(device) {
   document.querySelectorAll('.phone-device-card').forEach((card) => {
     card.classList.toggle('selected', card.dataset.serial === device.serial);
   });
-  if (changed && phoneStreamActive()) startPhoneFrameLoop();
+  if (changed && phoneStreamActive()) startPreferredPhoneVideo();
 }
 
 function renderPhone(data) {
@@ -1713,6 +2024,7 @@ function renderPhone(data) {
   const sessions = new Set(data.control_sessions || []);
   phoneState.nativeSessions = sessions;
   phoneState.recordingSessions = new Set(data.recording_sessions || []);
+  phoneState.h264Available = Boolean(data.capabilities?.embedded_h264_stream);
 
   byId('phone-runtime-state').textContent = runtime.ready ? 'ГОТОВ' : 'НЕ УСТАНОВЛЕН';
   byId('phone-runtime-detail').textContent = runtime.ready
@@ -1827,9 +2139,9 @@ function renderPhone(data) {
     selected
     && phoneStreamActive()
     && !sessions.has(selected.serial)
-    && (selectedChanged || !phoneState.frameTimer)
+    && (selectedChanged || (!phoneState.frameTimer && !phoneState.h264Abort))
   ) {
-    startPhoneFrameLoop();
+    startPreferredPhoneVideo();
   }
 }
 
@@ -1850,9 +2162,14 @@ function mapPhoneDisplayPoint(rx, ry) {
 }
 
 function phonePointFromEvent(event) {
-  const image = byId('phone-screen');
-  const rect = image.getBoundingClientRect();
+  const surface = activePhoneSurface();
+  if (!surface) return null;
+  const rect = surface.element.getBoundingClientRect();
   if (!rect.width || !rect.height) return null;
+  if (
+    event.clientX < rect.left || event.clientX > rect.right
+    || event.clientY < rect.top || event.clientY > rect.bottom
+  ) return null;
 
   const rx = (event.clientX - rect.left) / rect.width;
   const ry = (event.clientY - rect.top) / rect.height;
@@ -1866,7 +2183,7 @@ async function sendPhoneTap(point) {
     x: point.x,
     y: point.y
   });
-  schedulePhoneFrame(70);
+  if (phoneState.videoMode === 'png') schedulePhoneFrame(70);
 }
 
 async function sendPhoneSwipe(startPoint, endPoint, durationMs) {
@@ -1879,7 +2196,7 @@ async function sendPhoneSwipe(startPoint, endPoint, durationMs) {
     y2: endPoint.y,
     duration_ms: Math.max(80, Math.min(1200, durationMs))
   });
-  schedulePhoneFrame(70);
+  if (phoneState.videoMode === 'png') schedulePhoneFrame(70);
 }
 
 async function sendPhoneKey(key) {
@@ -1889,7 +2206,7 @@ async function sendPhoneKey(key) {
       serial: phoneState.selectedSerial,
       key
     });
-    schedulePhoneFrame(70);
+    if (phoneState.videoMode === 'png') schedulePhoneFrame(70);
   } catch (error) {
     showPhoneError(error);
   }
@@ -1901,7 +2218,7 @@ async function sendPhoneText(text) {
     serial: phoneState.selectedSerial,
     text
   });
-  schedulePhoneFrame(70);
+  if (phoneState.videoMode === 'png') schedulePhoneFrame(70);
   return result;
 }
 
@@ -1924,6 +2241,7 @@ function queuePhoneText(character) {
 async function toggleNativePhoneWindow() {
   if (!phoneState.selectedSerial) return;
   const nativeOpen = phoneState.nativeSessions.has(phoneState.selectedSerial);
+  if (!nativeOpen) stopPhoneVideo();
   try {
     const result = await postJson(
       nativeOpen ? '/api/phone/control/stop' : '/api/phone/control/start',
@@ -2016,7 +2334,7 @@ function openPhoneFloat() {
 
   loadPhone()
     .then(() => {
-      if (phoneState.selectedSerial) startPhoneFrameLoop();
+      if (phoneState.selectedSerial) startPreferredPhoneVideo();
       else schedulePhoneReconnect(600);
     })
     .catch(showPhoneError);
@@ -2029,7 +2347,7 @@ function closePhoneFloat() {
   localStorage.setItem('sayuri-phone-float-open', '0');
   byId('phone-float').classList.add('hidden');
   byId('phone-float-launcher').classList.remove('hidden');
-  stopPhoneFrameLoop();
+  stopPhoneVideo();
   if (!phoneState.viewActive) stopPhoneReconnectLoop();
 }
 
@@ -2040,11 +2358,11 @@ function togglePhoneFloatMinimize() {
   byId('phone-float-minimize').textContent = phoneState.floatingMinimized ? '□' : '—';
   byId('phone-float-minimize').title = phoneState.floatingMinimized ? 'Развернуть' : 'Свернуть';
   if (phoneState.floatingMinimized) {
-    stopPhoneFrameLoop();
+    stopPhoneVideo();
   } else {
     clampPhoneFloat();
     fitPhoneImage();
-    startPhoneFrameLoop();
+    startPreferredPhoneVideo();
   }
 }
 
@@ -2062,7 +2380,7 @@ function initializePhoneFloatingWindow() {
   if (phoneState.floatingOpen) {
     floating.classList.remove('hidden');
     byId('phone-float-launcher').classList.add('hidden');
-    loadPhone().then(startPhoneFrameLoop).catch(showPhoneError);
+    loadPhone().then(startPreferredPhoneVideo).catch(showPhoneError);
   }
 
   if (window.ResizeObserver) {
@@ -2154,11 +2472,16 @@ function togglePhoneKeyboardCapture() {
   }
 }
 
-function setPhoneQualityProfile(value) {
+function setPhoneQualityProfile(value, {restart = false} = {}) {
   const allowed = new Set(['economy', 'balanced', 'quality']);
-  phoneState.qualityProfile = allowed.has(value) ? value : 'quality';
+  const next = allowed.has(value) ? value : 'quality';
+  const changed = phoneState.qualityProfile !== next;
+  phoneState.qualityProfile = next;
   localStorage.setItem('sayuri-phone-quality-profile', phoneState.qualityProfile);
   byId('phone-quality-profile').value = phoneState.qualityProfile;
+  if (restart && changed && phoneStreamActive() && phoneState.selectedSerial) {
+    startPreferredPhoneVideo();
+  }
 }
 
 async function capturePhoneToDisk() {
@@ -2297,7 +2620,7 @@ function renderPhoneApps() {
           package: app.package
         });
         drawer.classList.add('hidden');
-        schedulePhoneFrame(120);
+        if (phoneState.videoMode === 'png') schedulePhoneFrame(120);
       } catch (error) {
         showPhoneError(error);
       }
@@ -2471,7 +2794,7 @@ byId('phone-float-rotate').addEventListener('click', rotatePhoneFloat);
 byId('phone-open-native').addEventListener('click', toggleNativePhoneWindow);
 byId('phone-keyboard-capture').addEventListener('click', togglePhoneKeyboardCapture);
 byId('phone-quality-profile').addEventListener('change', (event) => {
-  setPhoneQualityProfile(event.target.value);
+  setPhoneQualityProfile(event.target.value, {restart: true});
 });
 byId('phone-capture').addEventListener('click', capturePhoneToDisk);
 byId('phone-record').addEventListener('click', togglePhoneRecording);
@@ -2546,11 +2869,11 @@ phoneScreenStage.addEventListener('drop', async (event) => {
   }
 });
 
-phoneScreen.addEventListener('contextmenu', (event) => {
+phoneScreenStage.addEventListener('contextmenu', (event) => {
   event.preventDefault();
   sendPhoneKey('BACK');
 });
-phoneScreen.addEventListener('pointerdown', (event) => {
+phoneScreenStage.addEventListener('pointerdown', (event) => {
   if (!phoneState.selectedSerial) return;
   const point = phonePointFromEvent(event);
   if (!point) return;
@@ -2559,11 +2882,11 @@ phoneScreen.addEventListener('pointerdown', (event) => {
     point,
     startedAt: performance.now()
   };
-  phoneScreen.setPointerCapture?.(event.pointerId);
+  phoneScreenStage.setPointerCapture?.(event.pointerId);
   if (phoneState.keyboardCaptured) phoneScreenStage.focus({preventScroll: true});
   event.preventDefault();
 });
-phoneScreen.addEventListener('pointerup', async (event) => {
+phoneScreenStage.addEventListener('pointerup', async (event) => {
   const gesture = phoneState.pointer;
   phoneState.pointer = null;
   if (!gesture || gesture.pointerId !== event.pointerId) return;
@@ -2583,10 +2906,10 @@ phoneScreen.addEventListener('pointerup', async (event) => {
     showPhoneError(error);
   }
 });
-phoneScreen.addEventListener('pointercancel', () => {
+phoneScreenStage.addEventListener('pointercancel', () => {
   phoneState.pointer = null;
 });
-phoneScreen.addEventListener('wheel', async (event) => {
+phoneScreenStage.addEventListener('wheel', async (event) => {
   if (!phoneState.selectedSerial) return;
   event.preventDefault();
   const down = event.deltaY > 0;

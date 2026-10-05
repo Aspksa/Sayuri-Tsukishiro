@@ -308,3 +308,21 @@
   - H.264 browser bridge реализуется отдельным версионным адаптером строго для scrcpy 4.1;
   - отказ H.264 bridge не должен ломать PNG fallback, ADB control или нативный scrcpy;
   - пользовательский HTTP API не получает arbitrary shell.
+
+
+## D-022 — PHONE-004B: H.264 browser bridge использует standalone scrcpy-server 4.1
+
+- Дата: 2026-10-05.
+- Статус: принято.
+- Основание: официальный `doc/develop.md` scrcpy описывает standalone server, отдельные video/audio/control sockets, codec id, video session packet и media packet framing.
+- Решение:
+  - не использовать сторонние web-scrcpy форки;
+  - не перехватывать SDL-окно официального клиента;
+  - запускать официальный `scrcpy-server` отдельно для embedded video;
+  - protocol adapter фиксируется на scrcpy `4.1`;
+  - server/client version mismatch не маскируется;
+  - browser transport поверх HTTP является собственным минимальным `sayuri-h264-v1`;
+  - ADB forward создаётся только локально и удаляется после завершения stream;
+  - H.264 control socket не используется: существующий allow-listed ADB input остаётся отдельным контуром;
+  - отказ media bridge не должен ломать управление, PNG fallback или нативный scrcpy.
+- Причина разделения: upstream scrcpy protocol прямо объявлен internal и может меняться между версиями.

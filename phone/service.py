@@ -1,17 +1,21 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, BinaryIO
+from typing import Any, BinaryIO, Iterator
 import os
 import re
+import secrets
 import shutil
+import socket
 import subprocess
 import threading
 import time
 import uuid
 
+from .h264 import iter_h264_bridge_records
 
-PHONE_BACKEND_VERSION = "0.4.1"
+
+PHONE_BACKEND_VERSION = "0.5.0"
 SCRCPY_VERSION = "4.1"
 COMMAND_TIMEOUT_SECONDS = 20
 FRAME_TIMEOUT_SECONDS = 8
@@ -59,6 +63,7 @@ class PhoneService:
         self._sessions: dict[str, subprocess.Popen] = {}
         self._recordings: dict[str, dict[str, Any]] = {}
         self._frame_cache: dict[str, dict[str, Any]] = {}
+        self._h264_streams: set[str] = set()
         self._lock = threading.RLock()
         self._frame_lock = threading.Lock()
 
@@ -96,6 +101,18 @@ class PhoneService:
             return local
         found = shutil.which(local_name) or shutil.which("scrcpy")
         return Path(found) if found else None
+
+    def _resolve_scrcpy_server(self) -> Path | None:
+        candidates = [
+            self.scrcpy_root / "scrcpy-server",
+            self.scrcpy_root / "scrcpy-server.jar",
+            self.runtime_root / "scrcpy-server",
+            self.runtime_root / "scrcpy-server.jar",
+        ]
+        for candidate in candidates:
+            if candidate.is_file():
+                return candidate
+        return None
 
     def _run(self, argv: list[str], *, timeout: int = COMMAND_TIMEOUT_SECONDS) -> subprocess.CompletedProcess:
         return subprocess.run(
@@ -253,6 +270,7 @@ class PhoneService:
                 for serial, state in self._recordings.items()
                 if state["process"].poll() is None
             ),
+            "h264_stream_sessions": sorted(self._h264_streams),
             "quality_profiles": QUALITY_PROFILES,
             "capabilities": {
                 "usb": True,
@@ -266,6 +284,8 @@ class PhoneService:
                 "screen_recording": runtime_ready,
                 "app_launcher": adb is not None,
                 "embedded_web_stream": adb is not None,
+                "embedded_h264_stream": adb is not None and self._resolve_scrcpy_server() is not None,
+                "embedded_h264_protocol": "sayuri-h264-v1",
                 "embedded_control": adb is not None,
                 "embedded_frame_interval_ms": int(FRAME_CACHE_SECONDS * 1000),
                 "embedded_audio": False,
@@ -590,6 +610,25 @@ class PhoneService:
         return key, profile
 
     @staticmethod
+    def _bit_rate_bps(value: str) -> int:
+        text = value.strip().upper()
+        multiplier = 1
+        if text.endswith("M"):
+            multiplier = 1_000_000
+            text = text[:-1]
+        elif text.endswith("K"):
+            multiplier = 1_000
+            text = text[:-1]
+        try:
+            number = float(text)
+        except ValueError as exc:
+            raise ValueError("Некорректный video bit rate.") from exc
+        result = int(number * multiplier)
+        if result < 100_000 or result > 100_000_000:
+            raise ValueError("Video bit rate вне допустимого диапазона.")
+        return result
+
+    @staticmethod
     def _safe_phone_filename(value: Any) -> str:
         if not isinstance(value, str):
             raise ValueError("Не указано имя файла.")
@@ -598,6 +637,131 @@ class PhoneService:
         if not name or name in {".", ".."}:
             raise ValueError("Некорректное имя файла.")
         return name
+
+    @staticmethod
+    def _recv_forward_port(result: subprocess.CompletedProcess) -> int:
+        value = str(result.stdout or "").strip()
+        try:
+            port = int(value)
+        except ValueError as exc:
+            raise OSError(f"ADB не сообщил локальный порт H.264: {value or 'пустой ответ'}.") from exc
+        if port < 1 or port > 65535:
+            raise OSError("ADB сообщил недопустимый локальный порт H.264.")
+        return port
+
+    @staticmethod
+    def _connect_local_video(port: int, process: subprocess.Popen) -> socket.socket:
+        deadline = time.monotonic() + 6.0
+        last_error: OSError | None = None
+        while time.monotonic() < deadline:
+            if process.poll() is not None:
+                raise OSError("scrcpy-server завершился до подключения видеопотока.")
+            try:
+                connection = socket.create_connection(("127.0.0.1", port), timeout=0.6)
+                connection.settimeout(20.0)
+                return connection
+            except OSError as exc:
+                last_error = exc
+                time.sleep(0.08)
+        raise OSError("Не удалось подключиться к локальному H.264 каналу scrcpy.") from last_error
+
+    def h264_stream(
+        self,
+        serial: Any = None,
+        *,
+        profile: Any = "quality",
+    ) -> Iterator[bytes]:
+        device = self._select_authorized_device(serial)
+        device_serial = device["serial"]
+        profile_name, quality = self._quality_profile(profile)
+        adb = self._resolve_adb()
+        server_file = self._resolve_scrcpy_server()
+        if adb is None:
+            raise OSError("ADB runtime не установлен.")
+        if server_file is None:
+            raise OSError("scrcpy-server 4.1 не найден в локальном runtime.")
+
+        with self._lock:
+            if device_serial in self._h264_streams:
+                raise ValueError("H.264 поток для этого телефона уже открыт.")
+            self._h264_streams.add(device_serial)
+
+        scid = secrets.randbelow(0x7FFFFFFE) + 1
+        socket_name = f"scrcpy_{scid:08x}"
+        remote_server = "/data/local/tmp/sayuri-scrcpy-server-4.1.jar"
+        port: int | None = None
+        process: subprocess.Popen | None = None
+        connection: socket.socket | None = None
+
+        try:
+            push = self._run(
+                [str(adb), "-s", device_serial, "push", str(server_file), remote_server],
+                timeout=30,
+            )
+            if push.returncode != 0:
+                raise OSError((push.stderr or push.stdout or "Не удалось передать scrcpy-server на телефон.").strip())
+
+            forward = self._run(
+                [
+                    str(adb), "-s", device_serial,
+                    "forward", "tcp:0", f"localabstract:{socket_name}",
+                ],
+                timeout=COMMAND_TIMEOUT_SECONDS,
+            )
+            if forward.returncode != 0:
+                raise OSError((forward.stderr or forward.stdout or "Не удалось создать локальный ADB tunnel.").strip())
+            port = self._recv_forward_port(forward)
+
+            command = [
+                str(adb), "-s", device_serial, "shell",
+                f"CLASSPATH={remote_server}",
+                "app_process", "/", "com.genymobile.scrcpy.Server", SCRCPY_VERSION,
+                f"scid={scid:08x}",
+                "log_level=warn",
+                "tunnel_forward=true",
+                "audio=false",
+                "control=false",
+                "cleanup=false",
+                "send_device_meta=false",
+                "send_dummy_byte=false",
+                "video_codec=h264",
+                f"video_bit_rate={self._bit_rate_bps(quality['video_bit_rate'])}",
+                f"max_size={quality['max_size']}",
+                f"max_fps={quality['max_fps']}",
+            ]
+            process = subprocess.Popen(
+                command,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                creationflags=self._creationflags(),
+            )
+            connection = self._connect_local_video(port, process)
+            yield from iter_h264_bridge_records(connection)
+        finally:
+            if connection is not None:
+                try:
+                    connection.close()
+                except OSError:
+                    pass
+            if process is not None:
+                try:
+                    process.wait(timeout=1.5)
+                except subprocess.TimeoutExpired:
+                    process.terminate()
+                    try:
+                        process.wait(timeout=1.5)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+            if port is not None:
+                try:
+                    self._run(
+                        [str(adb), "-s", device_serial, "forward", "--remove", f"tcp:{port}"],
+                        timeout=5,
+                    )
+                except OSError:
+                    pass
+            with self._lock:
+                self._h264_streams.discard(device_serial)
 
     def start_control(self, serial: Any = None, *, profile: Any = "quality") -> dict[str, Any]:
         scrcpy = self._resolve_scrcpy()

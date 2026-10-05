@@ -2,6 +2,22 @@
 
 ## Невыпущенные изменения
 
+### 0.1.28 — 2026-10-05 — Телефон Sayuri 0.5 H.264 WebCodecs
+
+- Телефон Sayuri повышен до `0.5.0`, Web UI до `0.8.0`.
+- Добавлен version-pinned адаптер официального scrcpy-server 4.1.
+- Добавлен embedded H.264 stream через локальный ADB forward и существующий loopback HTTP server.
+- Добавлен внутренний протокол `sayuri-h264-v1`.
+- Web UI декодирует H.264 через WebCodecs и рисует кадры в canvas.
+- ECO/BAL/HQ теперь управляют качеством встроенного H.264.
+- Session packets поддерживают изменение размера при повороте/складывании устройства.
+- SPS/PPS config объединяется с первым media frame.
+- Добавлен decoder backlog guard для low-latency режима.
+- При отсутствии WebCodecs или ошибке media bridge автоматически возвращается PNG fallback.
+- Нативный scrcpy 60 FPS сохранён.
+- Добавлены protocol/service/API/web regression tests.
+
+
 ### 0.1.27 — 2026-10-05 — Телефон Sayuri 0.4.1 input validation
 
 - Android package name теперь валидируется до обращения к ADB/device state.

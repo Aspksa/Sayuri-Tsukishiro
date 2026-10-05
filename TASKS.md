@@ -177,3 +177,27 @@
   - security allow-lists and file/package validation.
 - Критерий контрольной точки: полный CI зелёный.
 - Продолжение после CI: PHONE-004B — H.264/WebCodecs video bridge.
+
+
+## PHONE-004B — H.264 WebCodecs
+- Статус: `implemented; CI pending`.
+- Реализовано:
+  - scrcpy 4.1 version-pinned H.264 adapter;
+  - ADB localhost forward;
+  - официальный video session/media framing;
+  - SPS/PPS merge;
+  - собственный `sayuri-h264-v1` transport;
+  - streaming HTTP endpoint;
+  - WebCodecs VideoDecoder;
+  - Canvas low-latency rendering;
+  - hardware acceleration preference;
+  - ECO/BAL/HQ для embedded video;
+  - обработка rotation session;
+  - decoder backlog protection;
+  - автоматический PNG fallback;
+  - protocol/service/API/web contract tests.
+- Не входит в 0.5:
+  - embedded audio;
+  - двусторонний Android clipboard;
+  - browser UHID control protocol.
+- Следующий шаг: PHONE-004C — embedded audio + clipboard/control bridge; затем Android Companion.

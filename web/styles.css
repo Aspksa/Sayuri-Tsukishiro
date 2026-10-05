@@ -3389,3 +3389,28 @@ button.disk-name:hover { text-decoration: underline; }
     padding-inline: 6px;
   }
 }
+
+
+/* Телефон Sayuri 0.5 — H.264 WebCodecs surface */
+.phone-float .phone-video-canvas {
+  position: relative;
+  flex: 0 0 auto;
+  max-width: none;
+  max-height: none;
+  width: auto;
+  height: auto;
+  background: #000;
+  transform-origin: center center;
+  user-select: none;
+  touch-action: none;
+}
+.phone-float-screen-stage.h264-active {
+  background: #000;
+}
+.phone-float-screen-stage.h264-active .phone-screen-placeholder {
+  display: none;
+}
+.phone-live-badge.h264 {
+  background: #e8f1ff;
+  color: #245f9f;
+}
