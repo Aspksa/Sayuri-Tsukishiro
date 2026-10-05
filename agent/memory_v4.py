@@ -833,6 +833,7 @@ class MemorySystemV4:
             entry = self.memory.get(memory_id)
             if entry:
                 self.evaluate_entry(entry)
+        self.note_source_outcome(memory_ids, normalized)
         self._audit(
             "recall_feedback",
             "response",
