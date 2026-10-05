@@ -197,6 +197,15 @@ class MemorySystemV3:
                 )
                 """
             )
+            db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS memory_v3_meta (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
 
     @staticmethod
     def _safe_context(context: Any) -> dict[str, Any]:
@@ -1180,6 +1189,34 @@ class MemorySystemV3:
             }
             for row in rows
         ]
+
+    def maybe_maintain(self, *, interval_hours: int = 6) -> dict[str, Any]:
+        interval_hours = min(max(int(interval_hours), 1), 168)
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT value FROM memory_v3_meta WHERE key = 'last_maintenance'"
+            ).fetchone()
+        last = self._parse_time(row["value"]) if row else None
+        now = self._now_dt()
+        if last and now - last < timedelta(hours=interval_hours):
+            return {
+                "ran": False,
+                "last_maintenance": last.isoformat(),
+                "next_after": (last + timedelta(hours=interval_hours)).isoformat(),
+            }
+
+        result = self.maintenance()
+        completed = self._now()
+        with self._connect() as db:
+            db.execute(
+                """
+                INSERT INTO memory_v3_meta(key, value, updated_at)
+                VALUES('last_maintenance', ?, ?)
+                ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at
+                """,
+                (completed, completed),
+            )
+        return {"ran": True, "last_maintenance": completed, "result": result}
 
     def maintenance(self) -> dict[str, Any]:
         retention = self.evaluate_retention()
