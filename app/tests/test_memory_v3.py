@@ -215,6 +215,66 @@ class MemoryV3Tests(unittest.TestCase):
             self.assertNotEqual(memory_node["label"], "Источник знания")
             self.assertNotEqual(memory_node["label"], "Предыдущая версия памяти")
 
+    def test_exact_episode_retry_does_not_duplicate_timeline(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            memory, semantic, v3 = self._build(Path(tmp))
+            kwargs = {
+                "event_type": "chat_feedback",
+                "summary": "Ответ полезен",
+                "scope": "system",
+                "source": "user_feedback",
+                "importance": 3,
+                "fingerprint": "chat_feedback:resp-idempotent",
+            }
+
+            first = v3.record_episode(**kwargs)
+            timeline_after_first = len(v3.timeline())
+            second = v3.record_episode(**kwargs)
+            timeline_after_second = len(v3.timeline())
+
+            self.assertEqual(first["id"], second["id"])
+            self.assertEqual(timeline_after_first, timeline_after_second)
+
+    def test_conflict_retry_does_not_duplicate_opened_timeline_event(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            memory, semantic, v3 = self._build(Path(tmp))
+            old = memory.add(
+                scope="personal",
+                kind="preference",
+                content="Я предпочитаю тёмный интерфейс",
+                importance=4,
+                confidence=0.9,
+            )
+            new = memory.add(
+                scope="personal",
+                kind="preference",
+                content="Я предпочитаю светлый интерфейс",
+                importance=4,
+                confidence=0.95,
+                supersedes_id=old["id"],
+            )
+
+            first = v3.register_conflict(
+                candidate_id="same-candidate",
+                old_memory_id=old["id"],
+                new_memory_id=new["id"],
+                scope="personal",
+            )
+            second = v3.register_conflict(
+                candidate_id="same-candidate",
+                old_memory_id=old["id"],
+                new_memory_id=new["id"],
+                scope="personal",
+            )
+            opened = [
+                item
+                for item in v3.timeline()
+                if item["event_type"] == "memory_conflict_opened"
+            ]
+
+            self.assertEqual(first["id"], second["id"])
+            self.assertEqual(len(opened), 1)
+
     def test_graph_extracts_company_and_episode_event_nodes(self):
         with tempfile.TemporaryDirectory() as tmp:
             memory, semantic, v3 = self._build(Path(tmp))
