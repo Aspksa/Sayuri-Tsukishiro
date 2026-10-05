@@ -643,6 +643,28 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
                 )
                 return
 
+            if parsed.path.startswith("/api/sayuri/memory/v4/failures/") and parsed.path.endswith("/resolve"):
+                failure_id = parsed.path[len("/api/sayuri/memory/v4/failures/"):-len("/resolve")].strip("/")
+                if not failure_id:
+                    raise BadRequestError("Не указана ошибка Failure Memory.")
+                payload = self._read_json()
+                resolution = payload.get("resolution")
+                cause = payload.get("cause", "")
+                prevention = payload.get("prevention", "")
+                if not isinstance(resolution, str):
+                    raise BadRequestError("Поле resolution должно быть строкой.")
+                if not isinstance(cause, str) or not isinstance(prevention, str):
+                    raise BadRequestError("Поля cause и prevention должны быть строками.")
+                self._json(
+                    self.server.core.resolve_sayuri_memory_v4_failure(
+                        failure_id,
+                        resolution=resolution,
+                        cause=cause,
+                        prevention=prevention,
+                    )
+                )
+                return
+
             if parsed.path == "/api/sayuri/memory/v4/sources/trust":
                 payload = self._read_json()
                 source_key = payload.get("source_key")
