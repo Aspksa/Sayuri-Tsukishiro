@@ -1776,6 +1776,8 @@ async function rateSayuriMessage(messageIndex, rating) {
     const result = await postJson('/api/sayuri/experience/feedback', {
       response_id: responseId,
       rating,
+      prompt: message.metadata?.prompt || '',
+      answer: message.content || '',
       context: currentSayuriContext()
     });
     message.metadata = {...message.metadata, feedback: rating};
@@ -2600,7 +2602,9 @@ async function sendSayuriMessage(text) {
       memory_saved: result.memory_saved,
       memory_candidates: result.memory_candidates || [],
       response_id: result.response_id || null,
-      semantic_memory: result.semantic_memory || null
+      semantic_memory: result.semantic_memory || null,
+      experience_used: result.experience_used || 0,
+      prompt: message
     });
     if (result.memory_saved) {
       loadSayuriMemory().catch(() => {});
@@ -2612,7 +2616,7 @@ async function sendSayuriMessage(text) {
     }
     byId('sayuri-chat-status').textContent = result.model === 'local-memory'
       ? 'Память Sayuri · сохранено локально'
-      : `DeepSeek-V4-Flash · Cloud.ru · память ${result.memory_used || 0}`;
+      : `DeepSeek-V4-Flash · память ${result.memory_used || 0} · опыт ${result.experience_used || 0}`;
   } catch (error) {
     const text = error instanceof Error ? error.message : String(error);
     addSayuriMessage('assistant', `Не удалось получить ответ: ${text}`);
