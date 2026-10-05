@@ -5102,3 +5102,366 @@ footer {
   }
 }
 
+/* ==========================================================================
+   SAYURI UI 0.21 — Memory 4.0
+   ========================================================================== */
+
+.sayuri-memory-v4-card {
+  overflow: hidden;
+}
+
+.sayuri-memory-v4-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.sayuri-memory-v4-metrics {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 9px;
+  margin: 16px 0;
+}
+
+.sayuri-memory-v4-metrics article {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #e3e7ed;
+  border-radius: 14px;
+  background: #fafbfc;
+}
+
+.sayuri-memory-v4-metrics span {
+  color: var(--ui-muted, #6f7b8c);
+  font-size: 9.5px;
+  line-height: 1.2;
+}
+
+.sayuri-memory-v4-metrics strong {
+  color: var(--ui-text, #171b24);
+  font-size: 21px;
+  letter-spacing: -.03em;
+}
+
+.sayuri-memory-v4-create-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0 0 14px;
+}
+
+.sayuri-memory-v4-form {
+  display: grid;
+  gap: 9px;
+  padding: 13px;
+  border: 1px solid #e3e7ed;
+  border-radius: 15px;
+  background: #fbfcfd;
+}
+
+.sayuri-memory-v4-form > strong {
+  font-size: 12px;
+}
+
+.sayuri-memory-v4-form > div {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.sayuri-memory-v4-form input,
+.sayuri-memory-v4-form textarea,
+.sayuri-memory-v4-form select,
+.memory-v4-source-row select {
+  width: 100%;
+  border: 1px solid #dde2e8;
+  border-radius: 10px;
+  background: #fff;
+  color: var(--ui-text, #171b24);
+  font: inherit;
+  font-size: 11px;
+}
+
+.sayuri-memory-v4-form input,
+.sayuri-memory-v4-form select,
+.memory-v4-source-row select {
+  min-height: 38px;
+  padding: 0 10px;
+}
+
+.sayuri-memory-v4-form textarea {
+  min-height: 64px;
+  padding: 9px 10px;
+  resize: vertical;
+}
+
+.sayuri-memory-v4-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.sayuri-memory-v4-panel {
+  display: grid;
+  align-content: start;
+  gap: 9px;
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid #e3e7ed;
+  border-radius: 15px;
+  background: #fbfcfd;
+}
+
+.sayuri-memory-v4-panel-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.sayuri-memory-v4-panel-head strong {
+  font-size: 12px;
+}
+
+.sayuri-memory-v4-panel-head span {
+  color: var(--ui-muted, #6f7b8c);
+  font-size: 9.5px;
+  text-align: right;
+}
+
+.sayuri-memory-v4-list {
+  display: grid;
+  gap: 7px;
+  max-height: 430px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.memory-v4-row,
+.memory-v4-source-row,
+.memory-v4-snapshot-row,
+.memory-v4-integrity-state {
+  padding: 10px 11px;
+  border: 1px solid #e8ebef;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.memory-v4-row {
+  display: grid;
+  gap: 6px;
+}
+
+.memory-v4-row.blocked,
+.memory-v4-row.failure.open {
+  border-color: #ead4a8;
+  background: #fffaf1;
+}
+
+.memory-v4-row.question {
+  border-color: #d9e1ef;
+  background: #f8faff;
+}
+
+.memory-v4-row-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.memory-v4-row-head strong {
+  min-width: 0;
+  font-size: 11px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.memory-v4-row-head span {
+  flex: 0 0 auto;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: #eef2f7;
+  color: #647082;
+  font-size: 8.5px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.memory-v4-row p {
+  margin: 0;
+  color: #3f4857;
+  font-size: 10.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.memory-v4-row small,
+.memory-v4-source-row small,
+.memory-v4-snapshot-row small,
+.memory-v4-integrity-state small {
+  color: var(--ui-muted, #6f7b8c);
+  font-size: 9.5px;
+  line-height: 1.4;
+}
+
+.memory-v4-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.memory-v4-row-actions button,
+.memory-v4-row.question > button,
+.memory-v4-snapshot-row button {
+  min-height: 32px;
+  padding: 0 9px;
+  font-size: 9.5px;
+}
+
+.memory-v4-source-row,
+.memory-v4-snapshot-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.memory-v4-source-row > div:first-child,
+.memory-v4-snapshot-row > div:first-child {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.memory-v4-source-row strong,
+.memory-v4-snapshot-row strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
+.memory-v4-source-row > div:last-child {
+  flex: 0 0 92px;
+}
+
+.memory-v4-integrity-state {
+  display: grid;
+  gap: 5px;
+}
+
+.memory-v4-integrity-state > strong {
+  font-size: 11px;
+}
+
+.memory-v4-integrity-state > strong.ready {
+  color: #2f7a51;
+}
+
+.memory-v4-integrity-state > strong.error {
+  color: #a33d3d;
+}
+
+.memory-v4-integrity-state p {
+  margin: 0;
+  color: #8c4545;
+  font-size: 10px;
+}
+
+.sayuri-memory-v4-message {
+  min-height: 19px;
+  margin-top: 10px;
+  color: var(--ui-muted, #6f7b8c);
+  font-size: 11px;
+}
+
+.sayuri-memory-v4-message.ready {
+  color: #2f7a51;
+}
+
+.sayuri-memory-v4-message.error {
+  color: #a33d3d;
+}
+
+.sayuri-memory-entry .memory-v4-tier {
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: #eef2f7;
+  color: #667184;
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.sayuri-memory-entry .memory-v4-tier.hot {
+  background: #edf8f1;
+  color: #31714d;
+}
+
+.sayuri-memory-entry .memory-v4-tier.cold {
+  background: #f2f3f5;
+  color: #7a808a;
+}
+
+.sayuri-memory-entry .memory-v4-protected {
+  background: #fff1e9;
+  color: #975c3e;
+}
+
+.sayuri-memory-recall-reason {
+  margin-top: -2px;
+  color: #687586;
+  font-size: 9.5px;
+  line-height: 1.45;
+}
+
+@media (max-width: 1180px) {
+  .sayuri-memory-v4-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 860px) {
+  .sayuri-memory-v4-create-grid,
+  .sayuri-memory-v4-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .sayuri-memory-v4-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .sayuri-memory-v4-actions,
+  .memory-v4-row-actions {
+    width: 100%;
+  }
+
+  .sayuri-memory-v4-actions button {
+    flex: 1 1 140px;
+  }
+
+  .sayuri-memory-v4-form > div {
+    grid-template-columns: 1fr;
+  }
+
+  .memory-v4-source-row,
+  .memory-v4-snapshot-row,
+  .memory-v4-row-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .memory-v4-source-row > div:last-child {
+    width: 100%;
+    flex-basis: auto;
+  }
+}
+
