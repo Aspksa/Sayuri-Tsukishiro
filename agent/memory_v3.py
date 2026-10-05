@@ -841,7 +841,7 @@ class MemorySystemV3:
         return [self._knowledge_row(row) for row in rows]
 
     def bootstrap(self) -> dict[str, Any]:
-        entries = self.memory.list(limit=300)
+        entries = self.memory.scan_active(limit=5000)
         promoted = 0
         for entry in entries:
             result = self.ingest_memory(entry, timeline=False)
@@ -855,7 +855,7 @@ class MemorySystemV3:
         }
 
     def retention_snapshot(self) -> dict[str, Any]:
-        entries = self.memory.list(limit=300)
+        entries = self.memory.scan_active(limit=5000)
         stale = [
             {
                 "id": entry["id"],
@@ -875,7 +875,7 @@ class MemorySystemV3:
         }
 
     def evaluate_retention(self) -> dict[str, Any]:
-        entries = self.memory.list(limit=300)
+        entries = self.memory.scan_active(limit=5000)
         now = self._now_dt()
         stale: list[dict[str, Any]] = []
         updated = 0
@@ -917,7 +917,7 @@ class MemorySystemV3:
         }
 
     def consolidate(self) -> dict[str, Any]:
-        entries = self.memory.list(limit=300)
+        entries = self.memory.scan_active(limit=5000)
         groups: dict[tuple[str, str], list[dict[str, Any]]] = {}
         for entry in entries:
             groups.setdefault((entry["scope"], entry["kind"]), []).append(entry)
@@ -1268,7 +1268,7 @@ class MemorySystemV3:
 
     def maintenance(self) -> dict[str, Any]:
         retention = self.evaluate_retention()
-        entries = self.memory.list(limit=300)
+        entries = self.memory.scan_active(limit=5000)
         promoted = 0
         for entry in entries:
             result = self.ingest_memory(entry, timeline=False)
@@ -1372,12 +1372,35 @@ class MemorySystemV3:
                 episode_ranked.append((score, enriched))
         episode_ranked.sort(key=lambda pair: pair[0], reverse=True)
 
+        open_conflicts = self.conflicts(status="open", limit=6)
         return {
             "working": self.working()["items"],
             "knowledge": [item for _, item in knowledge_ranked[:6]],
             "episodes": [item for _, item in episode_ranked[:4]],
-            "open_conflicts": len(self.conflicts(status="open", limit=100)),
+            "conflicts": [
+                {
+                    "scope": item["scope"],
+                    "old_memory_id": item["old_memory_id"],
+                    "new_memory_id": item["new_memory_id"],
+                    "old_content": item["old_content"][:700],
+                    "new_content": item["new_content"][:700],
+                    "status": item["status"],
+                }
+                for item in open_conflicts
+            ],
+            "open_conflicts": len(open_conflicts),
             "engine": "memory-v3",
+        }
+
+    def archive_memory(self, entry: dict[str, Any]) -> dict[str, Any]:
+        memory_id = str(entry.get("id") or "")
+        if not memory_id:
+            raise MemorySystemError("У архивируемой памяти нет ID.")
+        knowledge_updated = self._close_knowledge_for_memory(memory_id, status="archived")
+        self.record_memory_removed(entry)
+        return {
+            "memory_id": memory_id,
+            "knowledge_updated": knowledge_updated,
         }
 
     def record_memory_removed(self, entry: dict[str, Any]) -> None:
