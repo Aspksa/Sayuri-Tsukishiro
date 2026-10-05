@@ -167,6 +167,31 @@ class MemoryV3Tests(unittest.TestCase):
             self.assertIn("memory_conflict_opened", events)
             self.assertIn("memory_conflict_resolved", events)
 
+    def test_graph_extracts_company_and_episode_event_nodes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            memory, semantic, v3 = self._build(Path(tmp))
+            entry = memory.add(
+                scope="project",
+                kind="fact",
+                content='Контрагент ООО «Альфа Сервис» указан в договоре',
+                importance=4,
+                confidence=0.9,
+            )
+            v3.ingest_memory(entry)
+            v3.record_episode(
+                event_type="document_reviewed",
+                summary="Проверен договор с ООО Альфа Сервис",
+                scope="project",
+                source="test",
+                importance=3,
+            )
+
+            graph = v3.graph()
+            node_types = {node["type"] for node in graph["nodes"]}
+            self.assertIn("company", node_types)
+            self.assertIn("event", node_types)
+            self.assertIn("experienced", {edge["relation"] for edge in graph["edges"]})
+
     def test_maintenance_bootstraps_knowledge_graph_and_temporal_memory(self):
         with tempfile.TemporaryDirectory() as tmp:
             memory, semantic, v3 = self._build(Path(tmp))
