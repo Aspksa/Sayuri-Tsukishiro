@@ -89,12 +89,25 @@ class MemorySystemV3:
                     details_json TEXT,
                     source TEXT NOT NULL,
                     importance INTEGER NOT NULL,
-                    occurred_at TEXT NOT NULL
+                    occurred_at TEXT NOT NULL,
+                    fingerprint TEXT
                 )
                 """
             )
+            episode_columns = {
+                row["name"] for row in db.execute("PRAGMA table_info(episodic_memory)").fetchall()
+            }
+            if "fingerprint" not in episode_columns:
+                db.execute("ALTER TABLE episodic_memory ADD COLUMN fingerprint TEXT")
             db.execute(
                 "CREATE INDEX IF NOT EXISTS idx_episodes_time ON episodic_memory(occurred_at DESC)"
+            )
+            db.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_episodes_fingerprint
+                ON episodic_memory(fingerprint)
+                WHERE fingerprint IS NOT NULL
+                """
             )
             db.execute(
                 """
@@ -361,6 +374,7 @@ class MemorySystemV3:
         details: dict[str, Any] | None = None,
         source: str = "system",
         importance: int = 3,
+        fingerprint: str | None = None,
     ) -> dict[str, Any]:
         if scope not in {"personal", "project", "system"}:
             raise MemorySystemError("Недопустимая область эпизодической памяти.")
@@ -370,25 +384,58 @@ class MemorySystemV3:
         event_id = uuid.uuid4().hex
         now = self._now()
         importance = min(max(int(importance), 1), 5)
+        safe_fingerprint = (
+            fingerprint.strip()[:300]
+            if isinstance(fingerprint, str) and fingerprint.strip()
+            else None
+        )
         with self._connect() as db:
-            db.execute(
-                """
-                INSERT INTO episodic_memory(
-                    id, scope, event_type, summary, details_json,
-                    source, importance, occurred_at
-                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    event_id,
-                    scope,
-                    event_type[:80],
-                    text[:2000],
-                    self._json(details) if details else None,
-                    (source or "system")[:80],
-                    importance,
-                    now,
-                ),
-            )
+            existing = None
+            if safe_fingerprint:
+                existing = db.execute(
+                    "SELECT id FROM episodic_memory WHERE fingerprint = ?",
+                    (safe_fingerprint,),
+                ).fetchone()
+            if existing:
+                event_id = existing["id"]
+                db.execute(
+                    """
+                    UPDATE episodic_memory
+                    SET scope = ?, event_type = ?, summary = ?, details_json = ?,
+                        source = ?, importance = ?, occurred_at = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        scope,
+                        event_type[:80],
+                        text[:2000],
+                        self._json(details) if details else None,
+                        (source or "system")[:80],
+                        importance,
+                        now,
+                        event_id,
+                    ),
+                )
+            else:
+                db.execute(
+                    """
+                    INSERT INTO episodic_memory(
+                        id, scope, event_type, summary, details_json,
+                        source, importance, occurred_at, fingerprint
+                    ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        event_id,
+                        scope,
+                        event_type[:80],
+                        text[:2000],
+                        self._json(details) if details else None,
+                        (source or "system")[:80],
+                        importance,
+                        now,
+                        safe_fingerprint,
+                    ),
+                )
         self._timeline(
             event_type=event_type,
             subject_type="episode",
@@ -449,6 +496,7 @@ class MemorySystemV3:
                 "source": row["source"],
                 "importance": row["importance"],
                 "occurred_at": row["occurred_at"],
+                "fingerprint": row["fingerprint"] if "fingerprint" in row.keys() else None,
             }
             for row in rows
         ]
