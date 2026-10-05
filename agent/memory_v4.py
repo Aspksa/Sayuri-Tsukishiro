@@ -829,11 +829,11 @@ class MemorySystemV4:
                 """,
                 (normalized, self._now(), response_id),
             )
+        self.note_source_outcome(memory_ids, normalized)
         for memory_id in memory_ids:
             entry = self.memory.get(memory_id)
             if entry:
                 self.evaluate_entry(entry)
-        self.note_source_outcome(memory_ids, normalized)
         self._audit(
             "recall_feedback",
             "response",
