@@ -17,6 +17,10 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Test version tooling
         run: python3 -m unittest discover -s scripts/tests -v
+      - name: Test Sayuri core
+        run: python3 -m unittest discover -s app/tests -v
+      - name: Run preflight
+        run: python3 -m app.preflight
       - name: Check every changed commit
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}

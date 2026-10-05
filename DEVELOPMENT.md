@@ -92,3 +92,51 @@ git ls-files
 Если результат не установлен, пиши «не проверено». Перед повтором попытки укажи новую причину. При разрыве связи сначала проверь, завершилась ли операция фактически.
 
 Когда появится подтверждённое постоянное решение типовой ошибки, добавь его сюда: симптом, причина, исправление и проверка. Сейчас проверенных рецептов устранения ошибок приложения нет.
+
+
+## Рабочее приложение с 0.1.2
+
+### Структура
+
+| Путь | Назначение |
+| --- | --- |
+| `app/` | ядро, конфигурация, SQLite, HTTP server, preflight |
+| `app/tests/` | unit/integration tests ядра |
+| `web/` | локальный интерфейс без внешних CDN |
+| `scripts/bootstrap_windows.ps1` | переносимый Windows bootstrap |
+| `Sayuri Tsukishiro.bat` | точка запуска для пользователя |
+| `data/` | runtime-данные и SQLite; не коммитятся |
+| `logs/` | журналы launcher/server; не коммитятся |
+| `.runtime/` | переносимый Python; не коммитится |
+| `ERRORS.md` | коды ошибок и восстановление |
+
+### Запуск на Windows
+
+Из корня проекта двойным щелчком:
+
+`Sayuri Tsukishiro.bat`
+
+Первый запуск при отсутствии `.runtime/python` загружает Python 3.14.8 с python.org, проверяет SHA256, выполняет preflight, запускает локальный сервер и после health-check открывает браузер. Корень вычисляется относительно BAT, поэтому буква USB/SSD не фиксируется.
+
+### Команды разработки
+
+```sh
+python -m unittest discover -s app/tests -v
+python -m unittest discover -s scripts/tests -v
+python -m app.preflight
+python -m app.main --no-browser
+python scripts/versioning.py show
+python scripts/versioning.py check
+```
+
+На Linux допустим `python3`. Для пользовательского Windows-запуска системный Python не требуется после успешной установки локального runtime.
+
+### Runtime paths
+
+- База: `data/sayuri.db`.
+- Launcher log: `logs/launcher.log`.
+- Core/server log: `logs/sayuri.log`.
+- Начальный URL: `http://127.0.0.1:8765`; если порт занят, перебирается ограниченный диапазон.
+- API: `GET /api/health`, `GET /api/events?limit=N`.
+
+Windows BAT/PowerShell не запускались в текущем Linux-окружении; этот предел проверки должен оставаться отмеченным до фактического запуска на Windows.

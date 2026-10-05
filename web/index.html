@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Sayuri Tsukishiro</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="sigil" aria-hidden="true">月</div>
+        <div>
+          <p class="eyebrow">SAYURI TSUKISHIRO</p>
+          <h1>Локальное ядро Саюри</h1>
+        </div>
+      </div>
+      <div class="status-pill" id="status-pill"><span></span><strong>Проверка…</strong></div>
+    </header>
+
+    <section class="hero">
+      <div>
+        <p class="eyebrow">CORE · DATABASE · WEB</p>
+        <h2>Основа системы запущена и работает локально.</h2>
+        <p class="lead">Первая рабочая версия отделяет ядро, SQLite-хранилище, веб-интерфейс и переносимый Windows-запуск. Следующие модули можно наращивать поверх этой базы без переделки старта.</p>
+      </div>
+      <div class="version-box">
+        <span>Версия проекта</span>
+        <strong id="project-version">—</strong>
+        <small id="runtime-version">Python —</small>
+      </div>
+    </section>
+
+    <section class="grid metrics" aria-label="Состояние системы">
+      <article class="card"><span>Ядро</span><strong id="core-state">—</strong><small>Sayuri Core</small></article>
+      <article class="card"><span>База данных</span><strong id="db-state">—</strong><small id="db-detail">SQLite</small></article>
+      <article class="card"><span>Сервер</span><strong id="server-state">—</strong><small id="server-detail">127.0.0.1</small></article>
+      <article class="card"><span>События</span><strong id="event-count">—</strong><small>журнал ядра</small></article>
+    </section>
+
+    <section class="content-grid">
+      <article class="panel">
+        <div class="panel-head"><div><p class="eyebrow">ARCHITECTURE</p><h3>Модули</h3></div></div>
+        <div id="modules" class="module-list"><p class="muted">Загрузка…</p></div>
+      </article>
+      <article class="panel">
+        <div class="panel-head"><div><p class="eyebrow">EVENT STREAM</p><h3>Последние события</h3></div><button id="refresh" type="button">Обновить</button></div>
+        <div id="events" class="event-list"><p class="muted">Загрузка…</p></div>
+      </article>
+    </section>
+
+    <footer>
+      <span>Sayuri Tsukishiro · local-first foundation</span>
+      <span id="updated-at">—</span>
+    </footer>
+  </main>
+  <script src="/app.js" defer></script>
+</body>
+</html>

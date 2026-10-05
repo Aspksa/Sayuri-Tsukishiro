@@ -1,0 +1,140 @@
+from __future__ import annotations
+
+from contextlib import contextmanager
+from datetime import datetime, timezone
+from pathlib import Path
+import json
+import sqlite3
+from typing import Any, Iterator
+
+from .errors import DatabaseError
+
+
+SCHEMA_VERSION = 1
+
+
+class Database:
+    def __init__(self, path: Path):
+        self.path = path
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+
+    def connect(self) -> sqlite3.Connection:
+        connection = sqlite3.connect(self.path, timeout=5.0)
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA foreign_keys = ON")
+        connection.execute("PRAGMA journal_mode = WAL")
+        connection.execute("PRAGMA synchronous = NORMAL")
+        connection.execute("PRAGMA busy_timeout = 5000")
+        return connection
+
+    @contextmanager
+    def session(self) -> Iterator[sqlite3.Connection]:
+        connection = self.connect()
+        try:
+            yield connection
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+
+    def initialize(self) -> None:
+        try:
+            with self.session() as db:
+                db.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS schema_meta (
+                        key TEXT PRIMARY KEY,
+                        value TEXT NOT NULL
+                    )
+                    """
+                )
+                db.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS system_events (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        created_at TEXT NOT NULL,
+                        level TEXT NOT NULL,
+                        event_type TEXT NOT NULL,
+                        message TEXT NOT NULL,
+                        details_json TEXT NOT NULL DEFAULT '{}'
+                    )
+                    """
+                )
+                db.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS error_events (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        created_at TEXT NOT NULL,
+                        code TEXT NOT NULL,
+                        message TEXT NOT NULL,
+                        context_json TEXT NOT NULL DEFAULT '{}'
+                    )
+                    """
+                )
+                db.execute(
+                    """
+                    INSERT INTO schema_meta(key, value) VALUES('schema_version', ?)
+                    ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                    """,
+                    (str(SCHEMA_VERSION),),
+                )
+        except sqlite3.Error as exc:
+            raise DatabaseError(f"SQLite initialization failed: {exc}") from exc
+
+    @staticmethod
+    def _now() -> str:
+        return datetime.now(timezone.utc).isoformat()
+
+    def record_event(
+        self,
+        event_type: str,
+        message: str,
+        *,
+        level: str = "INFO",
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        with self.session() as db:
+            db.execute(
+                "INSERT INTO system_events(created_at, level, event_type, message, details_json) VALUES(?, ?, ?, ?, ?)",
+                (self._now(), level, event_type, message, json.dumps(details or {}, ensure_ascii=False)),
+            )
+
+    def record_error(self, code: str, message: str, context: dict[str, Any] | None = None) -> None:
+        with self.session() as db:
+            db.execute(
+                "INSERT INTO error_events(created_at, code, message, context_json) VALUES(?, ?, ?, ?)",
+                (self._now(), code, message, json.dumps(context or {}, ensure_ascii=False)),
+            )
+
+    def recent_events(self, limit: int = 20) -> list[dict[str, Any]]:
+        safe_limit = min(max(int(limit), 1), 100)
+        with self.session() as db:
+            rows = db.execute(
+                "SELECT id, created_at, level, event_type, message, details_json FROM system_events ORDER BY id DESC LIMIT ?",
+                (safe_limit,),
+            ).fetchall()
+        result: list[dict[str, Any]] = []
+        for row in rows:
+            item = dict(row)
+            item["details"] = json.loads(item.pop("details_json"))
+            result.append(item)
+        return result
+
+    def health(self) -> dict[str, Any]:
+        with self.session() as db:
+            db.execute("SELECT 1").fetchone()
+            schema = db.execute(
+                "SELECT value FROM schema_meta WHERE key = 'schema_version'"
+            ).fetchone()
+            events = db.execute("SELECT COUNT(*) AS count FROM system_events").fetchone()["count"]
+            errors = db.execute("SELECT COUNT(*) AS count FROM error_events").fetchone()["count"]
+        return {
+            "status": "ready",
+            "engine": "sqlite3",
+            "schema_version": int(schema["value"]) if schema else 0,
+            "events": events,
+            "errors": errors,
+            "path": str(self.path),
+        }
