@@ -813,11 +813,11 @@ AI-context открытого конфликта содержит огранич
 
 Graph source-memory nodes всегда сохраняют реальный label исходной записи. Технические fallback-подписи вроде «Источник знания» не могут перезаписать существующий содержательный label.
 
-## Memory 4.0
+## Memory 4.x
 
 Реализация: `agent/memory_v4.py`.
 
-Memory 4.0 использует существующую `data/sayuri-memory.db` и не вводит внешнюю vector DB, embedding API или вторую LLM.
+Memory 4.x использует существующую `data/sayuri-memory.db` и не вводит внешнюю vector DB, embedding API или вторую LLM. Начиная с `0.1.46`, поверх hardening включён `Memory 4.1 Quality Gate`.
 
 ### Таблицы
 
@@ -846,12 +846,16 @@ query
 -> utility
 -> hot/warm/cold tier
 -> sensitivity/cloud policy
+-> instruction-risk quarantine
 -> final score
+-> diversity selection
+-> context budget
 -> explanation
+-> successful Cloud response
 -> recall audit
 ```
 
-Cloud recall использует `for_cloud=True`. Secret/sensitive memories отбрасываются до формирования JSON для DeepSeek.
+Cloud recall использует `for_cloud=True`. Secret/sensitive memories и high-risk instruction-like content отбрасываются до формирования JSON для DeepSeek. Локальный пользовательский поиск по-прежнему может показать quarantined запись с объяснением причины.
 
 Начиная с `0.1.45`, privacy firewall применяется ко всем memory-derived blocks перед Cloud.ru:
 - Memory 4.0 personal/project recall;
@@ -880,11 +884,20 @@ Provider/network/timeout error до шага 3 не меняет usage/utility s
 
 Feedback корректирует:
 - helpful/unhelpful counters выбранных memories;
-- utility score;
-- evidence/correction counters source profile;
-- bounded empirical source trust.
+- utility score.
 
-При пересмотре rating предыдущий вклад сначала вычитается.
+Generic «Полезно / Не помогло» **не меняет Source Trust**: полезность ответа не является доказательством истинности исходного документа или OCR. Source Trust изменяется только отдельной проверкой/ручным override. При пересмотре rating предыдущий utility-вклад сначала вычитается.
+
+### Memory 4.1 Quality Gate
+
+Quality Gate добавляет поверх v0.1.45 четыре независимых механизма.
+
+1. **Instruction-risk quarantine.** `memory_v4_state` хранит `instruction_risk` и `instruction_risk_score`. High-risk directives получают local-only policy. `_cloud_text_allowed()` применяет тот же барьер к Memory 3.0 и Experience-derived blocks.
+2. **Diversified Recall.** После relevance ranking выполняется greedy selection с semantic redundancy penalty и небольшим same-source penalty. Это не меняет текст или базовый score в БД.
+3. **Verification Queue.** Maintenance после пересчёта states через SQLite JOIN создаёт idempotent Question Memory для важных volatile memories с freshness < 0.45 и важных records с source trust < 0.45.
+4. **Bounded Context.** Direct recall ограничен `CLOUD_RECALL_CHAR_BUDGET=9000`, Goal/Task/Failure/Question context — `CLOUD_AUX_CHAR_BUDGET=7000`. Длинные поля сокращаются только в outbound payload.
+
+Критический attribution invariant: `_prepared_recall` пересобирается **после** diversity/budget selection. Поэтому после успешного Cloud-ответа usage/feedback получают только memories, фактически вошедшие в model context.
 
 ### Goals / Tasks
 
@@ -970,6 +983,9 @@ Restore:
 ### Invariants
 
 - trust/freshness/utility affect ranking, not stored truth;
+- generic answer feedback affects utility, never factual Source Trust;
+- high instruction-risk memory remains local-only and cannot execute as instruction;
+- context budget/truncation never mutates the original stored memory;
 - secrets cannot be re-enabled for Cloud through Source Trust;
 - personal/project scopes remain separated;
 - question is not knowledge;
