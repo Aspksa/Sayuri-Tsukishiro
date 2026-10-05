@@ -120,6 +120,7 @@ class SayuriMemory:
             "updated_at": row["updated_at"],
             "last_used_at": row["last_used_at"],
             "use_count": row["use_count"],
+            "active": bool(row["active"]),
             "source_context": (
                 json.loads(row["source_context_json"])
                 if "source_context_json" in row.keys() and row["source_context_json"]
