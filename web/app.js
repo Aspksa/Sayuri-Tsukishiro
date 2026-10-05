@@ -2254,6 +2254,31 @@ function renderMemoryV4Failures(payload) {
     row.append(head, symptom, detail);
     container.append(row);
   }
+
+  const causalLinks = payload.causal_links || [];
+  if (causalLinks.length) {
+    const divider = document.createElement('div');
+    divider.className = 'memory-v4-causal-divider';
+    divider.textContent = 'Причинно-следственные связи';
+    container.append(divider);
+    for (const link of causalLinks.slice(0, 12)) {
+      const row = document.createElement('article');
+      row.className = 'memory-v4-row causal';
+      const head = document.createElement('div');
+      head.className = 'memory-v4-row-head';
+      const relation = document.createElement('strong');
+      relation.textContent = `${link.cause_type} → ${link.relation.replaceAll('_', ' ')} → ${link.effect_type}`;
+      const confidence = document.createElement('span');
+      confidence.textContent = `${Math.round((Number(link.confidence) || 0) * 100)}%`;
+      head.append(relation, confidence);
+      const detail = document.createElement('small');
+      detail.textContent = link.evidence?.tool
+        ? `инструмент: ${link.evidence.tool}`
+        : `обновлено ${formatDate(link.updated_at)}`;
+      row.append(head, detail);
+      container.append(row);
+    }
+  }
 }
 
 function renderMemoryV4Questions(payload) {
@@ -2378,6 +2403,125 @@ function renderMemoryV4Recalls(payload) {
   }
 }
 
+function renderMemoryV4Decisions(payload) {
+  const container = byId('memory-v4-decision-list');
+  if (!container) return;
+  container.replaceChildren();
+  const decisions = payload.decisions || [];
+  if (!decisions.length) {
+    memoryV4Empty(container, 'Структурированных решений пока нет.');
+    return;
+  }
+  for (const item of decisions) {
+    const row = document.createElement('article');
+    row.className = 'memory-v4-row decision';
+    const head = document.createElement('div');
+    head.className = 'memory-v4-row-head';
+    const title = document.createElement('strong');
+    title.textContent = item.statement;
+    const badge = document.createElement('span');
+    badge.textContent = item.project_version ? `v${item.project_version}` : item.scope;
+    head.append(title, badge);
+    const rationale = document.createElement('p');
+    rationale.textContent = item.rationale
+      ? `Почему: ${item.rationale}`
+      : 'Причина решения явно не зафиксирована.';
+    const meta = document.createElement('small');
+    const alternatives = item.alternatives?.length
+      ? ` · альтернативы: ${item.alternatives.join('; ')}`
+      : '';
+    meta.textContent = `${item.scope} · ${formatDate(item.updated_at)}${alternatives}`;
+    row.append(head, rationale, meta);
+    container.append(row);
+  }
+}
+
+function renderMemoryV4Entities(payload) {
+  const container = byId('memory-v4-entity-list');
+  if (!container) return;
+  container.replaceChildren();
+  const entities = payload.entities || [];
+  if (!entities.length) {
+    memoryV4Empty(container, 'Профили сущностей ещё не сформированы.');
+    return;
+  }
+  for (const item of entities) {
+    const row = document.createElement('article');
+    row.className = 'memory-v4-row entity';
+    const head = document.createElement('div');
+    head.className = 'memory-v4-row-head';
+    const title = document.createElement('strong');
+    title.textContent = item.label;
+    const badge = document.createElement('span');
+    badge.textContent = `${item.type} · связей ${item.relation_count}`;
+    head.append(title, badge);
+    const relations = document.createElement('p');
+    const labels = (item.relations || []).slice(0, 5).map((relation) =>
+      `${relation.relation.replaceAll('_', ' ')}: ${relation.other}`
+    );
+    relations.textContent = labels.length ? labels.join(' · ') : 'Связи пока не обнаружены.';
+    row.append(head, relations);
+    container.append(row);
+  }
+}
+
+function renderMemoryV4Preferences(payload) {
+  const container = byId('memory-v4-preference-list');
+  if (!container) return;
+  container.replaceChildren();
+  const preferences = payload.preferences || [];
+  if (!preferences.length) {
+    memoryV4Empty(container, 'История предпочтений пока пуста.');
+    return;
+  }
+  for (const item of preferences) {
+    const row = document.createElement('article');
+    row.className = `memory-v4-row preference ${item.active ? 'active' : 'archived'}`;
+    const head = document.createElement('div');
+    head.className = 'memory-v4-row-head';
+    const title = document.createElement('strong');
+    title.textContent = item.content;
+    const badge = document.createElement('span');
+    badge.textContent = item.active ? 'актуально' : 'историческая версия';
+    head.append(title, badge);
+    const meta = document.createElement('small');
+    const confidence = item.confidence == null
+      ? ''
+      : ` · уверенность ${Math.round(Number(item.confidence) * 100)}%`;
+    const supersedes = item.supersedes_id ? ' · заменяет предыдущую запись' : '';
+    meta.textContent = `${item.source}${confidence}${supersedes} · ${formatDate(item.updated_at)}`;
+    row.append(head, meta);
+    container.append(row);
+  }
+}
+
+function renderMemoryV4Audit(payload) {
+  const container = byId('memory-v4-audit-list');
+  if (!container) return;
+  container.replaceChildren();
+  const audit = payload.audit || [];
+  if (!audit.length) {
+    memoryV4Empty(container, 'Аудит памяти пока пуст.');
+    return;
+  }
+  for (const item of audit.slice(0, 24)) {
+    const row = document.createElement('article');
+    row.className = 'memory-v4-row audit';
+    const head = document.createElement('div');
+    head.className = 'memory-v4-row-head';
+    const action = document.createElement('strong');
+    action.textContent = item.action.replaceAll('_', ' ');
+    const subject = document.createElement('span');
+    subject.textContent = item.subject_type;
+    head.append(action, subject);
+    const meta = document.createElement('small');
+    const subjectId = item.subject_id ? ` · ${item.subject_id.slice(0, 12)}` : '';
+    meta.textContent = `${formatDate(item.created_at)}${subjectId}`;
+    row.append(head, meta);
+    container.append(row);
+  }
+}
+
 function renderMemoryV4Integrity(payload) {
   const container = byId('memory-v4-integrity-state');
   if (!container) return;
@@ -2439,6 +2583,10 @@ function renderSayuriMemoryV4(payload) {
   renderMemoryV4Questions(payload);
   renderMemoryV4Sources(payload);
   renderMemoryV4Recalls(payload);
+  renderMemoryV4Decisions(payload);
+  renderMemoryV4Entities(payload);
+  renderMemoryV4Preferences(payload);
+  renderMemoryV4Audit(payload);
   renderMemoryV4Integrity(payload);
   renderMemoryV4Snapshots(payload);
 }
