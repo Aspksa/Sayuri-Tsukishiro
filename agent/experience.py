@@ -8,6 +8,8 @@ import json
 import sqlite3
 import uuid
 
+from .semantic_memory import SemanticMemoryIndex
+
 
 class ExperienceError(ValueError):
     pass
@@ -194,10 +196,20 @@ class ExperienceStore:
             fingerprint=self.fingerprint("chat_response", response_id),
         )
 
-    def record_chat_feedback(self, response_id: str, rating: str, context: Any = None) -> dict[str, Any]:
+    def record_chat_feedback(
+        self,
+        response_id: str,
+        rating: str,
+        *,
+        prompt: str = "",
+        answer: str = "",
+        context: Any = None,
+    ) -> dict[str, Any]:
         normalized = (rating or "").strip().lower()
         if normalized not in {"useful", "not_useful"}:
             raise ExperienceError("Оценка ответа должна быть useful или not_useful.")
+        safe_prompt = " ".join((prompt or "").strip().split())[:2000]
+        safe_answer = " ".join((answer or "").strip().split())[:1200]
         return self.record(
             category="chat_feedback",
             strategy="chat.deepseek_v4_flash",
@@ -205,6 +217,10 @@ class ExperienceStore:
             source="user_feedback",
             subject_id=response_id,
             context=context,
+            details={
+                "prompt": safe_prompt,
+                "answer_excerpt": safe_answer,
+            },
             fingerprint=self.fingerprint("chat_feedback", response_id),
         )
 
@@ -311,6 +327,75 @@ class ExperienceStore:
         centered = stats["success_rate"] - 0.5
         strength = stats["evidence_strength"]
         return round(max(-0.08, min(0.08, centered * 0.16 * strength)), 4)
+
+
+    @staticmethod
+    def _experience_text(item: dict[str, Any]) -> str:
+        details = item.get("details") if isinstance(item.get("details"), dict) else {}
+        context = item.get("context") if isinstance(item.get("context"), dict) else {}
+        parts = [
+            str(item.get("strategy") or ""),
+            str(details.get("prompt") or ""),
+            str(details.get("answer_excerpt") or ""),
+            str(context.get("title") or ""),
+            str(context.get("view") or ""),
+        ]
+        current = context.get("current_document")
+        if isinstance(current, dict):
+            parts.append(str(current.get("name") or ""))
+            parts.append(str(current.get("category") or ""))
+        return " ".join(part for part in parts if part)
+
+    def relevant(self, query: str, limit: int = 6, minimum_score: float = 0.12) -> list[dict[str, Any]]:
+        text = (query or "").strip()
+        if not text:
+            return []
+        candidates = self.recent(200)
+        ranked: list[tuple[float, dict[str, Any]]] = []
+        for item in candidates:
+            details = SemanticMemoryIndex.score(
+                text,
+                self._experience_text(item),
+                importance=4 if item["reward"] != 0 else 2,
+                confidence=1.0 if item["reward"] > 0 else 0.75,
+            )
+            score = float(details["score"])
+            if score < minimum_score:
+                continue
+            enriched = dict(item)
+            enriched["relevance"] = round(score, 4)
+            enriched["semantic_match"] = details
+            ranked.append((score, enriched))
+        ranked.sort(
+            key=lambda pair: (
+                pair[0],
+                abs(float(pair[1].get("reward") or 0)),
+                pair[1].get("updated_at") or "",
+            ),
+            reverse=True,
+        )
+        return [item for _, item in ranked[: min(max(int(limit), 1), 20)]]
+
+    def context(self, query: str, limit: int = 6) -> dict[str, Any]:
+        relevant = self.relevant(query, limit=limit)
+        helpful: list[dict[str, Any]] = []
+        avoid: list[dict[str, Any]] = []
+        for item in relevant:
+            compact = {
+                "strategy": item["strategy"],
+                "category": item["category"],
+                "relevance": item["relevance"],
+                "details": item.get("details"),
+            }
+            if item["reward"] > 0:
+                helpful.append(compact)
+            elif item["reward"] < 0:
+                avoid.append(compact)
+        return {
+            "retrieval": "hybrid_semantic_v1",
+            "helpful": helpful[:4],
+            "avoid": avoid[:4],
+        }
 
     def stats(self) -> dict[str, Any]:
         with self._connect() as db:
