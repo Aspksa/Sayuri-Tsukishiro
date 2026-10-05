@@ -321,3 +321,69 @@ Compatibility aliases:
 Активные прикладные контуры разработки: `app/`, `agent/`, `disk/`, `web/`, `scripts/`.
 
 Windows bootstrap устанавливает переносимый Python и optional Spatial/OCR runtime. Удалённая Android/device-интеграция не является частью runtime или API проекта.
+
+## Sayuri Personal AI 0.1
+
+### Runtime
+
+Agent runtime находится в `agent/runtime.py`.
+
+Фиксированные значения:
+
+- provider: Cloud.ru Foundation Models;
+- base URL: `https://foundation-models.api.cloud.ru/v1`;
+- model: `deepseek-ai/DeepSeek-V4-Flash`.
+
+Внешний Python SDK не требуется: запросы выполняются стандартной библиотекой через HTTPS.
+
+### Secret boundary
+
+`SecretStore` хранит ключ отдельно от системных настроек.
+
+- `SAYURI_CLOUDRU_API_KEY` имеет приоритет;
+- локальный файл: `data/sayuri-cloudru.secret`;
+- Windows: DPAPI;
+- development/CI на других ОС: локальный файл `0600`;
+- наружу возвращается только маска.
+
+Никогда не добавлять ключ в `.env.example`, тестовые fixtures, логи, события или Git.
+
+### API
+
+- `GET /api/sayuri/profile`
+- `POST /api/sayuri/provider`
+- `POST /api/sayuri/provider/test`
+- `POST /api/sayuri/chat`
+
+### UI
+
+Глобальные компоненты находятся в `web/index.html`, `web/app.js`, `web/styles.css`.
+
+- `#sayuri-orb` — плавающий аватар;
+- `#sayuri-context-menu` — правый клик;
+- `#sayuri-chat-window` — плавающий чат;
+- `#view-sayuri` — Личный кабинет;
+- `web/assets/sayuri-avatar.svg` — канонический пользовательский образ.
+
+Положение аватара/чата и история сохраняются только в browser localStorage и могут быть отключены в Личном кабинете.
+
+### Context boundary
+
+В AI отправляется только структурированный интерфейсный контекст:
+- активный раздел;
+- route/hash;
+- состояние Диска;
+- имя/id выбранного объекта при открытом viewer.
+
+Содержимое файла, OCR, ДНК и факты документа в stage 1 автоматически не передаются.
+
+### Проверки
+
+Кроме общего CI должны оставаться проверки:
+- secret roundtrip + masking;
+- фиксированного provider/model;
+- Sayuri profile API;
+- отсутствие полного ключа в ответе;
+- web contract глобального аватара, кабинета, chat/provider endpoints;
+- `node --check web/app.js`.
+
