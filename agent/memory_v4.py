@@ -2196,18 +2196,28 @@ class MemorySystemV4:
                 reason = "source_trust_review"
             if reason is None:
                 continue
-            before = {
-                item["fingerprint"]
-                for item in self._questions_raw(status="open", limit=500)
-            }
-            question = self.open_question(
-                f"Проверить актуальность важной памяти: «{str(entry.get('content') or '')[:500]}»",
+
+            question_text = (
+                f"Проверить актуальность важной памяти: "
+                f"«{str(entry.get('content') or '')[:500]}»"
+            )
+            fingerprint = self._fingerprint(
+                str(entry.get("scope") or "project"),
+                question_text,
+            )
+            with self._connect() as db:
+                existed = db.execute(
+                    "SELECT 1 FROM memory_questions WHERE fingerprint = ?",
+                    (fingerprint,),
+                ).fetchone() is not None
+            self.open_question(
+                question_text,
                 scope=str(entry.get("scope") or "project"),
                 reason=reason,
                 related_ids=[str(entry["id"])],
                 source="memory_quality_gate",
             )
-            if question.get("fingerprint") not in before:
+            if not existed:
                 opened += 1
         return {"checked": checked, "opened": opened}
 
