@@ -147,6 +147,10 @@ class ExperienceLearningTests(unittest.TestCase):
                 answer="Снизить визуальный шум и оставить чёткую иерархию.",
                 context={"view": "sayuri"},
             )
+            agent.memory_v4.create_goal(
+                "Сохранить компактность светлого интерфейса",
+                priority=5,
+            )
 
             captured = {}
 
@@ -172,9 +176,22 @@ class ExperienceLearningTests(unittest.TestCase):
             )
             self.assertIn("белый компактный интерфейс", system_text)
             self.assertIn("Снизить визуальный шум", system_text)
+            self.assertIn("Сохранить компактность светлого интерфейса", system_text)
+            self.assertIn("Memory 4.0 Sayuri", system_text)
             self.assertGreaterEqual(result["memory_used"], 1)
             self.assertGreaterEqual(result["experience_used"], 1)
+            self.assertGreaterEqual(result["memory_v4_used"], 1)
+            self.assertEqual(result["memory_v4"]["version"], "4.0")
             self.assertTrue(result["response_id"])
+
+            feedback = agent.record_chat_feedback(
+                result["response_id"],
+                "useful",
+                prompt="Как сделать светлую тему компактнее?",
+                answer="Проверочный ответ",
+                context={"view": "sayuri"},
+            )
+            self.assertGreaterEqual(feedback["memory_feedback"]["updated"], 1)
 
     def test_strategy_adjustment_requires_evidence_and_is_bounded(self):
         with tempfile.TemporaryDirectory() as tmp:

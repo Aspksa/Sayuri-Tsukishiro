@@ -184,3 +184,23 @@
 - Автоматический bootstrap и opportunistic maintenance каждые 6 часов.
 - Memory 3.0 context подключён к DeepSeek-V4-Flash как отдельный недоверенный блок.
 - В Личном кабинете добавлен полноценный Memory 3.0 dashboard.
+
+## MEM-005 — Memory 4.0
+
+- Статус: `implemented`.
+- Добавлен orchestration/policy layer `agent/memory_v4.py` поверх Memory 3.0.
+- Для каждой memory рассчитываются Source Trust, Freshness, Utility, sensitivity и tier `hot/warm/cold`.
+- Secret/sensitive memory остаётся локальной и исключается из Cloud recall.
+- Добавлен Explainable Recall с локальным audit и feedback только по реально использованным memories.
+- Добавлены Goal Memory и Task Memory с priority/status/next-action/blocker.
+- Добавлена Decision Memory с rationale/alternatives/project version без выдумывания отсутствующей причины.
+- Добавлены Failure Memory и evidence-bearing Causal Memory.
+- Добавлена Question/Uncertainty Memory; memory conflict открывает вопрос и закрывается после решения пользователя.
+- Добавлены Entity Profiles и Preference Drift поверх существующего Knowledge Graph/temporal history.
+- Добавлен Memory Audit.
+- Добавлены SQLite snapshots с SHA-256, pre-restore safety snapshot и точным подтверждением `RESTORE MEMORY`.
+- Добавлен integrity check для SQLite, graph, tasks/goals, knowledge provenance и recall links.
+- Личный кабинет получил Memory 4.0 control center.
+- Добавлены runtime/API/Web/unit tests.
+- Релиз завершается только после зелёного атомарного workflow `0.1.44` и финального CI на `main`.
+

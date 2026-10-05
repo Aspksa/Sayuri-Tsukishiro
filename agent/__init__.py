@@ -9,6 +9,7 @@ from .runtime import (
     CLOUDRU_MODEL_ID,
     SayuriAgent,
 )
+from .memory_v4 import MemorySystemV4, MemorySystemV4Error
 from .semantic_memory import SemanticMemoryIndex
 
 __all__ = [
@@ -22,6 +23,8 @@ __all__ = [
     "ExperienceStore",
     "MemorySystemError",
     "MemorySystemV3",
+    "MemorySystemV4",
+    "MemorySystemV4Error",
     "SemanticMemoryIndex",
     "SayuriAgent",
 ]

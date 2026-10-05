@@ -4,208 +4,425 @@
 
 - Дата: 2026-10-06.
 - Репозиторий: https://github.com/Aspksa/Sayuri-Tsukishiro
-- Исходная ревизия: `c9a0b955a21792e240265aa15ba7b8f1314b6137` (проект `0.1.42`).
-- Целевая версия: `0.1.43`.
-- Текущий этап: Memory 3.0 — рабочая, эпизодическая, knowledge, temporal и graph memory.
+- Проверенная исходная ревизия: `30ad1bf71b2abf52fb5b0be805f426d2a4afdfa4` (проект `0.1.43`).
+- Целевая версия текущего релиза: `0.1.44`.
+- Текущий этап: **Memory 4.0 — цели, задачи, доверие к источникам, utility/freshness, Failure/Causal Memory, explainable recall, audit и snapshots**.
 
 ## Версии активных модулей
 
-- Ядро Саюри: `0.1.35`.
-- Agent Core: `0.7.0`.
+- Ядро Саюри: `0.1.36`.
+- Agent Core: `0.8.0`.
 - Диск Sayuri: `0.7.1`.
-- Web UI: `0.20.0`.
+- Web UI: `0.21.0`.
 - Инструменты разработки: `0.1.6`.
 
-## Memory 3.0
+## Архитектура памяти
 
-Новый модуль: `agent/memory_v3.py`.
+Memory 4.0 не заменяет Memory 3.0. Она является orchestration/policy-слоем поверх:
 
-Memory 3.0 не заменяет существующие personal/project memory, Memory Intelligence, Semantic Memory и Experience Learning. Она оркестрирует их в несколько специализированных контуров.
+1. долговременной `personal/project` памяти;
+2. Memory Intelligence 2.0;
+3. `hybrid-semantic-v1`;
+4. Experience Learning;
+5. Memory 3.0: Working / Episodic / Knowledge / Graph / Temporal / Retention.
 
-### Working Memory
+Основная БД остаётся локальной:
 
-Хранит только текущий фокус и безопасный UI-context:
+`data/sayuri-memory.db`
 
-- последнее пользовательское намерение;
-- текущий раздел;
-- открытый документ;
-- безопасный контекст Диска.
+Отдельный внешний сервис памяти или вторая AI-модель не добавлены.
 
-Working Memory имеет TTL 24 часа и автоматически обновляется при обычном чате и при планировании Safe Action.
+## Memory 4.0 State
 
-### Episodic Memory
+Для каждой активной долговременной записи рассчитывается отдельное состояние:
 
-Хранит значимые события, а не весь чат:
+- `source_key`;
+- `source_trust`;
+- `freshness_class`;
+- `freshness_score`;
+- `utility_score`;
+- `tier = hot | warm | cold`;
+- `sensitivity`;
+- `cloud_allowed`;
+- recall/useful/unhelpful counters;
+- время последнего recall.
 
-- подтверждённое/ошибочное/отменённое действие;
-- пользовательскую оценку ответа;
-- отклонённый кандидат памяти;
-- системные события обслуживания памяти.
+Это состояние влияет на retrieval, но не переписывает сам факт.
 
-Хранилище находится в общей локальной `data/sayuri-memory.db`.
+## Source Trust
 
-Повторная обработка одного и того же action/feedback не раздувает Episodic Memory: для внешне идентифицируемых исходов используется idempotent fingerprint. Точный retry не создаёт повторную timeline-запись; реальное изменение того же эпизода фиксируется как `episode_updated`.
+Источник знания теперь имеет собственную оценку доверия.
 
-### Knowledge Memory
+Примеры базовой политики:
 
-Подтверждённые факты, решения и устойчивые предпочтения могут быть повышены до `knowledge_items`.
+- explicit/manual user memory — высокий trust;
+- подтверждённый Memory Intelligence — высокий trust;
+- документ / DNA — высокий, но не абсолютный trust;
+- OCR — ниже из-за риска распознавания;
+- автоматический анализ разговора — ниже подтверждённого факта.
 
-У знания сохраняются:
+Trust может корректироваться только ограниченно подтверждённым feedback и может иметь ручной override из Личного кабинета.
 
-- область `personal/project`;
-- тип;
+Низкий trust не удаляет запись. Он снижает вес recall и отображается пользователю.
+
+## Freshness Policy
+
+Разным знаниям назначается различная скорость устаревания.
+
+Примеры:
+
+- версия/API/цена/текущий статус — volatile;
+- обычный факт — medium;
+- задача — medium, но быстрее факта;
+- preference — stable;
+- важное decision — durable.
+
+Freshness не равна истине. Она показывает, насколько давно запись могла требовать повторной проверки.
+
+## Hot / Warm / Cold Memory
+
+Tier рассчитывается из:
+
+- Memory 3 retention;
+- importance;
+- freshness;
+- utility;
+- реального use-count.
+
+`hot` — приоритетный активный контекст.
+
+`warm` — нормальная долговременная память.
+
+`cold` — редко используемая/устаревающая память, которая остаётся доступной.
+
+Автоматического физического удаления нет.
+
+## Sensitive Memory Policy
+
+Перед передачей retrieval-context в Cloud.ru Memory 4.0 классифицирует содержимое.
+
+Секреты и чувствительные идентификаторы получают:
+
+`cloud_allowed = false`
+
+и исключаются из `for_cloud=True` recall.
+
+Локальный пользовательский поиск при этом может находить такую запись и показывает badge `LOCAL ONLY`.
+
+Это дополнительная защита поверх существующей границы API-ключей.
+
+## Explainable Recall
+
+Chat runtime и поиск Личного кабинета используют Memory 4.0 recall.
+
+Каждая выбранная запись получает объяснение:
+
+- semantic score;
+- source trust;
+- freshness;
+- utility;
+- tier;
+- sensitivity;
+- итоговый relevance;
+- список причин выбора.
+
+В интерфейсе это показывается как:
+
+`Почему вспомнила: ...`
+
+Каждый recall получает локальный `recall_id` и аудитируется без копирования полного разговора.
+
+## Utility Learning
+
+После ответа Sayuri связывает `response_id` с использованным `recall_id`.
+
+Оценка:
+
+- `Полезно`;
+- `Не помогло`;
+
+изменяет utility только тех воспоминаний, которые реально были использованы при этом ответе.
+
+Повторная оценка того же ответа корректно пересматривает previous rating вместо накопления дублей.
+
+Feedback также слегка обновляет эмпирическое доверие к источнику.
+
+## Goal Memory
+
+Добавлена структурированная таблица `memory_goals`.
+
+Цель содержит:
+
+- personal/project scope;
+- title;
+- description;
+- priority;
+- status;
+- source;
+- source memory;
+- timestamps.
+
+Статусы:
+
+- active;
+- paused;
+- achieved;
+- cancelled.
+
+Цель связывается с Knowledge Graph.
+
+## Task Memory
+
+Добавлена таблица `memory_tasks`.
+
+Task Memory хранит:
+
+- связанную goal;
+- status;
+- priority;
+- next action;
+- blocked reason;
+- безопасный UI-context;
+- provenance.
+
+Статусы:
+
+- planned;
+- in_progress;
+- blocked;
+- done;
+- cancelled.
+
+Это позволяет Sayuri хранить «где остановились» и конкретный следующий шаг отдельно от обычных заметок.
+
+## Decision Memory
+
+Подтверждённые записи `kind=decision` получают структурированную decision-card:
+
 - statement;
-- confidence;
-- список исходных memory IDs;
-- `valid_from`;
-- `valid_to`;
-- `supersedes_id`;
-- статус.
+- rationale, если явно указан;
+- alternatives, если явно указаны;
+- project version;
+- temporal status;
+- source memory ID.
 
-Оригинальные источники не удаляются при promotion/consolidation. Если пользователь вручную архивирует единственный активный источник, производное Knowledge перестаёт считаться confirmed; при наличии других активных источников они сохраняются.
+Decision Memory не придумывает причину, если пользователь её не указал.
 
-### Knowledge Graph
+## Failure Memory
 
-Memory 3.0 строит локальный граф:
+Подтверждённый failed Safe Action создаёт или усиливает failure pattern:
+
+- strategy/tool;
+- symptom;
+- occurrences;
+- status;
+- cause/resolution/prevention, когда они известны;
+- source reference.
+
+Поздний успешный outcome того же strategy может закрыть открытый failure и создать causal edge:
+
+`failure → resolved_by → action`
+
+Failure Memory не трактует correlation как доказанную причину: causal link получает confidence и evidence.
+
+## Question / Uncertainty Memory
+
+Memory 4.0 умеет хранить отдельные открытые вопросы.
+
+Противоречие Memory 3.0 автоматически создаёт Question Memory с обеими сторонами конфликта.
+
+После пользовательского решения связанный вопрос закрывается.
+
+Это не позволяет системе превращать неопределённость в подтверждённый факт.
+
+## Entity Profiles
+
+Поверх Knowledge Graph формируются read-only profiles для:
 
 - person;
 - project;
 - document;
-- memory;
-- knowledge;
-- decision;
 - vehicle;
-- company;
-- event.
+- company.
 
-Связи включают:
+Профиль показывает количество и примеры связей.
 
-- `has_memory`;
-- `source_for`;
-- `grounded_in`;
-- `supports`;
-- `supersedes`;
-- `mentions`.
+Entity Profile не создаёт новую «истину»: он является представлением уже существующего графа.
 
-Из context автоматически создаются связи с открытым документом. Для текста детерминированно распознаются VIN и госномер как vehicle nodes.
+## Preference Drift
 
-### Temporal Memory
+Личный кабинет показывает историю preference memory включая:
 
-Все важные изменения памяти записываются в `memory_timeline`:
-
-- сохранение;
-- принятие кандидата;
-- открытие конфликта;
-- разрешение конфликта;
-- архивирование;
-- консолидация;
-- обслуживание памяти;
-- значимые эпизоды.
-
-Это позволяет различать «что было раньше» и «что актуально сейчас».
-
-### Memory Consolidation
-
-Похожие записи одного scope/kind сравниваются Semantic Memory.
-
-При similarity >= `0.72` создаётся устойчивое knowledge item с полным списком исходных memory IDs.
-
-Консолидация **не удаляет оригинальные записи** и не генерирует новый текст через LLM. Канонической формулировкой становится наиболее сильный исходный источник.
-
-### Forgetting / Retention Engine
-
-Физического автоматического удаления нет.
-
-Каждая запись получает `retention_score 0..1`, рассчитанный по:
-
-- importance;
+- активные предпочтения;
+- архивированные предыдущие версии;
 - confidence;
-- use-count;
-- времени с последнего использования/изменения;
-- защите важных decisions/preferences.
+- source;
+- `supersedes_id`.
 
-Semantic retrieval умножает relevance на retention factor. Устаревающая информация постепенно становится менее заметной, но остаётся доступной и проверяемой.
+Это даёт временную картину изменения предпочтений вместо простого удаления старого значения.
 
-Semantic Memory больше не ограничивается первыми 300 записями: активная память сканируется по scope до безопасного лимита 5000 записей, поэтому старые релевантные воспоминания не выпадают только из-за размера базы.
+## Memory Audit
 
-Порог stale candidate: `0.30`.
+Добавлен локальный `memory_audit_log`.
 
-### Contradiction Resolver
+Аудитируются, в частности:
 
-После принятия конфликтующего memory candidate создаётся отдельная запись `memory_conflicts`.
+- recall;
+- feedback recall;
+- создание/изменение goal/task;
+- изменение Source Trust;
+- открытие/закрытие вопросов;
+- archive;
+- integrity checks;
+- snapshots;
+- bootstrap.
 
-Пользователь выбирает:
+Audit не должен содержать API-ключи или полную browser chat history.
 
-- `prefer_new` — новое актуально;
-- `prefer_old` — старое актуально;
-- `keep_both` — оба утверждения допустимы.
+## Snapshots
 
-Проигравшая запись мягко архивируется (`active=0`), а не физически удаляется. Связанное knowledge получает временную границу `valid_to`.
+Локальные резервные снимки хранятся в:
 
-Обе стороны конфликта гарантированно материализуются в Knowledge Graph и связываются `conflicts_with`. После разрешения архивированный memory-node остаётся в графе как исторический, но получает `active=false` и `archived_at`.
+`data/memory-snapshots/`
 
-### Автоматизация
+Создание выполняется штатным SQLite backup API.
 
-При запуске Agent Core:
+Для каждого snapshot сохраняются:
 
-1. существующая долговременная память синхронизируется с Knowledge Graph;
-2. подходящие записи повышаются до Knowledge Memory;
-3. пересчитывается retention;
-4. раз в 6 часов opportunistic maintenance запускает consolidation и общий аудит.
+- SHA-256;
+- размер;
+- reason;
+- timestamp;
+- filename.
 
-Также доступно ручное «Обслужить память» в Личном кабинете.
+Restore:
+
+1. требует точное подтверждение `RESTORE MEMORY`;
+2. проверяет SHA-256 выбранного snapshot;
+3. автоматически создаёт pre-restore safety snapshot;
+4. восстанавливает БД через SQLite backup;
+5. повторно инициализирует схемы;
+6. запускает integrity check.
+
+Автоматического restore нет.
+
+## Memory Integrity
+
+Проверяются:
+
+- `PRAGMA integrity_check`;
+- orphan graph edges;
+- task → missing goal;
+- confirmed knowledge → missing source memory;
+- response → missing recall audit.
+
+Dashboard integrity-check read-only. Явная ручная проверка записывает audit event.
 
 ## AI Context
 
-DeepSeek-V4-Flash получает отдельные недоверенные блоки:
+DeepSeek-V4-Flash получает только контролируемые недоверенные blocks:
 
-1. Semantic Memory — personal/project;
-2. Experience Learning — helpful/avoid;
-3. Memory 3.0 — working focus, relevant knowledge и relevant episodes;
-4. текущий UI-context.
+1. Memory 4.0 filtered personal/project recall;
+2. Experience Learning helpful/avoid;
+3. Memory 3.0 working/knowledge/episodes/conflicts;
+4. Memory 4.0 goals/tasks/failures/questions;
+5. UI-context.
 
-Открытые конфликты передаются и точным количеством, и ограниченным old/new содержимым. Они не считаются автоматически разрешёнными.
+Protected memories с `cloud_allowed=false` в первый блок не попадают.
+
+Цели и задачи не выдаются модели как выполненные только потому, что они присутствуют в памяти.
 
 ## Личный кабинет
 
-Добавлен полноценный Memory 3.0 dashboard:
+Memory 4.0 control center показывает:
 
-- Working Memory;
-- Episodic Memory metrics;
-- Knowledge Memory;
-- Temporal Memory timeline;
-- Knowledge Graph;
-- Contradiction Resolver;
-- Forgetting Engine;
-- consolidation metrics;
-- stale-memory metrics;
-- ручное обслуживание.
+- Hot / Warm / Cold;
+- protected/local-only count;
+- Goal Memory;
+- Task Memory;
+- blocked tasks;
+- Failure & Causal Memory;
+- Question Memory;
+- Source Trust;
+- Explainable Recall;
+- Decision Memory;
+- Entity Profiles;
+- Preference Drift;
+- Memory Audit;
+- Integrity;
+- Snapshots.
+
+Доступно ручное создание goal/task, изменение Source Trust, закрытие вопросов, integrity check, snapshot и защищённый restore.
 
 ## API
 
-- `GET /api/sayuri/memory/v3`
-- `POST /api/sayuri/memory/v3/maintenance`
-- `POST /api/sayuri/memory/v3/conflicts/{id}/resolve`
+Добавлены:
 
-Существующие memory/intelligence/experience API сохраняются.
+- `GET /api/sayuri/memory/v4`;
+- `POST /api/sayuri/memory/v4/maintenance`;
+- `POST /api/sayuri/memory/v4/goals`;
+- `POST /api/sayuri/memory/v4/goals/{id}/update`;
+- `POST /api/sayuri/memory/v4/tasks`;
+- `POST /api/sayuri/memory/v4/tasks/{id}/update`;
+- `POST /api/sayuri/memory/v4/sources/trust`;
+- `POST /api/sayuri/memory/v4/questions/{id}/resolve`;
+- `POST /api/sayuri/memory/v4/integrity`;
+- `POST /api/sayuri/memory/v4/snapshots`;
+- `POST /api/sayuri/memory/v4/snapshots/{id}/restore`.
 
-## Безопасность и инварианты
+Существующие v1/v2/v3 memory API не удалены.
 
-- данные Memory 3.0 остаются локальными;
-- никаких дополнительных внешних AI-моделей;
+## Тесты Memory 4.0
+
+Проверяются:
+
+- secret/sensitive local-only policy;
+- local recall vs Cloud-safe recall;
+- explainable recall;
+- feedback → utility/source evidence;
+- goal/task lifecycle;
+- goal/task graph linking;
+- automatic task/goal promotion;
+- Decision Memory;
+- Failure Memory + causal resolution;
+- conflict → Question Memory → close;
+- freshness decay;
+- Source Trust override;
+- snapshot + SHA-256 + restore;
+- обязательный restore confirmation;
+- pre-restore safety copy;
+- integrity;
+- HTTP API;
+- Web contract;
+- runtime injection в DeepSeek-context без реального сетевого запроса.
+
+## Инварианты
+
+- единственный внешний AI-провайдер: Cloud.ru;
+- единственная LLM: `deepseek-ai/DeepSeek-V4-Flash`;
+- Memory 4.0 не добавляет embedding API или вторую LLM;
 - personal/project не смешиваются;
-- Experience не становится фактом;
-- consolidation не удаляет источники;
-- forgetting не удаляет память;
-- конфликт не разрешается без пользователя;
-- Memory 3.0 не расширяет tool permissions;
-- изменяющие действия по-прежнему confirmation-gated.
+- protected memory не передаётся в Cloud context;
+- trust/freshness/utility меняют retrieval-вес, но не переписывают факт;
+- неизвестное хранится как question, а не knowledge;
+- failure не считается причинностью без evidence;
+- goals/tasks не расширяют permissions;
+- Safe Actions остаются confirmation-gated;
+- restore всегда требует явного точного подтверждения.
 
-## Следующий этап
+## Релизный критерий
 
-После стабилизации `0.1.43`:
+Рабочая ветка может иметь красный `check --each-commit` из-за промежуточных GitHub API-коммитов.
 
-1. Reasoning Planner;
-2. Result Verifier;
-3. controlled DNA-context с доказательствами;
-4. planner strategy memory поверх Experience Learning.
+Канонический `0.1.44` считается готовым только после:
+
+1. сборки одного атомарного commit поверх `main 0.1.43`;
+2. полного зелёного workflow Versions на свежей validation-ветке;
+3. merge через PR;
+4. полного зелёного workflow на финальном `main`.
+
+## Следующий этап после Memory 4.0
+
+После стабилизации `0.1.44` следующий рациональный слой — **Reasoning Planner + Result Verifier**.
+
+Planner должен использовать Goal/Task/Failure/Decision Memory, а Verifier — отдельно проверять результат против исходной задачи, ограничений и доказательств.

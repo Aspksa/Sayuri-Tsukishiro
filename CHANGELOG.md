@@ -2,6 +2,23 @@
 
 ## Невыпущенные изменения
 
+### 0.1.44 — 2026-10-06 — Memory 4.0
+
+- Добавлен `agent/memory_v4.py` — orchestration layer поверх Memory 3.0.
+- Для каждой memory рассчитываются Source Trust, Freshness, Utility, sensitivity и tier `hot/warm/cold`.
+- Explainable Recall показывает, почему запись была выбрана, и сохраняет локальный recall audit.
+- Feedback «Полезно / Не помогло» обновляет utility только реально использованных memories и ограниченно калибрует trust источника.
+- Secret/sensitive memory получает `cloud_allowed=false` и исключается из Cloud.ru context.
+- Добавлены Goal Memory, Task Memory, Decision Memory, Failure Memory, Causal Memory и Question/Uncertainty Memory.
+- Добавлены Entity Profiles и Preference Drift поверх Knowledge Graph.
+- Добавлен Memory Audit.
+- Добавлены SQLite snapshots с SHA-256, обязательным `RESTORE MEMORY` и автоматическим pre-restore safety snapshot.
+- Добавлен integrity check SQLite/graph/goals/tasks/knowledge provenance/recall links.
+- Личный кабинет получил Memory 4.0 control center и badges tier/trust/local-only.
+- Добавлены Memory 4.0 runtime/API/Web/unit tests.
+- Проект: `0.1.44`; Ядро: `0.1.36`; Agent Core: `0.8.0`; Web UI: `0.21.0`.
+
+
 ### 0.1.43 — 2026-10-06 — Memory 3.0
 
 - Добавлены Working Memory, Episodic Memory, Knowledge Memory и Temporal Memory.
