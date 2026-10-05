@@ -203,6 +203,40 @@ class WebContractTests(unittest.TestCase):
         self.assertIn('.memory-v3-conflict', css)
         self.assertIn('SAYURI UI 0.20 — Memory 3.0', css)
 
+    def test_memory_v4_control_center_is_present(self):
+        html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+        css = (ROOT / "web" / "styles.css").read_text(encoding="utf-8")
+
+        self.assertIn('MEMORY 4.0', html)
+        self.assertIn('id="memory-v4-goal-form"', html)
+        self.assertIn('id="memory-v4-task-form"', html)
+        self.assertIn('id="memory-v4-goal-list"', html)
+        self.assertIn('id="memory-v4-task-list"', html)
+        self.assertIn('id="memory-v4-failure-list"', html)
+        self.assertIn('id="memory-v4-question-list"', html)
+        self.assertIn('id="memory-v4-source-list"', html)
+        self.assertIn('id="memory-v4-recall-list"', html)
+        self.assertIn('id="memory-v4-integrity-state"', html)
+        self.assertIn('id="memory-v4-snapshot-list"', html)
+        self.assertIn('RESTORE MEMORY', html)
+
+        self.assertIn('/api/sayuri/memory/v4', script)
+        self.assertIn('/api/sayuri/memory/v4/goals', script)
+        self.assertIn('/api/sayuri/memory/v4/tasks', script)
+        self.assertIn('/api/sayuri/memory/v4/sources/trust', script)
+        self.assertIn('/api/sayuri/memory/v4/integrity', script)
+        self.assertIn('/api/sayuri/memory/v4/snapshots', script)
+        self.assertIn('renderSayuriMemoryV4', script)
+        self.assertIn('restoreMemoryV4Snapshot', script)
+        self.assertIn('Почему вспомнила', script)
+        self.assertIn('memory_v4_used', script)
+
+        self.assertIn('.sayuri-memory-v4-metrics', css)
+        self.assertIn('.memory-v4-source-row', css)
+        self.assertIn('.sayuri-memory-recall-reason', css)
+        self.assertIn('SAYURI UI 0.21 — Memory 4.0', css)
+
     def test_sayuri_safe_actions_require_confirmation_in_ui(self):
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
