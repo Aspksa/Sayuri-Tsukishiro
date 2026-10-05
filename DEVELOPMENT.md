@@ -866,6 +866,14 @@ Cloud recall использует `for_cloud=True`. Secret/sensitive memories о
 
 Локальный поиск Личного кабинета использует `for_cloud=False, record_usage=False`. Он может показывать защищённую запись с badge `LOCAL ONLY`, но не увеличивает `memory_entries.use_count`, `memory_v4_state.recall_count` и не создаёт `memory_recall_audit`.
 
+Chat runtime использует two-phase recall:
+1. `MemorySystemV4.context(..., record_usage=False)` готовит ranked context и private `_prepared_recall`;
+2. выполняется Cloud.ru request;
+3. только после успешного ответа `commit_prepared_recall()` увеличивает usage counters, создаёт recall audit и возвращает `recall_id`;
+4. `response_id` связывается с committed recall.
+
+Provider/network/timeout error до шага 3 не меняет usage/utility signals памяти.
+
 ### Utility feedback
 
 Каждый chat response связывается с конкретным `recall_id`.
@@ -967,6 +975,7 @@ Restore:
 - question is not knowledge;
 - later success is correlation-only evidence until user-confirmed resolution;
 - local UI recall never trains utility/use counters;
+- failed Cloud calls never commit prepared recall usage;
 - `cloud_allowed=false` applies transitively to every memory-derived Cloud-context;
 - snapshots remain local under `data/`;
 - restore never happens implicitly;
