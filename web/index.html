@@ -38,9 +38,9 @@
       <section class="view active" id="view-home">
         <section class="hero">
           <div>
-            <p class="eyebrow">ЯДРО САЮРИ · ЭТАП 2</p>
-            <h2>Локальная основа Саюри работает.</h2>
-            <p class="lead">Ядро, база данных, системные настройки и файловый модуль работают локально внутри проекта.</p>
+            <p class="eyebrow">ЛОКАЛЬНАЯ СИСТЕМА</p>
+            <h2>Саюри готова к работе</h2>
+            <p class="lead">Все основные модули работают локально на вашем компьютере.</p>
           </div>
           <div class="version-box">
             <span>Версия проекта</span><strong id="project-version">—</strong><small id="runtime-version">Python —</small>
@@ -57,9 +57,9 @@
       <section class="view" id="view-disk">
         <div class="disk-head">
           <div>
-            <p class="eyebrow">ПРОФЕССИОНАЛЬНЫЙ ФАЙЛОВЫЙ МЕНЕДЖЕР</p>
+            <p class="eyebrow">ФАЙЛЫ И ДОКУМЕНТЫ</p>
             <h2>Диск Sayuri</h2>
-            <p>Локальное файловое пространство с удобным просмотром, папками, корзиной и полными свойствами файлов.</p>
+            <p>Храните, просматривайте и изучайте документы в одном локальном пространстве.</p>
           </div>
           <div class="disk-actions">
             <button class="secondary-button" id="new-folder-button" type="button">Новая папка</button>
@@ -166,7 +166,7 @@
                     <div class="dna-overview-copy">
                       <div class="dna-title-line">
                         <div>
-                          <p class="eyebrow">ДНК ДОКУМЕНТА</p>
+                          <p class="eyebrow">ДНК документа</p>
                           <h3 id="dna-document-type">Изучение документа</h3>
                         </div>
                         <button class="secondary-button" id="dna-reanalyze" type="button">Переизучить</button>
@@ -280,17 +280,17 @@
       <section class="view" id="view-phone">
         <div class="phone-head">
           <div>
-            <p class="eyebrow">ЛОКАЛЬНОЕ УПРАВЛЕНИЕ ANDROID</p>
+            <p class="eyebrow">ТЕЛЕФОН И ПОДКЛЮЧЕНИЕ</p>
             <h2>Телефон Sayuri</h2>
-            <p>Подключите свой Android к Саюри по USB или беспроводной отладке и запускайте управление прямо из проекта.</p>
+            <p>Подключите Android по ПОДКЛЮЧЕНИЕ ПО USB или Wi‑Fi и управляйте им прямо из Sayuri.</p>
           </div>
           <button class="secondary-button" id="phone-refresh" type="button">Обновить</button>
         </div>
 
         <section class="phone-stats">
-          <article><span>Runtime</span><strong id="phone-runtime-state">—</strong><small id="phone-runtime-detail">scrcpy / ADB</small></article>
-          <article><span>Телефонов</span><strong id="phone-device-count">0</strong><small id="phone-device-detail">подключённые Android</small></article>
-          <article><span>Управление</span><strong id="phone-control-state">—</strong><small>запускается из Sayuri</small></article>
+          <article><span>Среда подключения</span><strong id="phone-runtime-state">—</strong><small id="phone-runtime-detail">scrcpy и ADB</small></article>
+          <article><span>Телефонов</span><strong id="phone-device-count">0</strong><small id="phone-device-detail">подключённые устройства</small></article>
+          <article><span>Управление</span><strong id="phone-control-state">—</strong><small>управление из Sayuri</small></article>
         </section>
 
         <div class="phone-message hidden" id="phone-message" role="status"></div>
@@ -298,9 +298,9 @@
         <section class="phone-float-intro">
           <div class="phone-float-intro-icon">▯</div>
           <div>
-            <p class="eyebrow">ПЛАВАЮЩИЙ ДИСПЛЕЙ</p>
-            <h3>Телефон больше не привязан к этой странице</h3>
-            <p>Откройте его поверх любого раздела Sayuri, перетаскивайте, меняйте размер, поворачивайте и управляйте мышью или клавиатурой.</p>
+            <p class="eyebrow">ПЛАВАЮЩЕЕ ОКНО</p>
+            <h3>Телефон всегда рядом</h3>
+            <p>Откройте телефон поверх любого раздела, перемещайте и меняйте размер как обычное окно.</p>
           </div>
           <button class="primary-button phone-float-open-button" id="phone-open-floating" type="button">Открыть телефон</button>
         </section>
@@ -308,22 +308,22 @@
         <section class="phone-grid">
           <article class="phone-panel phone-devices-panel">
             <div class="section-head">
-              <div><p class="eyebrow">УСТРОЙСТВА</p><h3>Мои телефоны</h3></div>
+              <div><p class="eyebrow">ПОДКЛЮЧЕНИЕ</p><h3>Мои телефоны</h3></div>
             </div>
             <div class="phone-device-list" id="phone-device-list">
               <div class="phone-empty">
                 <strong>Телефон пока не найден</strong>
-                <p>Подключите Android по USB, включите «Отладку по USB» и подтвердите отпечаток компьютера на телефоне.</p>
+                <p>Подключите Android по ПОДКЛЮЧЕНИЕ ПО USB, включите «Отладку по ПОДКЛЮЧЕНИЕ ПО USB» и подтвердите отпечаток компьютера на телефоне.</p>
               </div>
             </div>
           </article>
 
           <article class="phone-panel">
             <div class="section-head">
-              <div><p class="eyebrow">USB</p><h3>Первое подключение</h3></div>
+              <div><p class="eyebrow">ПОДКЛЮЧЕНИЕ ПО USB</p><h3>Первое подключение</h3></div>
             </div>
             <ol class="phone-steps">
-              <li><strong>Откройте параметры разработчика</strong><span>На Android включите «Отладку по USB».</span></li>
+              <li><strong>Откройте параметры разработчика</strong><span>На Android включите «Отладку по ПОДКЛЮЧЕНИЕ ПО USB».</span></li>
               <li><strong>Подключите кабель</strong><span>Разрешите отладку для этого компьютера на экране телефона.</span></li>
               <li><strong>Нажмите «Обновить»</strong><span>Sayuri увидит авторизованное устройство и разрешит запуск управления.</span></li>
             </ol>
@@ -331,7 +331,7 @@
 
           <article class="phone-panel">
             <div class="section-head">
-              <div><p class="eyebrow">WI-FI</p><h3>Беспроводное сопряжение</h3></div>
+              <div><p class="eyebrow">БЕСПРОВОДНОЕ ПОДКЛЮЧЕНИЕ</p><h3>Беспроводное сопряжение</h3></div>
             </div>
             <p class="phone-help">Android 11+: «Для разработчиков → Беспроводная отладка → Сопряжение устройства с помощью кода».</p>
             <form class="phone-form" id="phone-pair-form">
@@ -347,7 +347,7 @@
 
           <article class="phone-panel phone-companion-panel">
             <div class="section-head">
-              <div><p class="eyebrow">COMPANION</p><h3>Уведомления Android</h3></div>
+              <div><p class="eyebrow">УВЕДОМЛЕНИЯ</p><h3>Уведомления Android</h3></div>
             </div>
             <p class="phone-help" id="phone-companion-status">Проверяю Sayuri Companion…</p>
             <div class="phone-companion-actions">
@@ -359,7 +359,7 @@
 
           <article class="phone-panel phone-safety-panel">
             <div class="section-head">
-              <div><p class="eyebrow">БЕЗОПАСНОСТЬ</p><h3>Локальный мост</h3></div>
+              <div><p class="eyebrow">ЗАЩИТА</p><h3>Безопасное локальное соединение</h3></div>
             </div>
             <div class="phone-security-list">
               <span>✓ Сервер Sayuri остаётся на 127.0.0.1</span>
@@ -367,14 +367,14 @@
               <span>✓ Управление запускается только по вашему нажатию</span>
               <span>✓ scrcpy не требует root и не оставляет приложение на телефоне</span>
             </div>
-            <p class="phone-help">Плавающий дисплей работает поверх всех разделов Sayuri. Для максимально плавного изображения и звука сохранён официальный режим scrcpy 60 FPS.</p>
+            <p class="phone-help">Плавающий дисплей работает поверх всех разделов Sayuri. Для максимально плавного изображения и звука используйте отдельный плавный режим.</p>
           </article>
         </section>
       </section>
 
       <section class="view" id="view-settings">
         <div class="settings-intro">
-          <div><p class="eyebrow">УПРАВЛЕНИЕ СИСТЕМОЙ</p><h2>Настройки</h2><p>Конфигурация, состояние, события и архитектура Саюри в одном месте.</p></div>
+          <div><p class="eyebrow">СИСТЕМА</p><h2>Настройки</h2><p>Настройки, диагностика и состояние проекта.</p></div>
           <div class="save-state" id="save-state" aria-live="polite"></div>
         </div>
 
@@ -383,12 +383,12 @@
         </nav>
 
         <section class="settings-section" id="system-settings">
-          <div class="section-head"><div><p class="eyebrow">КОНФИГУРАЦИЯ</p><h3>Настройки системы</h3></div><button class="primary-button" id="save-settings" type="button">Сохранить</button></div>
+          <div class="section-head"><div><p class="eyebrow">ОСНОВНЫЕ НАСТРОЙКИ</p><h3>Настройки системы</h3></div><button class="primary-button" id="save-settings" type="button">Сохранить</button></div>
           <div class="settings-form" id="settings-form"><p class="muted">Загрузка настроек…</p></div>
         </section>
 
         <section class="settings-section" id="system-state">
-          <div class="section-head"><div><p class="eyebrow">ДИАГНОСТИКА</p><h3>Состояние системы</h3></div><button class="secondary-button" id="refresh-system" type="button">Обновить</button></div>
+          <div class="section-head"><div><p class="eyebrow">СОСТОЯНИЕ</p><h3>Состояние системы</h3></div><button class="secondary-button" id="refresh-system" type="button">Обновить</button></div>
           <div class="metrics settings-metrics">
             <article class="metric-card"><span>Ядро</span><strong id="core-state">—</strong><small id="core-detail">—</small></article>
             <article class="metric-card"><span>База данных</span><strong id="db-state">—</strong><small id="db-detail">—</small></article>
@@ -397,18 +397,18 @@
           </div>
 
           <div class="agent-panel">
-            <div><p class="eyebrow">АГЕНТНОЕ ЯДРО</p><h4>Агентное ядро</h4><p id="agent-message">Загрузка…</p></div>
+            <div><p class="eyebrow">АГЕНТ</p><h4>Агентное ядро</h4><p id="agent-message">Загрузка…</p></div>
             <div class="agent-flags"><span id="agent-provider">ИИ-провайдер —</span><span id="agent-memory">Память —</span><span id="agent-tools">Инструменты —</span></div>
           </div>
         </section>
 
         <section class="settings-section" id="system-events">
-          <div class="section-head"><div><p class="eyebrow">ЖУРНАЛ</p><h3>Последние события</h3></div></div>
+          <div class="section-head"><div><p class="eyebrow">СОБЫТИЯ</p><h3>Последние события</h3></div></div>
           <div id="events" class="event-list"><p class="muted">Загрузка событий…</p></div>
         </section>
 
         <section class="settings-section" id="system-architecture">
-          <div class="section-head"><div><p class="eyebrow">АРХИТЕКТУРА</p><h3>Модули системы</h3></div></div>
+          <div class="section-head"><div><p class="eyebrow">МОДУЛИ</p><h3>Модули системы</h3></div></div>
           <div id="architecture" class="architecture-list"><p class="muted">Загрузка архитектуры…</p></div>
         </section>
       </section>
@@ -431,8 +431,8 @@
         </div>
       </div>
       <div class="phone-float-window-actions">
-        <button class="phone-keyboard-capture" id="phone-keyboard-capture" type="button" title="Переключить клавиатуру ПК">КЛАВ: SAYURI</button>
-        <span class="phone-live-badge" id="phone-live-badge">ОЖИДАНИЕ</span>
+        <button class="phone-keyboard-capture" id="phone-keyboard-capture" type="button" title="Переключить клавиатуру ПК">Клавиатура: Sayuri</button>
+        <span class="phone-live-badge" id="phone-live-badge">Ожидание</span>
         <button id="phone-float-fullscreen" type="button" title="Полноэкранный режим" aria-label="Полноэкранный режим">⛶</button>
         <button id="phone-float-rotate" type="button" title="Повернуть экран" aria-label="Повернуть экран">↻</button>
         <button id="phone-float-minimize" type="button" title="Свернуть" aria-label="Свернуть">—</button>
@@ -464,17 +464,17 @@
           <button type="button" data-phone-key="POWER" title="Питание" disabled>⌁</button>
         </div>
 
-        <button class="phone-float-native" id="phone-open-native" type="button" disabled title="Открыть официальный scrcpy с UHID-клавиатурой">60 FPS</button>
+        <button class="phone-float-native" id="phone-open-native" type="button" disabled title="Открыть отдельное окно с максимальной плавностью">Плавный</button>
       </div>
 
       <div class="phone-pro-tools">
         <select id="phone-quality-profile" title="Качество">
-          <option value="economy">ECO</option>
-          <option value="balanced">BAL</option>
-          <option value="quality" selected>HQ</option>
-          <option value="ultra">MAX</option>
+          <option value="economy">Экономно</option>
+          <option value="balanced">Баланс</option>
+          <option value="quality" selected>Качество</option>
+          <option value="ultra">Максимум</option>
         </select>
-        <button id="phone-auto-orient" type="button" title="Автоподстройка окна под ориентацию телефона">AUTO</button>
+        <button id="phone-auto-orient" type="button" title="Автоподстройка окна под ориентацию телефона">Авто</button>
         <select id="phone-view-mode" title="Вид окна">
           <option value="normal" selected>Обычный</option>
           <option value="compact">Компакт</option>
@@ -483,10 +483,10 @@
         <button id="phone-capture" type="button" title="Сохранить снимок в Диск Sayuri">Снимок</button>
         <button id="phone-record" type="button" title="Запись экрана со звуком">● Запись</button>
         <button id="phone-audio" type="button" title="Включить звук телефона внутри Sayuri">Звук: выкл</button>
-        <button id="phone-paste" type="button" title="Буфер компьютера → Android и сразу вставить">ПК→Тел</button>
-        <button id="phone-copy" type="button" title="Буфер Android → компьютер">Тел→ПК</button>
-        <button id="phone-file" type="button" title="Отправить файл в Download телефона">ПК→Тел</button>
-        <button id="phone-import" type="button" title="Импортировать файл с телефона в Диск Sayuri">Тел→Диск</button>
+        <button id="phone-paste" type="button" title="Буфер компьютера → Android и сразу вставить">С компьютера</button>
+        <button id="phone-copy" type="button" title="Буфер Android → компьютер">На компьютер</button>
+        <button id="phone-file" type="button" title="Отправить файл в Download телефона">С компьютера</button>
+        <button id="phone-import" type="button" title="Импортировать файл с телефона в Диск Sayuri">В Диск</button>
         <button id="phone-apps" type="button" title="Открыть приложение">Приложения</button>
         <button id="phone-notifications" type="button" title="Уведомления Android">
           🔔 <span id="phone-notification-count">0</span>
@@ -498,9 +498,9 @@
         <div class="phone-file-drawer-head">
           <strong>Файлы телефона</strong>
           <select id="phone-file-location" aria-label="Каталог телефона">
-            <option value="downloads">Download</option>
+            <option value="downloads">Загрузки</option>
             <option value="camera">Камера</option>
-            <option value="pictures">Pictures</option>
+            <option value="pictures">Изображения</option>
           </select>
           <button id="phone-file-close" type="button" aria-label="Закрыть файлы телефона">×</button>
         </div>
@@ -512,7 +512,7 @@
       <div class="phone-app-drawer hidden" id="phone-app-drawer">
         <div class="phone-app-drawer-head">
           <strong>Приложения</strong>
-          <input id="phone-app-search" type="search" placeholder="Поиск пакета…" autocomplete="off">
+          <input id="phone-app-search" type="search" placeholder="Поиск приложения…" autocomplete="off">
           <button id="phone-app-close" type="button" aria-label="Закрыть список приложений">×</button>
         </div>
         <div class="phone-app-list" id="phone-app-list"></div>

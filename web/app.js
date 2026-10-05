@@ -1729,8 +1729,8 @@ function configurePhoneVideoDecoder(payload, generation) {
         const elapsed = Math.max(1, performance.now() - phoneState.h264StartedAt);
         const fps = Math.min(120, phoneState.h264Frames * 1000 / elapsed);
         byId('phone-frame-status').textContent =
-          `H.264 · ${canvas.width}×${canvas.height} · ~${fps.toFixed(0)} FPS`;
-        byId('phone-live-badge').textContent = phoneState.qualityProfile === 'economy' ? 'H264 30' : 'H264 60';
+          `Видео · ${canvas.width}×${canvas.height} · ~${fps.toFixed(0)} кадр/с`;
+        byId('phone-live-badge').textContent = phoneState.qualityProfile === 'economy' ? '30 кадр/с' : '60 кадр/с';
         byId('phone-live-badge').classList.add('live', 'h264');
       } finally {
         frame.close();
@@ -2062,8 +2062,8 @@ async function startPhoneH264Stream() {
   phoneState.videoMode = 'h264';
   phoneState.h264Frames = 0;
   phoneState.h264StartedAt = 0;
-  byId('phone-frame-status').textContent = 'Запускаю H.264 поток…';
-  byId('phone-live-badge').textContent = 'H264';
+  byId('phone-frame-status').textContent = 'Запускаю качественное видео…';
+  byId('phone-live-badge').textContent = 'Видео';
   byId('phone-live-badge').classList.add('h264');
 
   try {
@@ -2109,8 +2109,8 @@ function startPreferredPhoneVideo() {
   stopPhoneVideo();
   if (!phoneStreamActive() || !phoneState.selectedSerial) return;
   if (phoneState.nativeSessions.has(phoneState.selectedSerial)) {
-    byId('phone-frame-status').textContent = 'Встроенный экран на паузе: открыт scrcpy 60 FPS';
-    byId('phone-live-badge').textContent = '60 FPS';
+    byId('phone-frame-status').textContent = 'Встроенный экран на паузе: открыт плавный режим';
+    byId('phone-live-badge').textContent = 'Плавный';
     byId('phone-live-badge').classList.remove('live', 'h264');
     return;
   }
@@ -2167,16 +2167,16 @@ async function refreshPhoneFrame() {
     const height = Number(response.headers.get('X-Sayuri-Phone-Height') || 0);
     if (width && height) adaptPhoneFloatToDeviceOrientation(width, height);
     byId('phone-frame-status').textContent = width && height
-      ? `LIVE · ${width}×${height}`
-      : 'LIVE · локально';
-    byId('phone-live-badge').textContent = 'LIVE';
+      ? `Экран · ${width}×${height}`
+      : 'Экран · локально';
+    byId('phone-live-badge').textContent = 'Онлайн';
     byId('phone-live-badge').classList.add('live');
     schedulePhoneFrame(420);
   } catch (error) {
     if (generation !== phoneState.frameGeneration) return;
     byId('phone-frame-status').textContent =
       `Кадр временно недоступен: ${error instanceof Error ? error.message : String(error)}`;
-    byId('phone-live-badge').textContent = 'ПОВТОР';
+    byId('phone-live-badge').textContent = 'Повтор';
     byId('phone-live-badge').classList.remove('live');
     schedulePhoneFrame(1800);
   } finally {
@@ -2188,8 +2188,8 @@ function startPhoneFrameLoop() {
   stopPhoneFrameLoop();
   if (!phoneStreamActive() || !phoneState.selectedSerial) return;
   if (phoneState.nativeSessions.has(phoneState.selectedSerial)) {
-    byId('phone-frame-status').textContent = 'Встроенный экран на паузе: открыт режим 60 FPS';
-    byId('phone-live-badge').textContent = '60 FPS';
+    byId('phone-frame-status').textContent = 'Встроенный экран на паузе: открыт плавный режим';
+    byId('phone-live-badge').textContent = 'Плавный';
     byId('phone-live-badge').classList.remove('live');
     return;
   }
@@ -2220,7 +2220,7 @@ function updatePhoneFloatingState() {
     byId('phone-selected-device').textContent = '—';
     byId('phone-live-title').textContent = 'Телефон Sayuri';
     byId('phone-live-subtitle').textContent = 'Ожидание устройства';
-    byId('phone-live-badge').textContent = 'ОЖИДАНИЕ';
+    byId('phone-live-badge').textContent = 'Ожидание';
     byId('phone-live-badge').classList.remove('live');
     byId('phone-frame-status').textContent = 'Sayuri ждёт авторизованное устройство';
     nativeButton.disabled = true;
@@ -2243,7 +2243,7 @@ function updatePhoneFloatingState() {
   byId('phone-audio').disabled = !phoneState.audioAvailable;
 
   const nativeOpen = phoneState.nativeSessions.has(device.serial);
-  nativeButton.textContent = nativeOpen ? 'СТОП 60 FPS' : '60 FPS';
+  nativeButton.textContent = nativeOpen ? 'Закрыть плавный' : 'Плавный';
   keyButtons.forEach((button) => { button.disabled = false; });
 
   const recording = phoneState.recordingSessions.has(device.serial);
@@ -2254,8 +2254,8 @@ function updatePhoneFloatingState() {
   if (nativeOpen) {
     stopPhoneVideo();
     stopPhoneAudio();
-    byId('phone-frame-status').textContent = 'Пауза встроенного экрана: открыт scrcpy 60 FPS';
-    byId('phone-live-badge').textContent = '60 FPS';
+    byId('phone-frame-status').textContent = 'Встроенный экран на паузе: открыт плавный режим';
+    byId('phone-live-badge').textContent = 'Плавный';
     byId('phone-live-badge').classList.remove('live');
   } else if (
     phoneStreamActive()
@@ -2314,8 +2314,8 @@ function renderPhone(data) {
   byId('phone-device-count').textContent = String(devices.length);
   byId('phone-device-detail').textContent = `авторизовано: ${data.authorized_devices || 0}`;
   byId('phone-control-state').textContent = sessions.size
-    ? '60 FPS'
-    : (phoneState.floatingOpen && data.authorized_devices ? 'ПЛАВАЕТ' : (data.authorized_devices ? 'ГОТОВО' : 'ОЖИДАНИЕ'));
+    ? 'Плавный режим'
+    : (phoneState.floatingOpen && data.authorized_devices ? 'Открыт' : (data.authorized_devices ? 'Готово' : 'Ожидание'));
 
   const selected = selectedPhoneDevice(devices);
   const previousSerial = phoneState.selectedSerial;
@@ -2347,7 +2347,7 @@ function renderPhone(data) {
     const empty = document.createElement('div');
     empty.className = 'phone-empty';
     const title = document.createElement('strong');
-    title.textContent = runtime.ready ? 'Телефон пока не найден' : 'Runtime телефона ещё не готов';
+    title.textContent = runtime.ready ? 'Телефон пока не найден' : 'Среда подключения ещё не готова';
     const copy = document.createElement('p');
     copy.textContent = runtime.ready
       ? 'Подключите Android по USB и подтвердите запрос отладки на самом телефоне.'
@@ -2576,7 +2576,7 @@ function phoneStoredRotation(serial = phoneState.selectedSerial) {
 function updatePhoneAutoOrientUI() {
   const button = byId('phone-auto-orient');
   button.classList.toggle('active', phoneState.autoOrient);
-  button.textContent = phoneState.autoOrient ? 'AUTO ✓' : 'AUTO';
+  button.textContent = phoneState.autoOrient ? 'Авто ✓' : 'Авто';
 }
 
 function setPhoneViewMode(value) {
@@ -2882,10 +2882,10 @@ function handlePhoneKeyboard(event) {
 function updatePhoneKeyboardCaptureUI() {
   const button = byId('phone-keyboard-capture');
   button.classList.toggle('active', phoneState.keyboardCaptured);
-  button.textContent = phoneState.keyboardCaptured ? 'КЛАВ: ТЕЛЕФОН' : 'КЛАВ: SAYURI';
+  button.textContent = phoneState.keyboardCaptured ? 'Клавиатура: телефон' : 'Клавиатура: Sayuri';
   byId('phone-keyboard-hint').textContent = phoneState.keyboardCaptured
-    ? 'Клавиатура ПК захвачена телефоном · Esc = Назад · выключите захват, чтобы печатать в Sayuri'
-    : 'Клавиатура Sayuri · включите захват, чтобы печатать с ПК прямо в Android';
+    ? 'Клавиатура управляет телефоном · Esc — назад · нажмите кнопку ещё раз, чтобы вернуться в Sayuri'
+    : 'Клавиатура работает в Sayuri · включите управление, чтобы печатать прямо в Android';
 }
 
 function togglePhoneKeyboardCapture() {
@@ -2980,7 +2980,7 @@ async function pasteComputerClipboardToPhone() {
     if (!text) throw new Error('Буфер обмена ПК пуст.');
     const result = await setPhoneClipboard(text, {paste: true});
     byId('phone-frame-status').textContent =
-      `ПК→Тел · вставлено символов: ${result.characters ?? text.length}`;
+      `Вставлено с компьютера · ${result.characters ?? text.length} симв.`;
   } catch (error) {
     showPhoneError(error);
   }
@@ -2997,7 +2997,7 @@ async function copyPhoneClipboardToComputer() {
     }
     await navigator.clipboard.writeText(text);
     byId('phone-frame-status').textContent =
-      `Тел→ПК · скопировано символов: ${result.characters ?? text.length}`;
+      `Скопировано на компьютер · ${result.characters ?? text.length} симв.`;
   } catch (error) {
     showPhoneError(error);
   }

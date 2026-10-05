@@ -93,7 +93,7 @@ class WebContractTests(unittest.TestCase):
         self.assertIn('id="phone-text-form"', html)
         self.assertIn('id="phone-keyboard-capture"', html)
         self.assertIn('id="phone-quality-profile"', html)
-        self.assertIn('<option value="ultra">MAX</option>', html)
+        self.assertIn('<option value="ultra">Максимум</option>', html)
         self.assertIn('id="phone-auto-orient"', html)
         self.assertIn('id="phone-view-mode"', html)
         self.assertIn('id="phone-capture"', html)
@@ -198,6 +198,28 @@ class WebContractTests(unittest.TestCase):
         self.assertIn(".phone-float.compact-mode", css)
         self.assertIn(".phone-file-drawer", css)
         self.assertIn(".phone-file-item", css)
+
+
+    def test_unified_visual_system_is_readable_and_consistent(self):
+        html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+        css = (ROOT / "web" / "styles.css").read_text(encoding="utf-8")
+
+        self.assertIn("SAYURI UI 0.12 — Unified Visual System", css)
+        self.assertIn('"Segoe UI Variable Text"', css)
+        self.assertIn("--ui-text: #171b24", css)
+        self.assertIn("--ui-muted: #6f7b8c", css)
+        self.assertIn("font-size: 14px", css)
+        self.assertIn("max-width: 1380px", css)
+
+        self.assertNotIn(">Runtime<", html)
+        self.assertNotIn("КЛАВ:", html)
+        self.assertNotIn("КЛАВ:", script)
+        self.assertIn("Клавиатура: телефон", script)
+        self.assertIn("Клавиатура: Sayuri", script)
+        self.assertIn(">Экономно</option>", html)
+        self.assertIn(">Качество</option>", html)
+        self.assertIn(">Максимум</option>", html)
 
 
 if __name__ == "__main__":

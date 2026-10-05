@@ -934,3 +934,58 @@ Backend:
 10. temporary file is deleted.
 
 Arbitrary Android filesystem browsing is deliberately not exposed.
+
+
+## Sayuri UI 0.12 — Unified Visual System
+
+Канонический визуальный слой находится в конце `web/styles.css` и имеет маркер:
+
+`SAYURI UI 0.12 — Unified Visual System`
+
+### Font stack
+
+```text
+UI:
+Segoe UI Variable Text
+Segoe UI Variable
+Segoe UI
+system-ui
+
+Display:
+Segoe UI Variable Display
+Segoe UI Variable
+Segoe UI
+
+Mono:
+Cascadia Code
+Cascadia Mono
+Consolas
+```
+
+Внешняя загрузка web-font не используется, поэтому локальный запуск остаётся автономным.
+
+### Typography baseline
+
+- body: 14 px / 1.5;
+- secondary: обычно 11.5–12.5 px;
+- button: около 13 px;
+- h1: 25 px;
+- h2: 31 px;
+- h3: 20 px;
+- hero h2: clamp 32–45 px.
+
+### Compatibility
+
+Legacy selectors всё ещё присутствуют, потому что текущий `styles.css` содержит несколько исторических поколений UI. Новый слой расположен последним и задаёт канонические значения через cascade.
+
+Compatibility aliases:
+- `--text -> --ui-text`;
+- `--muted -> --ui-muted`;
+- `--line -> --ui-line`.
+
+Отдельная будущая задача может физически разбить stylesheet по модулям; это не требуется для визуального результата UI-001.
+
+### Verification
+
+- Python UI contract проверяет наличие unified visual system и новой пользовательской терминологии.
+- Workflow уже выполняет `node --check web/app.js`.
