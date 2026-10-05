@@ -13,10 +13,13 @@ import xml.etree.ElementTree as ET
 from typing import BinaryIO, Any, Iterable
 import uuid
 
+from .dna import DNA_ANALYZER_VERSION, DocumentDNAAnalyzer
 
-DISK_SCHEMA_VERSION = 2
+
+DISK_SCHEMA_VERSION = 3
 CHUNK_SIZE = 1024 * 1024
 MAX_FILE_SIZE = 1024 * 1024 * 1024  # 1 ГБ
+MAX_PREVIEW_XML_BYTES = 16 * 1024 * 1024
 DEFAULT_RECENT_LIMIT = 30
 
 
@@ -26,6 +29,7 @@ class DiskService:
         self.storage_root = storage_root
         self.objects_dir = storage_root / "objects"
         self.temp_dir = storage_root / "temp"
+        self.dna_analyzer = DocumentDNAAnalyzer()
 
     def _connect(self) -> sqlite3.Connection:
         db = sqlite3.connect(self.database_path, timeout=5.0)
@@ -165,6 +169,18 @@ class DiskService:
                     object_id TEXT,
                     object_name TEXT NOT NULL,
                     details_json TEXT NOT NULL DEFAULT '{}'
+                )
+                """
+            )
+            db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS disk_dna (
+                    file_id TEXT PRIMARY KEY REFERENCES disk_files(id) ON DELETE CASCADE,
+                    sha256 TEXT NOT NULL,
+                    source_updated_at TEXT NOT NULL,
+                    analyzer_version TEXT NOT NULL,
+                    analyzed_at TEXT NOT NULL,
+                    dna_json TEXT NOT NULL
                 )
                 """
             )
@@ -1216,11 +1232,16 @@ class DiskService:
     @staticmethod
     def _zip_xml_text(path: Path, member_names: list[str], text_tags: set[str]) -> str:
         chunks: list[str] = []
+        expanded = 0
         with zipfile.ZipFile(path) as archive:
             names = set(archive.namelist())
             for member in member_names:
                 if member not in names:
                     continue
+                info = archive.getinfo(member)
+                expanded += int(info.file_size)
+                if expanded > MAX_PREVIEW_XML_BYTES:
+                    raise ValueError("Office-документ слишком большой для безопасного локального предпросмотра.")
                 root = ET.fromstring(archive.read(member))
                 current: list[str] = []
                 for element in root.iter():
@@ -1285,6 +1306,9 @@ class DiskService:
                 names = set(archive.namelist())
                 shared: list[str] = []
                 if "xl/sharedStrings.xml" in names:
+                    info = archive.getinfo("xl/sharedStrings.xml")
+                    if info.file_size > MAX_PREVIEW_XML_BYTES:
+                        raise ValueError("Таблица слишком большая для безопасного локального предпросмотра.")
                     root = ET.fromstring(archive.read("xl/sharedStrings.xml"))
                     for si in root:
                         parts = [
@@ -1298,6 +1322,9 @@ class DiskService:
                     if name.startswith("xl/worksheets/sheet") and name.endswith(".xml")
                 )
                 if sheets:
+                    info = archive.getinfo(sheets[0])
+                    if info.file_size > MAX_PREVIEW_XML_BYTES:
+                        raise ValueError("Таблица слишком большая для безопасного локального предпросмотра.")
                     root = ET.fromstring(archive.read(sheets[0]))
                     for row in root.iter():
                         if row.tag.rsplit("}", 1)[-1] != "row":
@@ -1333,6 +1360,96 @@ class DiskService:
             "message": "Для этого формата встроенный предпросмотр пока недоступен. Файл можно скачать или открыть внешним приложением.",
         }
 
+    @staticmethod
+    def _hash_file(path: Path) -> str:
+        digest = hashlib.sha256()
+        with path.open("rb") as source:
+            while True:
+                chunk = source.read(CHUNK_SIZE)
+                if not chunk:
+                    break
+                digest.update(chunk)
+        return digest.hexdigest()
+
+    def document_dna(self, file_id: str, *, force: bool = False) -> dict[str, Any]:
+        item = self.get_file(file_id)
+        properties = self.properties("file", file_id)
+        source_updated_at = item.get("updated_at") or item.get("created_at") or ""
+
+        if not force:
+            with self._session() as db:
+                row = db.execute(
+                    """
+                    SELECT sha256, source_updated_at, analyzer_version, analyzed_at, dna_json
+                    FROM disk_dna
+                    WHERE file_id = ?
+                    """,
+                    (file_id,),
+                ).fetchone()
+                if (
+                    row is not None
+                    and row["sha256"] == item["sha256"]
+                    and row["source_updated_at"] == source_updated_at
+                    and row["analyzer_version"] == DNA_ANALYZER_VERSION
+                ):
+                    cached = json.loads(row["dna_json"])
+                    cached["analyzed_at"] = row["analyzed_at"]
+                    cached["cached"] = True
+                    return cached
+
+        actual_sha256 = self._hash_file(item["path"])
+        integrity = {
+            "expected_sha256": item["sha256"],
+            "actual_sha256": actual_sha256,
+            "matches": actual_sha256 == item["sha256"],
+        }
+        preview = self.preview(file_id)
+        dna = self.dna_analyzer.analyze(
+            item={**item, "duplicate_count": properties.get("duplicate_count", 0)},
+            properties=properties,
+            preview=preview,
+            integrity=integrity,
+        )
+        analyzed_at = self._now()
+        dna["analyzed_at"] = analyzed_at
+        dna["cached"] = False
+
+        with self._session() as db:
+            db.execute(
+                """
+                INSERT INTO disk_dna(
+                    file_id, sha256, source_updated_at, analyzer_version, analyzed_at, dna_json
+                ) VALUES(?, ?, ?, ?, ?, ?)
+                ON CONFLICT(file_id) DO UPDATE SET
+                    sha256 = excluded.sha256,
+                    source_updated_at = excluded.source_updated_at,
+                    analyzer_version = excluded.analyzer_version,
+                    analyzed_at = excluded.analyzed_at,
+                    dna_json = excluded.dna_json
+                """,
+                (
+                    file_id,
+                    item["sha256"],
+                    source_updated_at,
+                    DNA_ANALYZER_VERSION,
+                    analyzed_at,
+                    json.dumps(dna, ensure_ascii=False),
+                ),
+            )
+            self._record_action(
+                db,
+                "dna_analyzed",
+                "file",
+                file_id,
+                item["name"],
+                {
+                    "coverage_percent": dna["coverage_percent"],
+                    "facts": dna["molecules"]["total"],
+                    "document_type": dna["classification"]["document_type"],
+                },
+            )
+        return dna
+
     def recent_actions(self, limit: int = 30) -> list[dict[str, Any]]:
         safe_limit = min(max(int(limit), 1), 100)
         with self._session() as db:
@@ -1357,6 +1474,7 @@ class DiskService:
             "status": "готово",
             "status_code": "ready",
             "schema_version": DISK_SCHEMA_VERSION,
+            "dna_analyzer_version": DNA_ANALYZER_VERSION,
             "files": listing["stats"]["files"],
             "folders": listing["stats"]["folders"],
             "bytes": listing["stats"]["bytes"],

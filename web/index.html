@@ -146,12 +146,71 @@
 
             <nav class="viewer-tabs">
               <button class="active" type="button" data-viewer-tab="preview">Просмотр</button>
+              <button type="button" data-viewer-tab="dna">ДНК</button>
               <button type="button" data-viewer-tab="properties">Свойства</button>
             </nav>
 
             <div class="viewer-content">
               <section class="viewer-tab active" id="viewer-tab-preview">
                 <div class="preview-stage" id="file-preview-stage"><p class="muted">Загрузка предпросмотра…</p></div>
+              </section>
+
+              <section class="viewer-tab" id="viewer-tab-dna">
+                <div class="dna-shell">
+                  <header class="dna-overview">
+                    <div class="dna-score">
+                      <div class="dna-score-value"><strong id="dna-coverage">—</strong><span>%</span></div>
+                      <small>изучено локально</small>
+                    </div>
+                    <div class="dna-overview-copy">
+                      <div class="dna-title-line">
+                        <div>
+                          <p class="eyebrow">ДНК ДОКУМЕНТА</p>
+                          <h3 id="dna-document-type">Изучение документа</h3>
+                        </div>
+                        <button class="secondary-button" id="dna-reanalyze" type="button">Переизучить</button>
+                      </div>
+                      <p id="dna-summary">Саюри изучает структуру, содержимое, молекулы и целостность документа.</p>
+                      <div class="dna-progress"><span id="dna-progress-bar"></span></div>
+                    </div>
+                  </header>
+
+                  <div class="dna-metrics">
+                    <article><span>Молекулы</span><strong id="dna-facts-count">—</strong></article>
+                    <article><span>Сущности</span><strong id="dna-entities-count">—</strong></article>
+                    <article><span>Слов</span><strong id="dna-words-count">—</strong></article>
+                    <article><span>Проверки</span><strong id="dna-checks-count">—</strong></article>
+                  </div>
+
+                  <div class="dna-pipeline" id="dna-pipeline"></div>
+
+                  <details class="dna-section" open>
+                    <summary><span>Анатомия документа</span><small>структура и форма</small></summary>
+                    <div class="dna-section-body" id="dna-anatomy"></div>
+                  </details>
+
+                  <details class="dna-section">
+                    <summary><span>Молекулы</span><small>минимальные факты и источники</small></summary>
+                    <div class="dna-section-body" id="dna-molecules"></div>
+                  </details>
+
+                  <details class="dna-section">
+                    <summary><span>Кандидаты сущностей</span><small>люди, транспорт, финансы и реквизиты</small></summary>
+                    <div class="dna-section-body" id="dna-entities"></div>
+                  </details>
+
+                  <details class="dna-section">
+                    <summary><span>Проверки</span><small>целостность и замечания</small></summary>
+                    <div class="dna-section-body" id="dna-checks"></div>
+                  </details>
+
+                  <details class="dna-section">
+                    <summary><span>Связи</span><small>семантический слой</small></summary>
+                    <div class="dna-section-body" id="dna-relations"></div>
+                  </details>
+
+                  <div class="dna-method-note" id="dna-method-note"></div>
+                </div>
               </section>
 
               <section class="viewer-tab" id="viewer-tab-properties">

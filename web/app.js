@@ -5,6 +5,7 @@ let refreshTimer = null;
 let diskSearchTimer = null;
 let moveItems = [];
 let viewerItem = null;
+let viewerDnaLoadedFor = null;
 let diskDragItems = [];
 let diskHoverTimer = null;
 let diskUndoTimer = null;
@@ -339,6 +340,7 @@ function contextActionsFor(item) {
     actions.push(['Открыть', () => openDiskFolder(item.id)]);
   } else {
     actions.push(['Открыть', () => openViewer(item.kind, item.id, 'preview')]);
+    actions.push(['ДНК документа', () => openViewer(item.kind, item.id, 'dna')]);
     actions.push(['Скачать', () => {
       window.location.href = `/api/disk/files/${encodeURIComponent(item.id)}/download`;
     }]);
@@ -878,6 +880,191 @@ function switchViewerTab(tab) {
   document.querySelectorAll('.viewer-tab').forEach((section) => {
     section.classList.toggle('active', section.id === `viewer-tab-${tab}`);
   });
+  if (tab === 'dna' && viewerItem?.kind === 'file') {
+    loadViewerDna(viewerItem.id).catch(showDiskError);
+  }
+}
+
+function dnaField(labelText, valueText) {
+  const field = document.createElement('article');
+  field.className = 'dna-field';
+  const label = document.createElement('span');
+  label.textContent = labelText;
+  const value = document.createElement('strong');
+  value.textContent = valueText;
+  field.append(label, value);
+  return field;
+}
+
+function renderDnaList(container, items, emptyText, renderer) {
+  container.replaceChildren();
+  if (!items.length) {
+    const empty = document.createElement('p');
+    empty.className = 'dna-empty';
+    empty.textContent = emptyText;
+    container.append(empty);
+    return;
+  }
+  for (const item of items) container.append(renderer(item));
+}
+
+function renderDocumentDna(dna) {
+  byId('dna-coverage').textContent = String(dna.coverage_percent ?? 0);
+  byId('dna-progress-bar').style.width = `${Math.max(0, Math.min(100, Number(dna.coverage_percent) || 0))}%`;
+  byId('dna-document-type').textContent = dna.classification?.document_type || 'Документ';
+  byId('dna-summary').textContent = dna.summary || 'ДНК построена.';
+  byId('dna-facts-count').textContent = String(dna.molecules?.total ?? 0);
+  byId('dna-entities-count').textContent = String(dna.entities?.length ?? 0);
+  byId('dna-words-count').textContent = String(dna.anatomy?.words ?? 0);
+  byId('dna-checks-count').textContent = String(dna.checks?.length ?? 0);
+
+  const pipeline = byId('dna-pipeline');
+  pipeline.replaceChildren();
+  for (const stage of dna.stages || []) {
+    const chip = document.createElement('div');
+    chip.className = `dna-stage ${stage.status || 'pending'}`;
+    const dot = document.createElement('span');
+    const label = document.createElement('strong');
+    label.textContent = stage.label;
+    chip.append(dot, label);
+    pipeline.append(chip);
+  }
+
+  const anatomy = byId('dna-anatomy');
+  anatomy.replaceChildren();
+  const pathText = ['Диск Sayuri', ...((dna.identity?.path || []).map((part) => part.name))].join(' / ');
+  const anatomyFields = [
+    ['Формат', (dna.identity?.format || '—').toUpperCase()],
+    ['Путь', pathText],
+    ['Размер', formatBytes(dna.identity?.size_bytes)],
+    ['Строк', String(dna.anatomy?.lines ?? 0)],
+    ['Абзацев', String(dna.anatomy?.paragraphs ?? 0)],
+    ['Слов', String(dna.anatomy?.words ?? 0)],
+    ['Табличных строк', String(dna.anatomy?.table_rows ?? 0)],
+    ['Заголовков', String(dna.anatomy?.headings?.length ?? 0)],
+    ['Определение типа', `${Math.round((Number(dna.classification?.confidence) || 0) * 100)}%`]
+  ];
+  const anatomyGrid = document.createElement('div');
+  anatomyGrid.className = 'dna-field-grid';
+  for (const [label, value] of anatomyFields) anatomyGrid.append(dnaField(label, value));
+  anatomy.append(anatomyGrid);
+
+  if (dna.anatomy?.headings?.length) {
+    const headingBlock = document.createElement('div');
+    headingBlock.className = 'dna-subblock';
+    const title = document.createElement('span');
+    title.className = 'dna-subtitle';
+    title.textContent = 'Найденные заголовки';
+    const chips = document.createElement('div');
+    chips.className = 'dna-heading-chips';
+    for (const heading of dna.anatomy.headings) {
+      const chip = document.createElement('span');
+      chip.textContent = heading.text;
+      chip.title = `Строка ${heading.line}`;
+      chips.append(chip);
+    }
+    headingBlock.append(title, chips);
+    anatomy.append(headingBlock);
+  }
+
+  const molecules = byId('dna-molecules');
+  const facts = (dna.molecules?.facts || []).slice(0, 120);
+  renderDnaList(molecules, facts, 'Структурированные молекулы не найдены.', (fact) => {
+    const row = document.createElement('article');
+    row.className = 'dna-fact';
+    const type = document.createElement('span');
+    type.className = 'dna-fact-type';
+    type.textContent = fact.label;
+    const body = document.createElement('div');
+    const value = document.createElement('strong');
+    value.textContent = fact.value;
+    const source = document.createElement('small');
+    source.textContent = fact.source?.line ? `Строка ${fact.source.line} · уверенность ${Math.round((fact.confidence || 0) * 100)}%` : 'Источник сохранён';
+    if (fact.source?.excerpt) source.title = fact.source.excerpt;
+    body.append(value, source);
+    row.append(type, body);
+    return row;
+  });
+  if ((dna.molecules?.facts || []).length > facts.length) {
+    const note = document.createElement('p');
+    note.className = 'dna-limit-note';
+    note.textContent = `Показаны первые ${facts.length} из ${dna.molecules.facts.length} молекул.`;
+    molecules.append(note);
+  }
+
+  const entities = byId('dna-entities');
+  renderDnaList(entities, (dna.entities || []).slice(0, 100), 'Кандидаты сущностей пока не выделены.', (entity) => {
+    const row = document.createElement('article');
+    row.className = 'dna-entity';
+    const category = document.createElement('span');
+    category.textContent = entity.category;
+    const body = document.createElement('div');
+    const value = document.createElement('strong');
+    value.textContent = entity.value;
+    const role = document.createElement('small');
+    role.textContent = `${entity.role} · ${Math.round((entity.confidence || 0) * 100)}%`;
+    body.append(value, role);
+    row.append(category, body);
+    return row;
+  });
+
+  const checks = byId('dna-checks');
+  renderDnaList(checks, dna.checks || [], 'Замечаний нет.', (check) => {
+    const row = document.createElement('article');
+    row.className = `dna-check ${check.level || 'info'}`;
+    const marker = document.createElement('span');
+    const body = document.createElement('div');
+    const title = document.createElement('strong');
+    title.textContent = check.title;
+    const message = document.createElement('p');
+    message.textContent = check.message;
+    body.append(title, message);
+    row.append(marker, body);
+    return row;
+  });
+
+  const relations = byId('dna-relations');
+  relations.replaceChildren();
+  const relationNote = document.createElement('div');
+  relationNote.className = 'dna-relation-note';
+  const relationTitle = document.createElement('strong');
+  relationTitle.textContent = dna.relations?.status || 'Связи';
+  const relationText = document.createElement('p');
+  relationText.textContent = dna.relations?.note || 'Связи будут показаны после проверки.';
+  relationNote.append(relationTitle, relationText);
+  relations.append(relationNote);
+
+  const method = byId('dna-method-note');
+  method.textContent = dna.method?.note || '';
+  method.classList.toggle('hidden', !method.textContent);
+}
+
+async function loadViewerDna(fileId, force = false) {
+  if (!force && viewerDnaLoadedFor === fileId) return;
+  const button = byId('dna-reanalyze');
+  button.disabled = true;
+  if (!force) {
+    byId('dna-document-type').textContent = 'Изучение документа…';
+    byId('dna-summary').textContent = 'Саюри разбирает структуру и молекулы документа.';
+  }
+  try {
+    let response;
+    if (force) {
+      response = await fetch(`/api/disk/files/${encodeURIComponent(fileId)}/dna/analyze`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: '{}'
+      });
+    } else {
+      response = await fetch(`/api/disk/files/${encodeURIComponent(fileId)}/dna`, {cache: 'no-store'});
+    }
+    const dna = await response.json();
+    if (!response.ok) throw new Error(dna?.error?.message || `HTTP ${response.status}`);
+    viewerDnaLoadedFor = fileId;
+    renderDocumentDna(dna);
+  } finally {
+    button.disabled = false;
+  }
 }
 
 function renderPropertyFields(item) {
@@ -1067,7 +1254,10 @@ async function openViewer(kind, id, tab = 'preview') {
     renderViewerActions(item);
 
     const previewTab = document.querySelector('[data-viewer-tab="preview"]');
+    const dnaTab = document.querySelector('[data-viewer-tab="dna"]');
     previewTab.classList.toggle('hidden', kind !== 'file');
+    dnaTab.classList.toggle('hidden', kind !== 'file');
+    viewerDnaLoadedFor = null;
     if (kind === 'folder') tab = 'properties';
 
     const modal = byId('file-viewer-modal');
@@ -1094,6 +1284,7 @@ function closeViewer() {
   byId('file-viewer-modal').classList.add('hidden');
   document.body.classList.remove('modal-open');
   viewerItem = null;
+  viewerDnaLoadedFor = null;
 }
 
 async function saveViewerName() {
@@ -1316,6 +1507,11 @@ document.querySelectorAll('[data-bulk-action]').forEach((button) => {
 });
 document.querySelectorAll('[data-viewer-tab]').forEach((button) => {
   button.addEventListener('click', () => switchViewerTab(button.dataset.viewerTab));
+});
+byId('dna-reanalyze').addEventListener('click', () => {
+  if (viewerItem?.kind === 'file') {
+    loadViewerDna(viewerItem.id, true).catch(showDiskError);
+  }
 });
 
 byId('save-settings').addEventListener('click', saveSettings);

@@ -189,7 +189,7 @@ class DiskServiceTests(unittest.TestCase):
             listing = service.list_entries("f1")
             self.assertEqual(listing["files"][0]["name"], "старый.txt")
             self.assertFalse(listing["files"][0]["favorite"])
-            self.assertEqual(service.health()["schema_version"], 2)
+            self.assertEqual(service.health()["schema_version"], 3)
 
     def test_office_and_text_previews(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -261,6 +261,51 @@ class DiskServiceTests(unittest.TestCase):
             xlsx_preview = service.preview(xlsx_item["id"])
             self.assertEqual(xlsx_preview["mode"], "table")
             self.assertEqual(xlsx_preview["rows"][0][0], "Ячейка Sayuri")
+
+
+    def test_document_dna_extracts_molecules_sources_integrity_and_cache(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            service = self.make_service(root)
+
+            text = (
+                "СЛУЖЕБНАЯ ЗАПИСКА\n"
+                "№ 17-26\n"
+                "Дата: 05.10.2026\n"
+                "ИНН 1234567890\n"
+                "VIN XTA210930Y1234567\n"
+                "Автомобиль А123ВС25\n"
+                "Сумма 125 000 руб.\n"
+                "Работа в выходной день.\n"
+            )
+            payload = text.encode("utf-8")
+            item = service.store_stream(
+                name="служебная записка.txt",
+                content_type="text/plain",
+                size_bytes=len(payload),
+                stream=BytesIO(payload),
+            )
+
+            dna = service.document_dna(item["id"])
+            self.assertEqual(dna["classification"]["document_type"], "Служебная записка")
+            self.assertTrue(dna["integrity"]["matches"])
+            self.assertGreaterEqual(dna["coverage_percent"], 85)
+            self.assertFalse(dna["method"]["external_ai_used"])
+
+            types = {fact["type"] for fact in dna["molecules"]["facts"]}
+            self.assertTrue({"date", "inn", "vin", "vehicle_plate", "amount", "document_number"} <= types)
+            date_fact = next(fact for fact in dna["molecules"]["facts"] if fact["type"] == "date")
+            self.assertEqual(date_fact["source"]["line"], 3)
+            self.assertIn("05.10.2026", date_fact["source"]["excerpt"])
+
+            cached = service.document_dna(item["id"])
+            self.assertTrue(cached["cached"])
+            self.assertEqual(cached["analyzed_at"], dna["analyzed_at"])
+
+            forced = service.document_dna(item["id"], force=True)
+            self.assertFalse(forced["cached"])
+            self.assertEqual(forced["molecules"]["total"], dna["molecules"]["total"])
+            self.assertEqual(service.health()["dna_analyzer_version"], "0.1.0")
 
 
 if __name__ == "__main__":

@@ -258,6 +258,12 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
                     raise FileNotFoundError("Объект не найден.")
                 self._json(self.server.core.disk.properties(parts[3], parts[4]))
                 return
+            if parsed.path.startswith("/api/disk/files/") and parsed.path.endswith("/dna"):
+                file_id = parsed.path[len("/api/disk/files/"):-len("/dna")].strip("/")
+                if not file_id:
+                    raise FileNotFoundError("Файл не найден.")
+                self._json(self.server.core.disk.document_dna(file_id))
+                return
             if parsed.path.startswith("/api/disk/files/") and parsed.path.endswith("/preview"):
                 file_id = parsed.path[len("/api/disk/files/"):-len("/preview")].strip("/")
                 if not file_id:
@@ -354,6 +360,24 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
                     },
                 )
                 self._json({"status": "загружено", "file": item}, HTTPStatus.CREATED)
+                return
+
+            if parsed.path.startswith("/api/disk/files/") and parsed.path.endswith("/dna/analyze"):
+                file_id = parsed.path[len("/api/disk/files/"):-len("/dna/analyze")].strip("/")
+                if not file_id:
+                    raise FileNotFoundError("Файл не найден.")
+                self._read_json()
+                dna = self.server.core.disk.document_dna(file_id, force=True)
+                self.server.core.database.record_event(
+                    "ДНК документа",
+                    "Документ переизучен",
+                    details={
+                        "file_id": file_id,
+                        "coverage_percent": dna["coverage_percent"],
+                        "facts": dna["molecules"]["total"],
+                    },
+                )
+                self._json(dna)
                 return
 
             if parsed.path == "/api/disk/rename":

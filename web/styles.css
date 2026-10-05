@@ -2005,3 +2005,376 @@ button.disk-name:hover { text-decoration: underline; }
     font-size: 12px;
   }
 }
+
+
+/* Диск Sayuri 0.3 — ДНК документа */
+.dna-shell {
+  min-height: 100%;
+  padding: 22px;
+  background: #f6f8fa;
+}
+.dna-overview {
+  display: grid;
+  grid-template-columns: 108px minmax(0, 1fr);
+  gap: 18px;
+  padding: 18px;
+  border: 1px solid #dfe4ea;
+  border-radius: 17px;
+  background: #fff;
+}
+.dna-score {
+  min-height: 96px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  border-radius: 14px;
+  background: #f1f5f3;
+}
+.dna-score-value {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+  color: #253448;
+}
+.dna-score-value strong {
+  font-size: 30px;
+  line-height: 1;
+  letter-spacing: -.04em;
+}
+.dna-score-value span {
+  color: #748092;
+  font-size: 13px;
+  font-weight: 750;
+}
+.dna-score small {
+  margin-top: 7px;
+  color: #83908f;
+  font-size: 8px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+.dna-overview-copy {
+  min-width: 0;
+}
+.dna-title-line {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+.dna-title-line h3 {
+  margin: 2px 0 0;
+  color: #283549;
+  font-size: 20px;
+  line-height: 1.3;
+}
+.dna-overview-copy > p {
+  max-width: 760px;
+  margin: 8px 0 12px;
+  color: #748092;
+  font-size: 10px;
+  line-height: 1.55;
+}
+.dna-progress {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e7ebef;
+}
+.dna-progress span {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: #4a9c76;
+  transition: width .2s ease;
+}
+.dna-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 9px;
+  margin-top: 10px;
+}
+.dna-metrics article {
+  padding: 11px 13px;
+  border: 1px solid #e2e6eb;
+  border-radius: 12px;
+  background: #fff;
+}
+.dna-metrics span,
+.dna-metrics strong {
+  display: block;
+}
+.dna-metrics span {
+  color: #919baa;
+  font-size: 8px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+.dna-metrics strong {
+  margin-top: 4px;
+  color: #334055;
+  font-size: 16px;
+}
+.dna-pipeline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 12px 0;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: thin;
+}
+.dna-stage {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 9px;
+  border: 1px solid #e0e5eb;
+  border-radius: 999px;
+  background: #fff;
+  color: #687486;
+}
+.dna-stage > span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #bbc3cd;
+}
+.dna-stage strong {
+  font-size: 9px;
+  font-weight: 700;
+}
+.dna-stage.done > span {
+  background: #3e9b6f;
+}
+.dna-stage.partial > span,
+.dna-stage.warning > span {
+  background: #d49a35;
+}
+.dna-stage.pending > span {
+  background: #aeb7c3;
+}
+.dna-section {
+  margin-top: 8px;
+  overflow: hidden;
+  border: 1px solid #e0e5ea;
+  border-radius: 13px;
+  background: #fff;
+}
+.dna-section summary {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+  cursor: pointer;
+  list-style: none;
+}
+.dna-section summary::-webkit-details-marker {
+  display: none;
+}
+.dna-section summary::before {
+  content: "›";
+  color: #9aa4b1;
+  font-size: 16px;
+  transition: transform .14s ease;
+}
+.dna-section[open] summary::before {
+  transform: rotate(90deg);
+}
+.dna-section summary span {
+  color: #344156;
+  font-size: 11px;
+  font-weight: 750;
+}
+.dna-section summary small {
+  margin-left: auto;
+  color: #99a2af;
+  font-size: 9px;
+}
+.dna-section-body {
+  padding: 0 14px 14px;
+  border-top: 1px solid #f0f2f5;
+}
+.dna-field-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  padding-top: 12px;
+}
+.dna-field {
+  min-width: 0;
+  padding: 10px 11px;
+  border-radius: 10px;
+  background: #f8fafb;
+}
+.dna-field span,
+.dna-field strong {
+  display: block;
+}
+.dna-field span {
+  margin-bottom: 4px;
+  color: #98a1ae;
+  font-size: 8px;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+.dna-field strong {
+  color: #3a4659;
+  font-size: 10px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.dna-subblock {
+  margin-top: 10px;
+}
+.dna-subtitle {
+  display: block;
+  margin-bottom: 7px;
+  color: #8b96a6;
+  font-size: 8px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+.dna-heading-chips {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+.dna-heading-chips span {
+  max-width: 100%;
+  padding: 5px 7px;
+  border-radius: 7px;
+  background: #f4f6f8;
+  color: #5d697c;
+  font-size: 9px;
+  overflow-wrap: anywhere;
+}
+.dna-fact,
+.dna-entity,
+.dna-check {
+  display: grid;
+  grid-template-columns: 115px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 10px 0;
+  border-bottom: 1px solid #f0f2f5;
+}
+.dna-fact:last-child,
+.dna-entity:last-child,
+.dna-check:last-child {
+  border-bottom: 0;
+}
+.dna-fact-type,
+.dna-entity > span {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 110px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  background: #f1f4f7;
+  color: #697487;
+  font-size: 8px;
+  font-weight: 750;
+}
+.dna-fact strong,
+.dna-entity strong,
+.dna-check strong {
+  display: block;
+  color: #344055;
+  font-size: 10px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.dna-fact small,
+.dna-entity small {
+  display: block;
+  margin-top: 3px;
+  color: #959eab;
+  font-size: 8px;
+}
+.dna-check {
+  grid-template-columns: 10px minmax(0, 1fr);
+}
+.dna-check > span {
+  width: 7px;
+  height: 7px;
+  margin-top: 4px;
+  border-radius: 50%;
+  background: #9ca6b3;
+}
+.dna-check.ok > span {
+  background: #419b70;
+}
+.dna-check.attention > span {
+  background: #d49934;
+}
+.dna-check.critical > span {
+  background: #bd5050;
+}
+.dna-check p,
+.dna-relation-note p {
+  margin: 3px 0 0;
+  color: #7e8999;
+  font-size: 9px;
+  line-height: 1.5;
+}
+.dna-relation-note {
+  padding-top: 12px;
+}
+.dna-relation-note strong {
+  color: #4d596b;
+  font-size: 10px;
+}
+.dna-empty,
+.dna-limit-note {
+  margin: 12px 0 0;
+  color: #909aa8;
+  font-size: 9px;
+}
+.dna-method-note {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #eef2f5;
+  color: #748092;
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+@media (max-width: 760px) {
+  .dna-shell {
+    padding: 12px;
+  }
+  .dna-overview {
+    grid-template-columns: 1fr;
+  }
+  .dna-score {
+    min-height: 78px;
+  }
+  .dna-metrics {
+    grid-template-columns: 1fr 1fr;
+  }
+  .dna-field-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .dna-fact,
+  .dna-entity {
+    grid-template-columns: 88px minmax(0, 1fr);
+  }
+}
+@media (max-width: 470px) {
+  .dna-title-line {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .dna-title-line .secondary-button {
+    width: 100%;
+  }
+  .dna-field-grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -121,6 +121,25 @@ class DiskApiTests(unittest.TestCase):
             self.assertIn("disk api 0.2", preview["text"])
 
         with urllib.request.urlopen(
+            self.base + f"/api/disk/files/{uploaded['id']}/dna",
+            timeout=3,
+        ) as response:
+            dna = json.loads(response.read().decode("utf-8"))
+            self.assertIn("coverage_percent", dna)
+            self.assertTrue(dna["integrity"]["matches"])
+            self.assertFalse(dna["method"]["external_ai_used"])
+
+        reanalyze_request = urllib.request.Request(
+            self.base + f"/api/disk/files/{uploaded['id']}/dna/analyze",
+            data=b"{}",
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(reanalyze_request, timeout=3) as response:
+            dna = json.loads(response.read().decode("utf-8"))
+            self.assertFalse(dna["cached"])
+
+        with urllib.request.urlopen(
             self.base + f"/api/disk/files/{uploaded['id']}/view",
             timeout=3,
         ) as response:

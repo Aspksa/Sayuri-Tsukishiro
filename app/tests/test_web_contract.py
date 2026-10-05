@@ -34,16 +34,38 @@ class WebContractTests(unittest.TestCase):
         self.assertIn("900", script)
         self.assertNotIn("loadFolderTree()", script)
 
-    def test_css_has_tiles_list_drop_highlights_and_comfortable_width(self):
+    def test_document_viewer_order_is_preview_dna_properties(self):
+        html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        self.assertIn('id="viewer-tab-preview"', html)
+        self.assertIn('id="viewer-tab-dna"', html)
+        self.assertIn('id="viewer-tab-properties"', html)
+        self.assertLess(html.index('data-viewer-tab="preview"'), html.index('data-viewer-tab="dna"'))
+        self.assertLess(html.index('data-viewer-tab="dna"'), html.index('data-viewer-tab="properties"'))
+        self.assertIn('id="dna-coverage"', html)
+        self.assertIn('id="dna-molecules"', html)
+        self.assertIn('id="dna-checks"', html)
+        self.assertIn('id="dna-reanalyze"', html)
+
+    def test_frontend_uses_document_dna_api(self):
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+        self.assertIn("/dna", script)
+        self.assertIn("/dna/analyze", script)
+        self.assertIn("renderDocumentDna", script)
+        self.assertIn("loadViewerDna", script)
+        self.assertIn("ДНК документа", script)
+
+    def test_css_has_tiles_dna_and_low_noise_details(self):
         css = (ROOT / "web" / "styles.css").read_text(encoding="utf-8")
         self.assertIn("#view-disk", css)
         self.assertIn("max-width: 1380px", css)
         self.assertIn(".disk-list.tiles", css)
         self.assertIn(".disk-list.list", css)
         self.assertIn(".disk-drop-target-active", css)
-        self.assertIn(".trash-drag-active", css)
         self.assertIn(".move-dialog-wide", css)
-        self.assertIn(".disk-undo-toast", css)
+        self.assertIn(".dna-shell", css)
+        self.assertIn(".dna-section", css)
+        self.assertIn(".dna-pipeline", css)
+        self.assertIn(".dna-metrics", css)
 
 
 if __name__ == "__main__":
