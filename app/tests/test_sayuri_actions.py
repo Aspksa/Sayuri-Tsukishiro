@@ -95,6 +95,13 @@ class SayuriActionBrokerTests(unittest.TestCase):
 
             completed = core.confirm_sayuri_action(planned["action"]["id"])
             self.assertEqual(completed["status"], "completed")
+            experience = core.sayuri_experience()
+            self.assertTrue(
+                any(
+                    item["strategy"] == "tool.disk.create_folder" and item["positive"] >= 1
+                    for item in experience["stats"]["strategies"]
+                )
+            )
             folders = core.disk.list_entries()["folders"]
             self.assertEqual([item["name"] for item in folders], ["Договоры"])
 
