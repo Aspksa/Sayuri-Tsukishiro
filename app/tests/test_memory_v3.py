@@ -167,6 +167,31 @@ class MemoryV3Tests(unittest.TestCase):
             self.assertIn("memory_conflict_opened", events)
             self.assertIn("memory_conflict_resolved", events)
 
+    def test_episodic_memory_reuses_fingerprint_on_retry(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            memory, semantic, v3 = self._build(Path(tmp))
+            first = v3.record_episode(
+                event_type="chat_feedback",
+                summary="Ответ полезен",
+                scope="system",
+                source="user_feedback",
+                importance=3,
+                fingerprint="chat_feedback:resp-1",
+            )
+            second = v3.record_episode(
+                event_type="chat_feedback",
+                summary="Ответ не помог",
+                scope="system",
+                source="user_feedback",
+                importance=3,
+                fingerprint="chat_feedback:resp-1",
+            )
+
+            self.assertEqual(first["id"], second["id"])
+            episodes = v3.episodes()
+            self.assertEqual(len(episodes), 1)
+            self.assertEqual(episodes[0]["summary"], "Ответ не помог")
+
     def test_graph_extracts_company_and_episode_event_nodes(self):
         with tempfile.TemporaryDirectory() as tmp:
             memory, semantic, v3 = self._build(Path(tmp))
