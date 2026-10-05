@@ -1371,6 +1371,109 @@ class MemorySystemV4:
             return self._failure_row(updated)
         return None
 
+    def causal_links(self, limit: int = 100) -> list[dict[str, Any]]:
+        with self._connect() as db:
+            rows = db.execute(
+                """
+                SELECT * FROM memory_causal_links
+                ORDER BY updated_at DESC LIMIT ?
+                """,
+                (min(max(int(limit), 1), 300),),
+            ).fetchall()
+        return [
+            {
+                "id": row["id"],
+                "cause_type": row["cause_type"],
+                "cause_id": row["cause_id"],
+                "effect_type": row["effect_type"],
+                "effect_id": row["effect_id"],
+                "relation": row["relation"],
+                "confidence": row["confidence"],
+                "evidence": self._decode(row["evidence_json"], {}),
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"],
+            }
+            for row in rows
+        ]
+
+    def entity_profiles(self, limit: int = 40) -> list[dict[str, Any]]:
+        graph = self.memory_v3.graph(limit_nodes=500, limit_edges=1000)
+        allowed_types = {"person", "project", "document", "vehicle", "company"}
+        nodes = {
+            node["id"]: node
+            for node in graph.get("nodes", [])
+            if node.get("type") in allowed_types
+        }
+        relations: dict[str, list[dict[str, Any]]] = {node_id: [] for node_id in nodes}
+        for edge in graph.get("edges", []):
+            source = edge.get("source")
+            target = edge.get("target")
+            if source in nodes:
+                other = next(
+                    (item for item in graph.get("nodes", []) if item.get("id") == target),
+                    None,
+                )
+                relations[source].append({
+                    "direction": "out",
+                    "relation": edge.get("relation"),
+                    "other": other.get("label") if other else target,
+                    "other_type": other.get("type") if other else None,
+                })
+            if target in nodes:
+                other = next(
+                    (item for item in graph.get("nodes", []) if item.get("id") == source),
+                    None,
+                )
+                relations[target].append({
+                    "direction": "in",
+                    "relation": edge.get("relation"),
+                    "other": other.get("label") if other else source,
+                    "other_type": other.get("type") if other else None,
+                })
+        profiles = [
+            {
+                "id": node_id,
+                "type": node["type"],
+                "label": node["label"],
+                "metadata": node.get("metadata") or {},
+                "relation_count": len(relations[node_id]),
+                "relations": relations[node_id][:12],
+            }
+            for node_id, node in nodes.items()
+        ]
+        profiles.sort(
+            key=lambda item: (item["relation_count"], item["label"]),
+            reverse=True,
+        )
+        return profiles[: min(max(int(limit), 1), 100)]
+
+    def preference_history(self, limit: int = 50) -> list[dict[str, Any]]:
+        with self._connect() as db:
+            rows = db.execute(
+                """
+                SELECT id, content, importance, source, created_at, updated_at,
+                       active, confidence, supersedes_id
+                FROM memory_entries
+                WHERE scope='personal' AND kind='preference'
+                ORDER BY created_at DESC LIMIT ?
+                """,
+                (min(max(int(limit), 1), 200),),
+            ).fetchall()
+        return [
+            {
+                "id": row["id"],
+                "content": row["content"],
+                "importance": row["importance"],
+                "source": row["source"],
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"],
+                "active": bool(row["active"]),
+                "confidence": row["confidence"],
+                "supersedes_id": row["supersedes_id"],
+            }
+            for row in rows
+        ]
+
     def failures(self, limit: int = 100) -> list[dict[str, Any]]:
         with self._connect() as db:
             rows = db.execute(
@@ -1883,6 +1986,12 @@ class MemorySystemV4:
             snapshots = db.execute(
                 "SELECT COUNT(*) FROM memory_snapshots"
             ).fetchone()[0]
+            causal = db.execute(
+                "SELECT COUNT(*) FROM memory_causal_links"
+            ).fetchone()[0]
+            audits = db.execute(
+                "SELECT COUNT(*) FROM memory_audit_log"
+            ).fetchone()[0]
         return {
             "version": "4.0",
             "engine": self.ENGINE_ID,
@@ -1898,6 +2007,8 @@ class MemorySystemV4:
             "open_questions": questions,
             "recalls": recalls,
             "snapshots": snapshots,
+            "causal_links": causal,
+            "audit_events": audits,
         }
 
     def dashboard(self) -> dict[str, Any]:
@@ -1912,7 +2023,10 @@ class MemorySystemV4:
             ][:40],
             "decisions": self.decisions(30),
             "failures": self.failures(30),
+            "causal_links": self.causal_links(30),
             "questions": self.questions(status="open", limit=30),
+            "preferences": self.preference_history(30),
+            "entities": self.entity_profiles(30),
             "sources": self._source_profiles(30),
             "recalls": self.recall_audit(20),
             "audit": self.audit_log(30),
