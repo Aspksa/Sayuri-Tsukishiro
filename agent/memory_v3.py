@@ -1134,6 +1134,12 @@ class MemorySystemV3:
         new = self.memory.get(new_memory_id, include_inactive=True)
         if not old or not new:
             return None
+
+        # A conflict is itself graph-worthy evidence. Ensure both sides are
+        # materialized before the resolver exposes the conflict to the user.
+        self.ingest_memory(old, timeline=False)
+        self.ingest_memory(new, timeline=False)
+
         now = self._now()
         conflict_id = hashlib.sha256(f"{old_memory_id}|{new_memory_id}".encode("utf-8")).hexdigest()
         with self._connect() as db:
@@ -1157,6 +1163,24 @@ class MemorySystemV3:
             )
             created = cursor.rowcount > 0
             row = db.execute("SELECT * FROM memory_conflicts WHERE id = ?", (conflict_id,)).fetchone()
+            old_node = self._ensure_memory_node(
+                db,
+                old_memory_id,
+                fallback_label=old["content"][:180] or "Старая память",
+            )
+            new_node = self._ensure_memory_node(
+                db,
+                new_memory_id,
+                fallback_label=new["content"][:180] or "Новая память",
+            )
+            self._ensure_edge(
+                db,
+                source_id=new_node,
+                target_id=old_node,
+                relation="conflicts_with",
+                weight=1.0,
+                source_ref=conflict_id,
+            )
         if created:
             self._timeline(
                 event_type="memory_conflict_opened",
