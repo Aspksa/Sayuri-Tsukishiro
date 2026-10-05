@@ -1293,6 +1293,7 @@ class MemorySystemV4:
             symptom = str(action.get("error") or action.get("title") or "Неизвестная ошибка")
             fingerprint = self._fingerprint(tool, symptom)
             now = self._now()
+            reopened = False
             with self._connect() as db:
                 row = db.execute(
                     "SELECT * FROM memory_failures WHERE fingerprint = ?",
@@ -1312,13 +1313,6 @@ class MemorySystemV4:
                         (now, action_id, row["id"]),
                     )
                     failure_id = row["id"]
-                    if reopened:
-                        self._audit(
-                            "failure_reopened",
-                            "failure",
-                            failure_id,
-                            {"tool": tool, "action_id": action_id},
-                        )
                 else:
                     failure_id = uuid.uuid4().hex
                     db.execute(
@@ -1332,6 +1326,13 @@ class MemorySystemV4:
                         (failure_id, fingerprint, tool, symptom[:3000], action_id, now, now),
                     )
                 row = db.execute("SELECT * FROM memory_failures WHERE id = ?", (failure_id,)).fetchone()
+            if reopened:
+                self._audit(
+                    "failure_reopened",
+                    "failure",
+                    failure_id,
+                    {"tool": tool, "action_id": action_id},
+                )
             failure = self._failure_row(row)
             self._audit("failure_recorded", "failure", failure_id, {"tool": tool})
             return failure
