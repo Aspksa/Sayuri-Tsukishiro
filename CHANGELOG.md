@@ -2,6 +2,19 @@
 
 ## Невыпущенные изменения
 
+### 0.1.24 — 2026-10-05 — Телефон Sayuri 0.2.1 reconnect resilience
+
+- Исправлена обработка реального USB/ADB disconnect Samsung SM-A556E.
+- Потерянный serial больше не вызывает бесконечный цикл `/api/phone/frame` HTTP 400.
+- Stale frame cache и scrcpy session очищаются после исчезновения устройства.
+- Frame endpoint возвращает `SAYURI-PHONE-409` для controlled disconnect.
+- UI останавливает live polling, очищает старый кадр и переходит в состояние ожидания.
+- Добавлен лёгкий auto-reconnect через периодическую проверку `/api/phone`.
+- После повторной авторизации embedded preview восстанавливается автоматически.
+- Embedded screencap ставится на паузу, пока открыт нативный scrcpy 60 FPS.
+- Добавлены regression tests по disconnect/reconcile/API 409/web recovery contract.
+
+
 ### 0.1.23 — 2026-10-05 — Телефон Sayuri 0.2 Embedded Control
 
 - Телефон Sayuri повышен до `0.2.0`.

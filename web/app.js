@@ -16,6 +16,7 @@ const phoneState = {
   selectedDevice: null,
   nativeSessions: new Set(),
   frameTimer: null,
+  reconnectTimer: null,
   frameLoading: false,
   frameGeneration: 0,
   frameUrl: null,
@@ -81,7 +82,10 @@ function selectedDiskItems() {
 
 function showView(name) {
   phoneState.viewActive = name === 'phone';
-  if (!phoneState.viewActive) stopPhoneFrameLoop();
+  if (!phoneState.viewActive) {
+    stopPhoneFrameLoop();
+    stopPhoneReconnectLoop();
+  }
 
   document.querySelectorAll('.view').forEach((view) => {
     view.classList.toggle('active', view.id === `view-${name}`);
@@ -1450,8 +1454,67 @@ function stopPhoneFrameLoop() {
   phoneState.frameLoading = false;
 }
 
+function stopPhoneReconnectLoop() {
+  if (phoneState.reconnectTimer) {
+    window.clearTimeout(phoneState.reconnectTimer);
+    phoneState.reconnectTimer = null;
+  }
+}
+
+function schedulePhoneReconnect(delay = 2500) {
+  if (!phoneState.viewActive || phoneState.selectedSerial) return;
+  stopPhoneReconnectLoop();
+  phoneState.reconnectTimer = window.setTimeout(async () => {
+    phoneState.reconnectTimer = null;
+    if (!phoneState.viewActive || phoneState.selectedSerial) return;
+    try {
+      await loadPhone();
+    } catch (error) {
+      byId('phone-frame-status').textContent =
+        `Ожидание телефона: ${error instanceof Error ? error.message : String(error)}`;
+      schedulePhoneReconnect(3500);
+    }
+  }, delay);
+}
+
+function clearPhoneFrameImage() {
+  const image = byId('phone-screen');
+  image.classList.add('hidden');
+  image.removeAttribute('src');
+  byId('phone-screen-placeholder').classList.remove('hidden');
+  if (phoneState.frameUrl) {
+    URL.revokeObjectURL(phoneState.frameUrl);
+    phoneState.frameUrl = null;
+  }
+}
+
+function handlePhoneDisconnected(message = 'Телефон отключён.') {
+  stopPhoneFrameLoop();
+  phoneState.selectedSerial = null;
+  phoneState.selectedDevice = null;
+  phoneState.pointer = null;
+  clearPhoneFrameImage();
+
+  byId('phone-selected-device').textContent = '—';
+  byId('phone-live-title').textContent = 'Телефон отключён';
+  byId('phone-live-subtitle').textContent = 'Sayuri ждёт повторного подключения Android.';
+  byId('phone-live-badge').textContent = 'ОТКЛЮЧЁН';
+  byId('phone-live-badge').classList.remove('live');
+  byId('phone-frame-status').textContent = message;
+  byId('phone-open-native').disabled = true;
+  document.querySelectorAll('[data-phone-key]').forEach((button) => {
+    button.disabled = true;
+  });
+  showPhoneMessage(
+    'Связь с телефоном потеряна. Проверьте USB-кабель/отладку — Sayuri подключится снова автоматически.',
+    'error'
+  );
+  schedulePhoneReconnect(1200);
+}
+
 function schedulePhoneFrame(delay = 420) {
   if (!phoneState.viewActive || !phoneState.selectedSerial) return;
+  if (phoneState.nativeSessions.has(phoneState.selectedSerial)) return;
   if (phoneState.frameTimer) window.clearTimeout(phoneState.frameTimer);
   phoneState.frameTimer = window.setTimeout(() => refreshPhoneFrame(), delay);
 }
@@ -1468,10 +1531,16 @@ async function refreshPhoneFrame() {
     );
     if (!response.ok) {
       let message = `HTTP ${response.status}`;
+      let code = null;
       try {
         const data = await response.json();
         message = data?.error?.message || message;
+        code = data?.error?.code || null;
       } catch {}
+      if (response.status === 409 || code === 'SAYURI-PHONE-409') {
+        handlePhoneDisconnected(message);
+        return;
+      }
       throw new Error(message);
     }
     const blob = await response.blob();
@@ -1499,10 +1568,10 @@ async function refreshPhoneFrame() {
     schedulePhoneFrame(420);
   } catch (error) {
     if (generation !== phoneState.frameGeneration) return;
-    byId('phone-frame-status').textContent = `Кадр недоступен: ${error instanceof Error ? error.message : String(error)}`;
+    byId('phone-frame-status').textContent = `Кадр временно недоступен: ${error instanceof Error ? error.message : String(error)}`;
     byId('phone-live-badge').textContent = 'ПОВТОР';
     byId('phone-live-badge').classList.remove('live');
-    schedulePhoneFrame(1500);
+    schedulePhoneFrame(1800);
   } finally {
     phoneState.frameLoading = false;
   }
@@ -1511,6 +1580,12 @@ async function refreshPhoneFrame() {
 function startPhoneFrameLoop() {
   stopPhoneFrameLoop();
   if (!phoneState.viewActive || !phoneState.selectedSerial) return;
+  if (phoneState.nativeSessions.has(phoneState.selectedSerial)) {
+    byId('phone-frame-status').textContent = 'Встроенный поток на паузе: открыт режим 60 FPS.';
+    byId('phone-live-badge').textContent = '60 FPS';
+    byId('phone-live-badge').classList.remove('live');
+    return;
+  }
   byId('phone-frame-status').textContent = 'Получаю экран телефона…';
   schedulePhoneFrame(0);
 }
@@ -1535,14 +1610,14 @@ function updatePhoneLivePanel() {
     phoneState.selectedDevice = null;
     byId('phone-selected-device').textContent = '—';
     byId('phone-live-title').textContent = 'Телефон внутри Sayuri';
-    byId('phone-live-subtitle').textContent = 'Выберите подключённый телефон — экран появится здесь.';
+    byId('phone-live-subtitle').textContent = 'Подключите Android — Sayuri обнаружит его автоматически.';
     byId('phone-live-badge').textContent = 'ОЖИДАНИЕ';
     byId('phone-live-badge').classList.remove('live');
-    byId('phone-frame-status').textContent = 'Кадры ещё не запущены';
+    byId('phone-frame-status').textContent = 'Ожидание авторизованного телефона…';
     nativeButton.disabled = true;
     keyButtons.forEach((button) => { button.disabled = true; });
-    image.classList.add('hidden');
-    placeholder.classList.remove('hidden');
+    clearPhoneFrameImage();
+    schedulePhoneReconnect(2500);
     return;
   }
 
@@ -1555,11 +1630,18 @@ function updatePhoneLivePanel() {
   const nativeOpen = phoneState.nativeSessions.has(device.serial);
   nativeButton.textContent = nativeOpen ? 'Остановить окно 60 FPS' : '60 FPS · отдельное окно';
   keyButtons.forEach((button) => { button.disabled = false; });
+  if (nativeOpen) {
+    stopPhoneFrameLoop();
+    byId('phone-frame-status').textContent = 'Встроенный поток на паузе: управление идёт через окно 60 FPS.';
+    byId('phone-live-badge').textContent = '60 FPS';
+    byId('phone-live-badge').classList.remove('live');
+  }
 }
 
 function selectPhone(device) {
   if (!device?.authorized) return;
   const changed = phoneState.selectedSerial !== device.serial;
+  stopPhoneReconnectLoop();
   phoneState.selectedSerial = device.serial;
   phoneState.selectedDevice = device;
   updatePhoneLivePanel();
@@ -1682,7 +1764,12 @@ function renderPhone(data) {
   }
 
   updatePhoneLivePanel();
-  if (selected && phoneState.viewActive && (selectedChanged || !phoneState.frameTimer)) {
+  if (
+    selected
+    && phoneState.viewActive
+    && !sessions.has(selected.serial)
+    && (selectedChanged || !phoneState.frameTimer)
+  ) {
     startPhoneFrameLoop();
   }
 }

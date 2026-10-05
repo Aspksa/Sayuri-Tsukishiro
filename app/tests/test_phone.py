@@ -7,6 +7,7 @@ import tempfile
 import threading
 import unittest
 from unittest.mock import MagicMock, patch
+import urllib.error
 import urllib.request
 
 from app.config import Settings
@@ -181,6 +182,63 @@ R58M123ABC device product:a56xeea model:SM_A556E device:a56x transport_id:1
             self.assertIn("KEYCODE_HOME", run.call_args.args[0])
 
 
+    def test_disconnect_during_frame_is_classified_and_clears_state(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            service = PhoneService(Path(tmp))
+            service._frame_cache["R58M123ABC"] = {
+                "captured_monotonic": 0.0,
+                "data": self.fake_png(),
+            }
+            process = MagicMock()
+            process.poll.return_value = None
+            service._sessions["R58M123ABC"] = process
+
+            invalid = subprocess.CompletedProcess(
+                args=[],
+                returncode=0,
+                stdout=b"",
+                stderr=b"",
+            )
+            with patch.object(
+                service,
+                "_select_authorized_device",
+                return_value={"serial": "R58M123ABC", "authorized": True},
+            ), patch.object(
+                service, "_resolve_adb", return_value=Path("adb.exe")
+            ), patch.object(
+                service, "_run_binary", return_value=invalid
+            ), patch.object(
+                service, "devices", return_value=[]
+            ):
+                with self.assertRaises(ConnectionError):
+                    service.screen_frame("R58M123ABC", force=True)
+
+            self.assertNotIn("R58M123ABC", service._frame_cache)
+            self.assertNotIn("R58M123ABC", service._sessions)
+            process.terminate.assert_called_once()
+
+    def test_health_reconciles_stale_session_after_usb_disconnect(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            service = PhoneService(Path(tmp))
+            process = MagicMock()
+            process.poll.return_value = None
+            service._sessions["R58M123ABC"] = process
+            service._frame_cache["R58M123ABC"] = {
+                "captured_monotonic": 1.0,
+                "data": self.fake_png(),
+            }
+
+            with patch.object(service, "_resolve_adb", return_value=Path("adb.exe")), patch.object(
+                service, "_resolve_scrcpy", return_value=Path("scrcpy.exe")
+            ), patch.object(service, "devices", return_value=[]):
+                health = service.health()
+
+            self.assertEqual(health["authorized_devices"], 0)
+            self.assertEqual(health["control_sessions"], [])
+            self.assertNotIn("R58M123ABC", service._frame_cache)
+            process.terminate.assert_called_once()
+
+
 class PhoneApiTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -303,6 +361,22 @@ class PhoneApiTests(unittest.TestCase):
             {"serial": "R58M123ABC", "key": "BACK"},
         )
         self.assertEqual(keyed["key"], "BACK")
+
+
+    def test_disconnected_frame_returns_phone_conflict(self):
+        self.core.phone.screen_frame = MagicMock(
+            side_effect=ConnectionError("Телефон отключён или потерял авторизацию ADB.")
+        )
+        request = urllib.request.Request(
+            self.base + "/api/phone/frame?serial=R58M123ABC",
+            method="GET",
+        )
+        with self.assertRaises(urllib.error.HTTPError) as captured:
+            urllib.request.urlopen(request, timeout=3)
+        self.assertEqual(captured.exception.code, 409)
+        payload = json.loads(captured.exception.read().decode("utf-8"))
+        self.assertEqual(payload["error"]["code"], "SAYURI-PHONE-409")
+        self.assertIn("отключён", payload["error"]["message"])
 
 
 if __name__ == "__main__":

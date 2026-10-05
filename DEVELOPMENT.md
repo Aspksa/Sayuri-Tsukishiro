@@ -420,3 +420,26 @@ The existing official scrcpy 4.1 window remains available from the same module f
 - lower perceived latency.
 
 Embedded mode 0.2 intentionally does not claim equivalent FPS/audio.
+
+
+## Телефон Sayuri 0.2.1 — Disconnect Recovery
+
+Состояния embedded preview:
+
+```text
+authorized
+  → LIVE frame loop
+  → ADB disconnect
+  → SAYURI-PHONE-409
+  → stop frame loop
+  → clear stale frame/session
+  → WAITING
+  → GET /api/phone every ~2.5s
+  → authorized again
+  → resume LIVE
+```
+
+Дополнительное правило:
+если для выбранного serial открыт нативный scrcpy 60 FPS, embedded `screencap -p` polling ставится на паузу. После закрытия нативного окна встроенный preview возобновляется.
+
+Это снижает одновременную нагрузку на ADB/USB и устраняет бесконечные запросы к исчезнувшему serial.

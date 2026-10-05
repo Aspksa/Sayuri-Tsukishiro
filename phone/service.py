@@ -10,7 +10,7 @@ import time
 from typing import Any
 
 
-PHONE_BACKEND_VERSION = "0.2.0"
+PHONE_BACKEND_VERSION = "0.2.1"
 SCRCPY_VERSION = "4.1"
 COMMAND_TIMEOUT_SECONDS = 20
 FRAME_TIMEOUT_SECONDS = 8
@@ -150,6 +150,28 @@ class PhoneService:
             for serial in dead:
                 self._sessions.pop(serial, None)
 
+    def _drop_device_state(self, serial: str) -> None:
+        process = None
+        with self._lock:
+            self._frame_cache.pop(serial, None)
+            process = self._sessions.pop(serial, None)
+        if process is not None and process.poll() is None:
+            try:
+                process.terminate()
+            except OSError:
+                pass
+
+    def _reconcile_device_state(self, devices: list[dict[str, Any]]) -> None:
+        authorized = {
+            item["serial"]
+            for item in devices
+            if item.get("authorized")
+        }
+        with self._lock:
+            stale = (set(self._frame_cache) | set(self._sessions)) - authorized
+        for serial in stale:
+            self._drop_device_state(serial)
+
     def health(self) -> dict[str, Any]:
         self._prune_sessions()
         adb = self._resolve_adb()
@@ -162,6 +184,7 @@ class PhoneService:
             except OSError as exc:
                 error = str(exc)
 
+        self._reconcile_device_state(devices)
         authorized = sum(1 for item in devices if item["authorized"])
         runtime_ready = adb is not None and scrcpy is not None
         return {
@@ -267,7 +290,8 @@ class PhoneService:
             requested = serial.strip()
             match = next((item for item in devices if item["serial"] == requested), None)
             if match is None:
-                raise ValueError("Выбранный телефон не подключён или не авторизован.")
+                self._drop_device_state(requested)
+                raise ConnectionError("Телефон отключён или потерял авторизацию ADB.")
             return match
         if not devices:
             raise ValueError("Нет авторизованного Android-устройства.")
@@ -335,9 +359,33 @@ class PhoneService:
             )
             if result.returncode != 0:
                 error = (result.stderr or b"").decode("utf-8", errors="replace").strip()
+                try:
+                    still_connected = any(
+                        item["serial"] == device_serial and item["authorized"]
+                        for item in self.devices()
+                    )
+                except OSError:
+                    still_connected = False
+                if not still_connected:
+                    self._drop_device_state(device_serial)
+                    raise ConnectionError("Телефон отключён во время получения кадра.")
                 raise OSError(error or "Не удалось получить экран телефона.")
+
             data = bytes(result.stdout or b"")
-            width, height = self._png_dimensions(data)
+            try:
+                width, height = self._png_dimensions(data)
+            except ValueError as exc:
+                try:
+                    still_connected = any(
+                        item["serial"] == device_serial and item["authorized"]
+                        for item in self.devices()
+                    )
+                except OSError:
+                    still_connected = False
+                if not still_connected:
+                    self._drop_device_state(device_serial)
+                    raise ConnectionError("Телефон отключён во время получения кадра.") from exc
+                raise
             frame = {
                 "serial": device_serial,
                 "data": data,

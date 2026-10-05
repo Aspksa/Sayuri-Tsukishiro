@@ -234,7 +234,18 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
                 return
             if parsed.path == "/api/phone/frame":
                 serial = query.get("serial", [None])[0]
-                frame = self.server.core.phone.screen_frame(serial)
+                try:
+                    frame = self.server.core.phone.screen_frame(serial)
+                except ConnectionError as exc:
+                    self._error(
+                        SayuriError(
+                            "SAYURI-PHONE-409",
+                            str(exc),
+                            HTTPStatus.CONFLICT,
+                        ),
+                        request_id,
+                    )
+                    return
                 self._send(
                     frame["data"],
                     "image/png",
