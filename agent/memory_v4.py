@@ -2446,13 +2446,169 @@ class MemorySystemV4:
             "avoid": safe_items("avoid"),
         }
 
+    @staticmethod
+    def _compact_text(value: Any, limit: int) -> tuple[str | None, bool]:
+        if value is None:
+            return None, False
+        text = str(value)
+        if len(text) <= limit:
+            return text, False
+        return text[: max(limit - 1, 1)].rstrip() + "…", True
+
+    def _budget_recalled_memories(
+        self,
+        recalled: dict[str, Any],
+        *,
+        char_budget: int | None = None,
+    ) -> tuple[dict[str, list[dict[str, Any]]], dict[str, Any], dict[str, Any]]:
+        budget = max(int(char_budget or self.CLOUD_RECALL_CHAR_BUDGET), 1000)
+        candidates: list[tuple[float, str, dict[str, Any], dict[str, Any]]] = []
+        for scope in ("personal", "project"):
+            for item in recalled.get(scope, []):
+                if not isinstance(item, dict):
+                    continue
+                compact_content, truncated = self._compact_text(item.get("content"), 2400)
+                compact = {
+                    "memory_id": item.get("id"),
+                    "kind": item.get("kind"),
+                    "content": compact_content or "",
+                    "importance": item.get("importance"),
+                    "relevance": item.get("relevance"),
+                    "why": list(item.get("recall_explanation", {}).get("why") or [])[:6],
+                    "tier": item.get("v4", {}).get("tier"),
+                    "content_truncated": truncated,
+                }
+                candidates.append(
+                    (
+                        float(item.get("relevance") or 0.0),
+                        scope,
+                        compact,
+                        item,
+                    )
+                )
+        candidates.sort(key=lambda row: row[0], reverse=True)
+
+        selected: list[tuple[str, dict[str, Any], dict[str, Any]]] = []
+        used = 2
+        for _, scope, compact, original in candidates:
+            encoded = json.dumps(compact, ensure_ascii=False, separators=(",", ":"))
+            cost = len(encoded) + 1
+            if selected and used + cost > budget:
+                continue
+            if not selected and cost > budget:
+                compact = dict(compact)
+                compact_content, _ = self._compact_text(compact.get("content"), 700)
+                compact["content"] = compact_content or ""
+                compact["content_truncated"] = True
+                compact["why"] = compact["why"][:3]
+                encoded = json.dumps(compact, ensure_ascii=False, separators=(",", ":"))
+                cost = len(encoded) + 1
+            if used + cost > budget:
+                continue
+            selected.append((scope, compact, original))
+            used += cost
+
+        result = {"personal": [], "project": []}
+        selected_ids: list[str] = []
+        explanations: list[dict[str, Any]] = []
+        for scope, compact, original in selected:
+            result[scope].append(compact)
+            memory_id = original.get("id")
+            if isinstance(memory_id, str) and memory_id:
+                selected_ids.append(memory_id)
+            explanation = original.get("recall_explanation")
+            if isinstance(explanation, dict):
+                explanations.append(explanation)
+
+        original_prepared = recalled.get("prepared_recall")
+        prepared = {
+            "selected_ids": selected_ids,
+            "explanations": explanations,
+            "scopes": (
+                list(original_prepared.get("scopes", []))
+                if isinstance(original_prepared, dict)
+                else ["personal", "project"]
+            ),
+            "for_cloud": True,
+        }
+        meta = {
+            "char_budget": budget,
+            "used_chars": used,
+            "candidate_count": len(candidates),
+            "selected_count": len(selected),
+            "dropped_count": max(0, len(candidates) - len(selected)),
+        }
+        return result, prepared, meta
+
+    def _budget_aux_context(
+        self,
+        *,
+        goals: list[dict[str, Any]],
+        tasks: list[dict[str, Any]],
+        failures: list[dict[str, Any]],
+        questions: list[dict[str, Any]],
+    ) -> tuple[dict[str, list[dict[str, Any]]], dict[str, Any]]:
+        sections = {
+            "tasks": tasks,
+            "goals": goals,
+            "failures_to_avoid": failures,
+            "questions": questions,
+        }
+        limits = {
+            "tasks": {"title": 700, "next_action": 900, "blocked_reason": 700},
+            "goals": {"title": 700},
+            "failures_to_avoid": {"strategy": 300, "symptom": 900, "prevention": 900},
+            "questions": {"question": 900, "reason": 300},
+        }
+        output = {name: [] for name in sections}
+        budget = self.CLOUD_AUX_CHAR_BUDGET
+        used = 2
+        positions = {name: 0 for name in sections}
+        order = ("tasks", "goals", "failures_to_avoid", "questions")
+
+        while True:
+            progressed = False
+            for name in order:
+                items = sections[name]
+                index = positions[name]
+                if index >= len(items):
+                    continue
+                positions[name] += 1
+                item = dict(items[index])
+                for field, max_chars in limits[name].items():
+                    if field in item:
+                        compact, truncated = self._compact_text(item.get(field), max_chars)
+                        item[field] = compact
+                        if truncated:
+                            item[f"{field}_truncated"] = True
+                encoded = json.dumps(item, ensure_ascii=False, separators=(",", ":"))
+                cost = len(encoded) + 1
+                if used + cost > budget:
+                    continue
+                output[name].append(item)
+                used += cost
+                progressed = True
+            if not progressed:
+                break
+
+        total_candidates = sum(len(items) for items in sections.values())
+        total_selected = sum(len(items) for items in output.values())
+        return output, {
+            "char_budget": budget,
+            "used_chars": used,
+            "candidate_count": total_candidates,
+            "selected_count": total_selected,
+            "dropped_count": max(0, total_candidates - total_selected),
+        }
+
     def context(self, query: str, *, record_usage: bool = True) -> dict[str, Any]:
         recalled = self.recall(
             query,
             limit=10,
             for_cloud=True,
-            record_usage=record_usage,
+            record_usage=False,
         )
+        budgeted_memory, prepared_recall, recall_budget = self._budget_recalled_memories(recalled)
 
         active_goals = [
             item
@@ -2490,65 +2646,64 @@ class MemorySystemV4:
             for item in self.questions(status="open", limit=30)
             if self._cloud_text_allowed(item.get("question"), item.get("reason"))
         ][:5]
+        compact_goals = [
+            {
+                "id": item["id"],
+                "title": item["title"],
+                "priority": item["priority"],
+            }
+            for item in active_goals
+        ]
+        compact_tasks = [
+            {
+                "id": item["id"],
+                "title": item["title"],
+                "status": item["status"],
+                "priority": item["priority"],
+                "next_action": item["next_action"],
+                "blocked_reason": item["blocked_reason"],
+            }
+            for item in open_tasks
+        ]
+        compact_failures = [
+            {
+                "strategy": item["strategy"],
+                "symptom": item["symptom"],
+                "prevention": item["prevention"],
+                "occurrences": item["occurrences"],
+            }
+            for item in failures
+        ]
+        compact_questions = [
+            {
+                "question": item["question"],
+                "reason": item["reason"],
+            }
+            for item in questions
+        ]
+        aux_context, aux_budget = self._budget_aux_context(
+            goals=compact_goals,
+            tasks=compact_tasks,
+            failures=compact_failures,
+            questions=compact_questions,
+        )
+        recall_id = (
+            self.commit_prepared_recall(query, prepared_recall)
+            if record_usage
+            else None
+        )
         return {
             "engine": self.ENGINE_ID,
-            "recall_id": recalled["recall_id"],
-            "_prepared_recall": recalled.get("prepared_recall"),
-            "personal": [
-                {
-                    "kind": item["kind"],
-                    "content": item["content"],
-                    "importance": item["importance"],
-                    "relevance": item["relevance"],
-                    "why": item["recall_explanation"]["why"],
-                    "tier": item["v4"]["tier"],
-                }
-                for item in recalled.get("personal", [])
-            ],
-            "project": [
-                {
-                    "kind": item["kind"],
-                    "content": item["content"],
-                    "importance": item["importance"],
-                    "relevance": item["relevance"],
-                    "why": item["recall_explanation"]["why"],
-                    "tier": item["v4"]["tier"],
-                }
-                for item in recalled.get("project", [])
-            ],
-            "goals": [
-                {
-                    "id": item["id"],
-                    "title": item["title"],
-                    "priority": item["priority"],
-                }
-                for item in active_goals
-            ],
-            "tasks": [
-                {
-                    "id": item["id"],
-                    "title": item["title"],
-                    "status": item["status"],
-                    "priority": item["priority"],
-                    "next_action": item["next_action"],
-                    "blocked_reason": item["blocked_reason"],
-                }
-                for item in open_tasks
-            ],
-            "failures_to_avoid": [
-                {
-                    "strategy": item["strategy"],
-                    "symptom": item["symptom"],
-                    "prevention": item["prevention"],
-                    "occurrences": item["occurrences"],
-                }
-                for item in failures
-            ],
-            "questions": [
-                {
-                    "question": item["question"],
-                    "reason": item["reason"],
-                }
-                for item in questions
-            ],
+            "recall_id": recall_id,
+            "_prepared_recall": prepared_recall,
+            "context_budget": {
+                "recall": recall_budget,
+                "aux": aux_budget,
+            },
+            "personal": budgeted_memory["personal"],
+            "project": budgeted_memory["project"],
+            "goals": aux_context["goals"],
+            "tasks": aux_context["tasks"],
+            "failures_to_avoid": aux_context["failures_to_avoid"],
+            "questions": aux_context["questions"],
         }
