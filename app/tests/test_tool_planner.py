@@ -226,6 +226,56 @@ class EvidenceToolPlannerTests(unittest.TestCase):
             self.assertEqual(receipt["status"], "completed")
             self.assertEqual(receipt["mode"], "read_only")
 
+    def test_cognition_auto_check_requires_specific_cognitive_intent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            planner = EvidenceToolPlanner(Path(tmp) / "receipts.db")
+            calls = []
+
+            def handler(args):
+                calls.append(args)
+                return {
+                    "data": {"scheduler": {"selected": None}},
+                    "evidence_refs": ["cognition:scheduler"],
+                }
+
+            generic = planner.execute_plan(
+                {
+                    "goal": "Разработать проект нового модуля",
+                    "steps": ["Подготовить архитектуру"],
+                    "evidence_needed": [],
+                    "tool_intents": [],
+                },
+                handlers={"cognition.next": handler},
+                request_id="req-generic-project",
+            )
+            self.assertEqual(calls, [])
+            self.assertFalse(
+                any(
+                    item["tool"] == "cognition.next"
+                    for item in generic["receipts"]
+                )
+            )
+
+            specific = planner.execute_plan(
+                {
+                    "goal": "Проверить зависимости и выбрать следующую разблокированную задачу",
+                    "steps": ["Сверить task graph"],
+                    "evidence_needed": ["Блокеры"],
+                    "tool_intents": [],
+                },
+                handlers={"cognition.next": handler},
+                request_id="req-specific-cognition",
+            )
+            self.assertEqual(len(calls), 1)
+            receipt = next(
+                item
+                for item in specific["receipts"]
+                if item["tool"] == "cognition.next"
+            )
+            self.assertEqual(receipt["status"], "completed")
+            self.assertEqual(receipt["mode"], "read_only")
+            self.assertEqual(planner.public_status()["version"], "0.4.1")
+
     def test_large_output_is_bounded_before_cloud_evidence(self):
         with tempfile.TemporaryDirectory() as tmp:
             planner = EvidenceToolPlanner(Path(tmp) / "receipts.db")

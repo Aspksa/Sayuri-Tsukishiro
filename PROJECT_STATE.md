@@ -4,79 +4,82 @@
 
 - Дата: 2026-10-06.
 - Репозиторий: https://github.com/Aspksa/Sayuri-Tsukishiro
-- Проверенная исходная ревизия: `8cc0df75a01924cbaf91001387cdadfee817774f` — опубликованный `main 0.2.0`, Versions #37410683454 success.
-- Рабочая ветка этапа: `cognitive-brain-hardening-v0201`.
-- Текущий целевой результат: **0.2.1 — Cognitive Brain Hardening 1.1**.
-- Задача: **AI-012**.
+- Проверенная исходная ревизия: `bf9ffc499fbfa5b472c526f79f0e18166d6c7ce5` — опубликованный `main 0.2.1`, Versions #37412163229 success.
+- Рабочая ветка этапа: `portfolio-scale-v0202`.
+- Текущий целевой результат: **0.2.2 — Portfolio Scale & Integrity**.
+- Задача: **AI-013**.
 
 ## Версии результата
 
-- Project: `0.2.1`.
-- App/Core: `0.1.50`.
-- Agent Core: `0.14.1`.
-- Cognitive Project Brain: `1.1`.
+- Project: `0.2.2`.
+- App/Core: `0.1.51`.
+- Agent Core: `0.14.2`.
+- Cognitive Project Brain: `1.2`.
 - Reasoning Planner: `1.0` — без изменений.
-- Evidence Tool Planner: `0.4` — без изменений.
+- Evidence Tool Planner: `0.4.1`.
 - Web UI: `0.31.0` — без изменений.
 - Disk: `0.8.0` — без изменений.
 - dev-tools: `0.1.6` — без изменений.
 
-## Что усиливается
+## Цель этапа
 
-### State ownership
-- repeat sync не перезаписывает managed cognitive task scope;
-- explicit task creation сразу нормализует project/module context и bind-ит scope.
+Не добавлять новый cognitive layer. Подготовить существующий Brain к десяткам модулей и сотням задач за счёт scale/integrity/privacy hardening.
 
-### Graph safety
-- confirmed cycles запрещены;
-- direct cross-project task edges запрещены;
-- unconfirmed edges не блокируют scheduler;
-- unresolved dependency имеет приоритет над completion readiness.
+## Реализовано в target snapshot
 
-### Evidence-based completion
-- criteria учитывают только applied checkpoints;
-- configured criteria guard запрещает преждевременный `done`;
-- automatic completion отсутствует.
+### Portfolio scale
+- scheduler использует единый `_scheduler_snapshot()` вместо per-task N+1 чтений;
+- self-evaluation переиспользует snapshot для task/dependency/completion;
+- top Cloud candidates остаются bounded до 8;
+- sync получает known task scopes пакетно.
 
-### Replanning / uncertainty
-- failure создаёт proposal/uncertainty, но не применяет их;
-- apply требует `APPLY_REPLAN` и актуального `next_action`;
-- uncertainty закрывается только explicit resolution.
+### Registry / modules
+- repeat module registration сохраняет существующий title;
+- metadata merge-ятся, а не заменяются целиком;
+- существующий project priority не меняется без explicit priority.
 
-### Causal evidence
-- observed completed action -> checkpoint;
-- observed failed action -> replan/uncertainty;
-- causal trace является provenance lineage, не свободной гипотезой LLM.
+### Integrity
+- explicit read-only `graph_integrity()` обнаруживает missing-task/cross-project/cycle legacy state;
+- integrity diagnostics не выполняет автоматический repair.
 
-### Multi-module scaling
-- scheduler понимает stable UI/module aliases;
-- strategy/uncertainty/self-evaluation изолируются по module scope;
-- cloud context не содержит module path/metadata;
-- explicit local cognition API позволяет будущим модулям регистрироваться и строить dependencies без собственного Planner.
+### Uncertainty
+- high-severity uncertainty переводит recommendation в evidence-first режим.
+
+### Cloud / tool policy
+- project/module Cloud scope: только key/title;
+- strategy/causal/replan/metacognition лишены ненужных внутренних IDs;
+- generic «проект/модуль» не запускает `cognition.next` без специфического cognitive intent;
+- explicit `/api/sayuri/cognition` diagnostics включает graph integrity, лёгкий status остаётся дешёвым.
 
 ## Инварианты
 
 1. Единственная внешняя LLM — `deepseek-ai/DeepSeek-V4-Flash` через Cloud.ru.
-2. LLM имеет только read-only cognition tools.
-3. Реальные project mutations остаются за Action Broker; cognitive mutation API является explicit local API.
-4. Replan application требует отдельного подтверждения.
+2. LLM cognition tools только read-only.
+3. Explicit local cognition mutation API из 0.2.1 не включён в LLM tool catalog.
+4. Real project actions остаются confirmation-gated через Action Broker.
 5. Completion criteria не выставляют `done` автоматически.
-6. Старый checkpoint/replan не может перезаписать более новое task state.
-7. Sensitive/local module metadata не отправляется в Cloud projection.
-8. Chain-of-thought не сохраняется.
+6. Graph integrity не ремонтирует state молча.
+7. High uncertainty требует evidence-first recommendation, но не меняет task автоматически.
+8. Sensitive/local metadata и внутренние causal/replan identifiers не отправляются в Cloud.
+9. Chain-of-thought не сохраняется.
 
 ## Приёмка
 
-Для публикации `0.2.1` обязательны:
-- полный Python regression suite;
+Релиз считается принятым только после:
+- cognitive scale/integrity regressions;
+- полного Python test suite;
 - JavaScript syntax;
 - app preflight;
 - version check `--each-commit`;
 - Windows launcher checks;
 - PR CI;
 - squash merge;
-- зелёный финальный workflow на `main`.
+- финального зелёного workflow на `main`.
 
-## Следующий этап после 0.2.1
+## Ограничение проверки до публикации
 
-Подключать реальные новые прикладные модули к общему Cognitive Brain через `project_key/module_key`, а не добавлять новый тип памяти/Planner. Первые хорошие кандидаты: Лаборатория Sayuri и VK-модуль. На их реальных workflow измерять scheduler accuracy, blocker handling, criteria quality и strategy transfer.
+Локальная загрузка непривязанной GitHub archive ревизии была заблокирована средой, поэтому локальный suite не заявляется как выполненный. Источником исполняемой проверки является GitHub Actions после атомарного branch commit.
+
+## Следующий этап после 0.2.2
+
+Не наращивать абстрактный мозг дальше без реального workflow. Подключить первый крупный прикладной модуль к canonical contract и измерять scheduler accuracy, graph blockers, criteria quality, uncertainty handling и strategy transfer на реальной работе.

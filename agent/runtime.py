@@ -989,6 +989,7 @@ class SayuriAgent:
                     project_key=str(project.get("key") or self.cognition.PROJECT_KEY),
                     module_key=str(module.get("key") or "") or None,
                 ),
+                "graph_integrity": self.cognition.graph_integrity(),
             }
         except CognitiveBrainError as exc:
             raise AgentRuntimeError(str(exc)) from exc

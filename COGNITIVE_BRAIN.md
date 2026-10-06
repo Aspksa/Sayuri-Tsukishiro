@@ -1,6 +1,6 @@
 # Cognitive Project Brain
 
-Версия контракта: **1.1**  
+Версия контракта: **1.2**  
 Проект: **Sayuri-Tsukishiro**
 
 ## Назначение
@@ -121,3 +121,35 @@ Explicit local state mutations:
 ## Правило для будущих модулей
 
 Новый модуль не должен создавать собственные копии Planner, scheduler, uncertainty ledger или strategy memory. Он регистрирует себя, создаёт задачи с project/module scope и предоставляет свои разрешённые tools/handlers. Общий Cognitive Brain решает, какая задача актуальна, что её блокирует и какие evidence/criteria нужны.
+
+
+## Portfolio Scale & Integrity 1.2
+
+### Snapshot model
+
+Scheduler строит один read-only portfolio snapshot на цикл. В нём агрегируются task state, scopes, registry, confirmed blockers, uncertainty и applied checkpoint counters. Это устраняет повторные per-task SQLite/Memory чтения при росте числа модулей.
+
+Self-evaluation переиспользует snapshot для task/dependency/completion metrics.
+
+### Integrity diagnostics
+
+`graph_integrity()` проверяет persisted confirmed graph на missing-task edges, legacy cross-project edges и cycles. Метод read-only: исправление требует отдельного явного решения.
+
+### Evidence-first uncertainty
+
+High-severity uncertainty имеет приоритет над обычным `next_action` в scheduler recommendation: сначала evidence, затем пересчёт плана.
+
+### Cloud projection 1.2
+
+Cloud-safe cognition не включает:
+- database IDs project/module/strategy;
+- module paths и metadata;
+- causal source/effect IDs или evidence_ref;
+- internal replan/task/revision/evidence IDs;
+- blocker task IDs.
+
+Сохраняются только значения, необходимые модели для рассуждения: keys/titles, task text/state, relation labels, uncertainty text/severity/evidence need, completion summary и агрегированная strategy statistics.
+
+### Tool trigger
+
+Read-only `cognition.next` не запускается от общего упоминания проекта/модуля. Нужен конкретный запрос о следующей задаче, dependencies/blockers, criteria/readiness, replanning, uncertainty, strategy, queue или priority.
