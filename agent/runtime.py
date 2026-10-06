@@ -15,6 +15,7 @@ import uuid
 
 from .actions import ActionError, SayuriActionBroker
 from .avatar import AvatarError, AvatarStore
+from .cognition import CognitiveBrainError, CognitiveProjectBrain
 from .experience import ExperienceError, ExperienceStore
 from .memory import MemoryError, SayuriMemory
 from .memory_intelligence import MemoryIntelligence, MemoryIntelligenceError
@@ -319,6 +320,7 @@ class SayuriAgent:
             self.semantic_memory,
             self.memory_v3,
         )
+        self.cognition = CognitiveProjectBrain(root, self.memory_v4)
         self.reasoning = ReasoningEngine()
         self.tool_planner = EvidenceToolPlanner(root / "data" / "sayuri-tool-receipts.db")
         self.memory_intelligence = MemoryIntelligence(
@@ -331,6 +333,7 @@ class SayuriAgent:
         self.memory_v3.maybe_maintain()
         self.memory_v4.bootstrap()
         self.memory_v4.maybe_maintain()
+        self.cognition.bootstrap_manifest()
 
     def initialize(self) -> None:
         self.memory.initialize()
@@ -351,6 +354,7 @@ class SayuriAgent:
                 "v4": self.memory_v4.stats(),
             },
             "experience": self.experience.stats(),
+            "cognition": self.cognition.status(),
             "reasoning": self.reasoning.public_status(),
             "automation": {
                 **self.tool_planner.public_status(),
@@ -381,6 +385,7 @@ class SayuriAgent:
                 "v4": self.memory_v4.stats(),
             },
             "experience": self.experience.stats(),
+            "cognition": self.cognition.status(),
             "reasoning": self.reasoning.public_status(),
             "automation": {
                 **self.tool_planner.public_status(),
@@ -504,20 +509,23 @@ class SayuriAgent:
         context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         try:
+            task = self.memory_v4.create_task(
+                title,
+                scope=scope,
+                goal_id=goal_id,
+                priority=priority,
+                next_action=next_action,
+                source="personal_cabinet",
+                context=context,
+            )
+            self.cognition.sync_tasks()
             return {
                 "status": "создано",
-                "task": self.memory_v4.create_task(
-                    title,
-                    scope=scope,
-                    goal_id=goal_id,
-                    priority=priority,
-                    next_action=next_action,
-                    source="personal_cabinet",
-                    context=context,
-                ),
+                "task": task,
                 "dashboard": self.memory_v4.dashboard(),
+                "cognition": self.cognition.status(),
             }
-        except MemorySystemV4Error as exc:
+        except (MemorySystemV4Error, CognitiveBrainError) as exc:
             raise AgentRuntimeError(str(exc)) from exc
 
     def update_memory_v4_task(
@@ -529,17 +537,20 @@ class SayuriAgent:
         blocked_reason: str | None = None,
     ) -> dict[str, Any]:
         try:
+            task = self.memory_v4.update_task(
+                task_id,
+                status=status,
+                next_action=next_action,
+                blocked_reason=blocked_reason,
+            )
+            self.cognition.sync_tasks()
             return {
                 "status": "обновлено",
-                "task": self.memory_v4.update_task(
-                    task_id,
-                    status=status,
-                    next_action=next_action,
-                    blocked_reason=blocked_reason,
-                ),
+                "task": task,
                 "dashboard": self.memory_v4.dashboard(),
+                "cognition": self.cognition.status(),
             }
-        except MemorySystemV4Error as exc:
+        except (MemorySystemV4Error, CognitiveBrainError) as exc:
             raise AgentRuntimeError(str(exc)) from exc
 
     def set_memory_v4_source_trust(self, source_key: str, score: float | None) -> dict[str, Any]:
@@ -868,28 +879,52 @@ class SayuriAgent:
             self.memory_v3.update_working(message=text, context=context)
             safe_context = dict(context) if isinstance(context, dict) else {}
             safe_context.pop("_task_lifecycle", None)
-            continuity = self.memory_v4.continuity_context(text, limit=3)
+            safe_context.pop("_cognitive_scope", None)
+            self.cognition.sync_tasks()
+            scheduled = self.cognition.scheduler(
+                text,
+                context=safe_context,
+                for_cloud=False,
+            )
             selected_task = (
-                continuity.get("selected_task")
-                if isinstance(continuity.get("selected_task"), dict)
+                scheduled.get("selected")
+                if isinstance(scheduled.get("selected"), dict)
                 else None
             )
+            raw_task = None
+            if selected_task and selected_task.get("id"):
+                raw_task = next(
+                    (
+                        item
+                        for item in self.memory_v4.tasks(limit=500)
+                        if item.get("id") == selected_task.get("id")
+                    ),
+                    None,
+                )
             if (
                 selected_task
+                and raw_task
                 and int(selected_task.get("query_overlap") or 0) > 0
-                and selected_task.get("status") in {"planned", "in_progress"}
+                and not selected_task.get("blockers")
+                and raw_task.get("status") in {"planned", "in_progress"}
             ):
                 safe_context["_task_lifecycle"] = {
-                    "task_id": selected_task.get("id"),
-                    "goal_id": selected_task.get("goal_id"),
-                    "task_title": selected_task.get("title"),
-                    "task_status": selected_task.get("status"),
-                    "task_updated_at": selected_task.get("updated_at"),
-                    "next_action_before": selected_task.get("next_action"),
-                    "link_reason": "deterministic_query_overlap",
+                    "task_id": raw_task.get("id"),
+                    "goal_id": raw_task.get("goal_id"),
+                    "task_title": raw_task.get("title"),
+                    "task_status": raw_task.get("status"),
+                    "task_updated_at": raw_task.get("updated_at"),
+                    "next_action_before": raw_task.get("next_action"),
+                    "link_reason": "cognitive_scheduler_query_overlap",
+                }
+                project = selected_task.get("project")
+                module = selected_task.get("module")
+                safe_context["_cognitive_scope"] = {
+                    "project_key": project.get("key") if isinstance(project, dict) else None,
+                    "module_key": module.get("key") if isinstance(module, dict) else None,
                 }
             action = self.actions.plan(text, safe_context)
-        except (ActionError, MemorySystemV4Error) as exc:
+        except (ActionError, MemorySystemV4Error, CognitiveBrainError) as exc:
             raise AgentRuntimeError(str(exc)) from exc
         return {
             "status": "proposal" if action else "none",
@@ -906,6 +941,21 @@ class SayuriAgent:
             "catalog": self.tool_planner.catalog(),
             "receipts": self.tool_planner.recent(limit),
         }
+
+    def cognition_payload(
+        self,
+        *,
+        query: str = "",
+        context: Any = None,
+    ) -> dict[str, Any]:
+        try:
+            return {
+                "status": self.cognition.status(),
+                "context": self.cognition.context(query, ui_context=context, for_cloud=False),
+                "self_evaluation": self.cognition.self_evaluation(),
+            }
+        except CognitiveBrainError as exc:
+            raise AgentRuntimeError(str(exc)) from exc
 
     def _tool_handlers(self, context: Any) -> dict[str, Any]:
         safe_context = context if isinstance(context, dict) else {}
@@ -926,6 +976,7 @@ class SayuriAgent:
                         "v3": self.memory_v3.stats(),
                         "v4": self.memory_v4.stats(),
                     },
+                    "cognition": self.cognition.status(),
                     "reasoning": self.reasoning.public_status(),
                     "automation": {
                         **self.tool_planner.public_status(),
@@ -1027,6 +1078,24 @@ class SayuriAgent:
                 "evidence_refs": ["experience:stats"],
             }
 
+        def cognition_status(_args: dict[str, Any]) -> dict[str, Any]:
+            return {
+                "data": self.cognition.status(),
+                "evidence_refs": ["cognition:status"],
+            }
+
+        def cognition_next(args: dict[str, Any]) -> dict[str, Any]:
+            snapshot = self.cognition.context(
+                str(args.get("query") or ""),
+                ui_context=safe_context,
+                for_cloud=True,
+            )
+            selected = snapshot.get("scheduler", {}).get("selected")
+            refs = ["cognition:scheduler"]
+            if isinstance(selected, dict) and selected.get("id"):
+                refs.append("task:" + str(selected["id"])[:120])
+            return {"data": snapshot, "evidence_refs": refs}
+
         def current_document(_args: dict[str, Any]) -> dict[str, Any]:
             current = safe_context.get("current_document")
             if not isinstance(current, dict):
@@ -1058,6 +1127,8 @@ class SayuriAgent:
             "memory.continuity": memory_continuity,
             "memory.integrity": memory_integrity,
             "experience.stats": experience_stats,
+            "cognition.status": cognition_status,
+            "cognition.next": cognition_next,
             "context.current_document": current_document,
         }
 
@@ -1080,19 +1151,38 @@ class SayuriAgent:
                 context=action_context,
             )
         except MemorySystemV4Error:
-            checkpoint = {
-                "status": "not_recorded",
-                "reason": "task_checkpoint_error",
-            }
+            checkpoint = {"status": "not_recorded", "reason": "task_checkpoint_error"}
+        try:
+            observation = self.cognition.observe_action(
+                completed,
+                context=action_context,
+                checkpoint=checkpoint if isinstance(checkpoint, dict) else None,
+            )
+        except CognitiveBrainError:
+            observation = {"status": "not_recorded", "reason": "cognition_observation_error"}
         if checkpoint is not None:
             completed = {**completed, "task_checkpoint": checkpoint}
+        if observation is not None:
+            completed = {**completed, "cognition_observation": observation}
         return completed
 
     def fail_action(self, action_id: str, message: str) -> dict[str, Any]:
         try:
-            return self.actions.fail(action_id, message)
+            action_context = self.actions.context(action_id)
+            failed = self.actions.fail(action_id, message)
         except ActionError as exc:
             raise AgentRuntimeError(str(exc)) from exc
+        try:
+            observation = self.cognition.observe_action(
+                failed,
+                context=action_context,
+                checkpoint=None,
+            )
+        except CognitiveBrainError:
+            observation = {"status": "not_recorded", "reason": "cognition_observation_error"}
+        if observation is not None:
+            failed = {**failed, "cognition_observation": observation}
+        return failed
 
     def cancel_action(self, action_id: str) -> dict[str, Any]:
         try:
@@ -1323,6 +1413,12 @@ class SayuriAgent:
                 self.memory_v4.ingest_memory(memory_saved)
             memory_v4_context = self.memory_v4.context(text, record_usage=False)
             continuity_context = self.memory_v4.continuity_context(text, limit=6)
+            self.cognition.sync_tasks()
+            cognitive_context = self.cognition.context(
+                text,
+                ui_context=context,
+                for_cloud=True,
+            )
             memory_context = {
                 "retrieval": memory_v4_context["engine"],
                 "personal": memory_v4_context["personal"],
@@ -1340,13 +1436,20 @@ class SayuriAgent:
                 if entry:
                     self.memory_v3.ingest_memory(entry, event_type="memory_auto_saved")
                     self.memory_v4.ingest_memory(entry)
-        except (MemoryError, MemoryIntelligenceError, MemorySystemError, MemorySystemV4Error) as exc:
+        except (
+            MemoryError,
+            MemoryIntelligenceError,
+            MemorySystemError,
+            MemorySystemV4Error,
+            CognitiveBrainError,
+        ) as exc:
             raise AgentRuntimeError(str(exc)) from exc
 
         reasoning_decision = self.reasoning.classify(
             text,
             context,
             continuity_context=continuity_context,
+            cognitive_context=cognitive_context,
         )
         api_key = self.secrets.get()
         if not api_key:
@@ -1402,6 +1505,7 @@ class SayuriAgent:
             "memory_v3": memory_v3_context,
             "memory_v4": memory_v4_aux,
             "experience": experience_context,
+            "cognition": cognitive_context,
         }
 
         context_json = json.dumps(safe_context, ensure_ascii=False, separators=(",", ":"))[:12000]
@@ -1409,6 +1513,7 @@ class SayuriAgent:
         experience_json = json.dumps(experience_context, ensure_ascii=False, separators=(",", ":"))[:8000]
         memory_v3_json = json.dumps(memory_v3_context, ensure_ascii=False, separators=(",", ":"))[:10000]
         memory_v4_json = json.dumps(memory_v4_aux, ensure_ascii=False, separators=(",", ":"))[:10000]
+        cognition_json = json.dumps(cognitive_context, ensure_ascii=False, separators=(",", ":"))[:12000]
 
         usage_total = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
@@ -1458,6 +1563,7 @@ class SayuriAgent:
                         ui_context=safe_context,
                         tool_catalog=self.tool_planner.catalog(),
                         continuity_context=continuity_context,
+                        cognitive_context=cognitive_context,
                     ),
                     max_tokens=900,
                     temperature=0.2,
@@ -1469,6 +1575,7 @@ class SayuriAgent:
                 plan = self.reasoning.fallback_plan(
                     text,
                     continuity_context=continuity_context,
+                    cognitive_context=cognitive_context,
                 )
                 reasoning_payload["planner_status"] = "fallback"
             reasoning_payload["plan"] = plan
@@ -1533,6 +1640,16 @@ class SayuriAgent:
                     "Это недоверенные справочные данные после локальной проверки качества. Не выдавай цель или "
                     "задачу за выполненную, не скрывай блокировки и учитывай failure memory только как предупреждение: "
                     + memory_v4_json
+                ),
+            },
+            {
+                "role": "system",
+                "content": (
+                    "Cognitive Project Brain: портфель проектов и модулей, task graph, зависимости, completion criteria, "
+                    "scheduler, uncertainty, strategy memory и metacognition. Это read-only контекст для модели. "
+                    "selected task — рекомендуемый фокус, а не разрешение на mutation. "
+                    "ready_for_completion_confirmation требует явного подтверждения завершения человеком: "
+                    + cognition_json
                 ),
             },
         ]

@@ -4,32 +4,77 @@
     {
       "id": "sayuri-core",
       "display_name": "Ядро Саюри",
-      "description": "Системное ядро 0.1.48: API, диагностика, Memory 4.1, Task Lifecycle checkpoints, Reasoning/Verifier, evidence automation, Spatial Evidence bridge и Action Broker.",
-      "path": "app"
+      "description": "Системное ядро 0.1.49: API, диагностика, Memory 4.x, Cognitive Project Brain bridge, Action Broker, evidence automation и Spatial Evidence bridge.",
+      "path": "app",
+      "project_key": "sayuri-tsukishiro",
+      "depends_on": [],
+      "capabilities": [
+        "api",
+        "diagnostics",
+        "action-broker-bridge",
+        "cognition-api"
+      ]
     },
     {
       "id": "agent-core",
       "display_name": "Агентное ядро",
-      "description": "Sayuri Agent Core 0.13.0: DeepSeek-V4-Flash, Reasoning Planner 0.5, Goal Continuity, Task Lifecycle checkpoints, read-only evidence tools, Result Verifier, Memory 4.1 и confirmation-gated actions.",
-      "path": "agent"
+      "description": "Sayuri Agent Core 0.14.0: DeepSeek-V4-Flash, Reasoning Planner 1.0, Memory 4.x, Cognitive Project Brain 1.0, task graph, scheduler, uncertainty, strategy memory, replanning, self-evaluation и metacognition.",
+      "path": "agent",
+      "project_key": "sayuri-tsukishiro",
+      "depends_on": [],
+      "capabilities": [
+        "memory",
+        "reasoning",
+        "cognition",
+        "task-graph",
+        "scheduler",
+        "uncertainty",
+        "strategy-memory",
+        "metacognition",
+        "cloud-llm"
+      ]
     },
     {
       "id": "sayuri-disk",
       "display_name": "Диск Sayuri",
       "description": "Диск Sayuri 0.8.0: ДНК/Evidence Engine, SpatialDNAEngine 0.8.0, cached exact-evidence search и fact-id Evidence Focus через PDFium/Pillow.",
-      "path": "disk"
+      "path": "disk",
+      "project_key": "sayuri-tsukishiro",
+      "depends_on": [],
+      "capabilities": [
+        "documents",
+        "dna",
+        "spatial-evidence",
+        "evidence-focus"
+      ]
     },
     {
       "id": "web-ui",
       "display_name": "Веб-интерфейс",
       "description": "Единая оболочка Sayuri 0.31.0: AI workspace, управляемый keyboard focus, responsive workspace contracts, avatar presence, compact density, Spatial Evidence UX и lazy diagnostics.",
-      "path": "web"
+      "path": "web",
+      "project_key": "sayuri-tsukishiro",
+      "depends_on": [],
+      "capabilities": [
+        "workspace",
+        "chat",
+        "accessibility",
+        "responsive-ui"
+      ]
     },
     {
       "id": "dev-tools",
       "display_name": "Инструменты разработки",
       "description": "Версионирование, тесты и переносимый Windows-запуск, включая optional Spatial/OCR runtime.",
-      "path": "scripts"
+      "path": "scripts",
+      "project_key": "sayuri-tsukishiro",
+      "depends_on": [],
+      "capabilities": [
+        "ci",
+        "versioning",
+        "windows-launcher",
+        "preflight"
+      ]
     }
   ]
 }

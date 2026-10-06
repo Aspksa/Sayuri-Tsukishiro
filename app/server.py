@@ -281,6 +281,14 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
                     limit = 30
                 self._json(self.server.core.sayuri_actions(limit))
                 return
+            if parsed.path == "/api/sayuri/cognition":
+                self._json(
+                    self.server.core.sayuri_cognition(
+                        query=query.get("q", [""])[0],
+                        context=None,
+                    )
+                )
+                return
             if parsed.path == "/api/sayuri/tools/receipts":
                 raw_limit = query.get("limit", ["30"])[0]
                 try:

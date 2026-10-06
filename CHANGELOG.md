@@ -2,6 +2,26 @@
 
 ## Невыпущенные изменения
 
+### 0.2.0 — 2026-10-06 — Cognitive Project Brain
+
+- Sayuri получила отдельный `CognitiveProjectBrain 1.0` поверх Memory 4.x и Task Lifecycle; это единая модель управления множеством проектов и модулей.
+- `MODULES.json` обновлён до schema 1-compatible metadata: модуль может объявлять `project_key`, capabilities и будущие dependencies; Cognitive Brain автоматически регистрирует manifest при запуске.
+- Добавлен persistent portfolio: `projects / modules / task_scope` в той же локальной SQLite без новой внешней зависимости.
+- Добавлен Task Graph с отношениями `requires / blocks / unlocks / follows`; Cognitive Scheduler не выбирает задачу, пока её подтверждённые зависимости не разблокированы.
+- Добавлены explicit completion criteria: checkpoint count, confirmed tool result, dependency done и manual confirmation. Даже полностью выполненные criteria дают только `ready_for_completion_confirmation`, но никогда автоматически не ставят `done`.
+- Cognitive Scheduler ранжирует задачи по priority/status/query relevance/project/module context, blockers, uncertainty и attention state.
+- Добавлен Uncertainty Layer: high/medium/low неизвестности, требуемое evidence и metacognitive state `uncertain`.
+- Добавлена Strategy Memory: подтверждённые Action Broker исходы накапливают success/failure статистику и confidence по стратегии/tool в project/module scope.
+- Ошибка подтверждённого действия создаёт persistent replan proposal и uncertainty, но не переписывает `next_action` автоматически.
+- Добавлена deterministic Self-Evaluation для проекта/модуля: progress, blockers, completion-ready tasks и uncertainties без второй LLM.
+- Добавлена Metacognition: `actionable / blocked / uncertain / replan_required / criteria_missing / ready_for_completion_confirmation / idle`.
+- Long-horizon state восстанавливается после перезапуска из SQLite: portfolio, module scope, task graph, criteria, uncertainty, strategy statistics и replan history.
+- Reasoning Planner обновлён до `1.0` и получает Cognitive Brain как read-only context; blockers, uncertainty и completion criteria становятся обязательными ограничениями Planner/Verifier.
+- Evidence Tool Planner обновлён до `0.4` с read-only `cognition.status` и `cognition.next`; LLM по-прежнему не получает direct mutation execution.
+- Action Broker linkage теперь использует Cognitive Scheduler: заблокированная зависимостями задача не получает lifecycle checkpoint через случайное action совпадение.
+- Добавлен read-only API `GET /api/sayuri/cognition` для диагностики будущих модулей и интерфейсов.
+- Проект: `0.2.0`; App/Core: `0.1.49`; Agent Core: `0.14.0`; Web UI, Disk и dev-tools без изменений.
+
 ### 0.1.56 — 2026-10-06 — Task Lifecycle & Checkpoints
 
 - Добавлен `memory-v4.2-task-lifecycle` поверх существующей Goal/Task Memory без отдельного task manager.
