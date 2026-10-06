@@ -40,7 +40,8 @@ const sayuriState = {
   chatDrag: null,
   visible: localStorage.getItem('sayuri-visible') !== '0',
   rememberPosition: localStorage.getItem('sayuri-remember-position') !== '0',
-  rememberHistory: localStorage.getItem('sayuri-remember-history') !== '0'
+  rememberHistory: localStorage.getItem('sayuri-remember-history') !== '0',
+  evidenceAutomation: localStorage.getItem('sayuri-evidence-automation') !== '0'
 };
 
 function setStatus(kind, text) {
@@ -1634,7 +1635,10 @@ function currentSayuriContext() {
   const context = {
     view,
     title: titles[view] || byId('page-title')?.textContent || 'Sayuri',
-    route: location.hash || '#home'
+    route: location.hash || '#home',
+    automation: {
+      evidence_checks: sayuriState.evidenceAutomation
+    }
   };
   if (view === 'disk') {
     context.disk = {
@@ -3473,25 +3477,6 @@ function actionRiskLabel(risk) {
 }
 
 function renderSayuriActionCenter(actions) {
-  const toolsContainer = byId('sayuri-tool-list');
-  if (toolsContainer) {
-    toolsContainer.replaceChildren();
-    for (const tool of actions.available_tools || []) {
-      const item = document.createElement('article');
-      item.className = 'sayuri-tool-chip';
-      const text = document.createElement('div');
-      const title = document.createElement('strong');
-      title.textContent = tool.label;
-      const meta = document.createElement('small');
-      meta.textContent = `${actionRiskLabel(tool.risk)} · подтверждение обязательно`;
-      text.append(title, meta);
-      const state = document.createElement('span');
-      state.textContent = 'разрешено';
-      item.append(text, state);
-      toolsContainer.append(item);
-    }
-  }
-
   const history = byId('sayuri-actions-history');
   if (!history) return;
   history.replaceChildren();
@@ -3510,7 +3495,7 @@ function renderSayuriActionCenter(actions) {
     const title = document.createElement('strong');
     title.textContent = action.title;
     const meta = document.createElement('small');
-    meta.textContent = `${action.tool} · ${actionRiskLabel(action.risk)} · ${formatDate(action.created_at)}`;
+    meta.textContent = `${actionRiskLabel(action.risk)} · ${formatDate(action.created_at)}`;
     body.append(title, meta);
     const status = document.createElement('span');
     status.textContent = actionStatusLabel(action.status);
@@ -3749,37 +3734,19 @@ function createSayuriReasoningSummary(metadata) {
     });
     details.append(list);
   }
-  const receipts = reasoning.tool_execution?.receipts;
-  if (Array.isArray(receipts) && receipts.length) {
-    const tools = document.createElement('div');
-    tools.className = 'sayuri-tool-receipts';
-    const title = document.createElement('strong');
-    title.textContent = `Инструменты · ${receipts.length}`;
-    tools.append(title);
-    receipts.slice(0, 8).forEach((receipt) => {
-      const row = document.createElement('div');
-      row.className = `sayuri-tool-receipt ${receipt.status || ''}`;
-      const status = document.createElement('span');
-      if (receipt.status === 'completed') status.textContent = '✓';
-      else if (receipt.status === 'requires_action_broker') status.textContent = '!';
-      else if (receipt.status === 'failed' || receipt.status === 'rejected') status.textContent = '×';
-      else status.textContent = '•';
-      const body = document.createElement('div');
-      const name = document.createElement('b');
-      name.textContent = receipt.tool || 'tool';
-      const note = document.createElement('small');
-      if (receipt.status === 'completed') {
-        note.textContent = `шаг ${receipt.step_index || 1} · выполнено · ${receipt.duration_ms || 0} мс`;
-      } else if (receipt.status === 'requires_action_broker') {
-        note.textContent = 'изменение не выполнено · требуется подтверждение';
-      } else {
-        note.textContent = receipt.error || receipt.status || 'нет результата';
-      }
-      body.append(name, note);
-      row.append(status, body);
-      tools.append(row);
-    });
-    details.append(tools);
+  const automation = reasoning.automation || {};
+  if (automation.status === 'completed') {
+    const checks = Number(automation.read_only_checks || 0);
+    const evidence = Number(automation.evidence_receipts || 0);
+    const blocked = Number(automation.blocked_mutations || 0);
+    if (checks || evidence || blocked) {
+      const note = document.createElement('p');
+      note.className = 'sayuri-automation-summary';
+      let text = `Автопроверка · ${checks} проверок · ${evidence} подтверждено`;
+      if (blocked) text += ' · изменения ждут подтверждения';
+      note.textContent = text;
+      details.append(note);
+    }
   }
   if (Array.isArray(verification.issues) && verification.issues.length) {
     const note = document.createElement('p');
@@ -3916,6 +3883,7 @@ function applySayuriPreferences() {
   byId('sayuri-visible-toggle').checked = sayuriState.visible;
   byId('sayuri-position-toggle').checked = sayuriState.rememberPosition;
   byId('sayuri-history-toggle').checked = sayuriState.rememberHistory;
+  byId('sayuri-evidence-automation-toggle').checked = sayuriState.evidenceAutomation;
 
   const orbPosition = readLocalJson('sayuri-orb-position', null);
   if (sayuriState.rememberPosition && orbPosition) {
@@ -4106,6 +4074,10 @@ function initializeSayuri() {
     sayuriState.rememberHistory = event.target.checked;
     localStorage.setItem('sayuri-remember-history', sayuriState.rememberHistory ? '1' : '0');
     persistSayuriHistory();
+  });
+  byId('sayuri-evidence-automation-toggle').addEventListener('change', (event) => {
+    sayuriState.evidenceAutomation = event.target.checked;
+    localStorage.setItem('sayuri-evidence-automation', sayuriState.evidenceAutomation ? '1' : '0');
   });
   byId('sayuri-reset-layout').addEventListener('click', resetSayuriLayout);
 

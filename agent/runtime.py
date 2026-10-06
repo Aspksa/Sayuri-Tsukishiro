@@ -351,7 +351,11 @@ class SayuriAgent:
             },
             "experience": self.experience.stats(),
             "reasoning": self.reasoning.public_status(),
-            "tool_planner": self.tool_planner.public_status(),
+            "automation": {
+                **self.tool_planner.public_status(),
+                "mode": "read_only_evidence",
+                "mutations": "action_broker_confirmation",
+            },
             "tools_connected": True,
             "tools": self.actions.tools(),
             "message": (
@@ -377,10 +381,10 @@ class SayuriAgent:
             },
             "experience": self.experience.stats(),
             "reasoning": self.reasoning.public_status(),
-            "tool_planner": {
+            "automation": {
                 **self.tool_planner.public_status(),
-                "catalog": self.tool_planner.catalog(),
-                "recent_receipts": self.tool_planner.recent(8),
+                "mode": "read_only_evidence",
+                "mutations": "action_broker_confirmation",
             },
             "avatars": self.avatars.public(),
             "actions": {
@@ -874,11 +878,15 @@ class SayuriAgent:
         return {"actions": self.actions.recent(limit), "tools": self.actions.tools()}
 
     def tool_receipts(self, limit: int = 30) -> dict[str, Any]:
+        """Internal diagnostics for the local automation receipt ledger."""
         return {
             "status": self.tool_planner.public_status(),
             "catalog": self.tool_planner.catalog(),
             "receipts": self.tool_planner.recent(limit),
         }
+
+    def cloud_text_allowed(self, *parts: Any) -> bool:
+        return self.memory_v4._cloud_text_allowed(*parts)
 
     def _tool_handlers(self, context: Any) -> dict[str, Any]:
         safe_context = context if isinstance(context, dict) else {}
@@ -900,7 +908,11 @@ class SayuriAgent:
                         "v4": self.memory_v4.stats(),
                     },
                     "reasoning": self.reasoning.public_status(),
-                    "tool_planner": self.tool_planner.public_status(),
+                    "automation": {
+                        **self.tool_planner.public_status(),
+                        "mode": "read_only_evidence",
+                        "mutations": "action_broker_confirmation",
+                    },
                 },
                 "evidence_refs": ["system:runtime-status"],
             }
@@ -1070,7 +1082,14 @@ class SayuriAgent:
             normalized.append({"role": role, "content": text[:6000]})
         return normalized
 
-    def chat(self, *, message: str, history: Any = None, context: Any = None) -> dict[str, Any]:
+    def chat(
+        self,
+        *,
+        message: str,
+        history: Any = None,
+        context: Any = None,
+        external_tool_handlers: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         text = message.strip()
         if not text:
             raise AgentRuntimeError("Введите сообщение для Sayuri.")
@@ -1130,10 +1149,11 @@ class SayuriAgent:
                         **reasoning_decision.public(),
                         "planner_status": "skipped",
                         "plan": None,
-                        "tool_execution": {
+                        "automation": {
                             "status": "skipped",
-                            "receipts": [],
-                            "read_only_calls": 0,
+                            "read_only_checks": 0,
+                            "evidence_receipts": 0,
+                            "blocked_mutations": 0,
                         },
                         "verification": {"status": "skipped"},
                         "revised": False,
@@ -1145,6 +1165,11 @@ class SayuriAgent:
             raise AgentRuntimeError("Cloud.ru не настроен. Откройте Личный кабинет Sayuri и сохраните API-ключ.")
 
         safe_context = context if isinstance(context, dict) else {}
+        automation_settings = safe_context.get("automation")
+        automation_enabled = not (
+            isinstance(automation_settings, dict)
+            and automation_settings.get("evidence_checks") is False
+        )
         memory_v4_aux = {
             "goals": memory_v4_context.get("goals", []),
             "tasks": memory_v4_context.get("tasks", []),
@@ -1189,11 +1214,12 @@ class SayuriAgent:
             **reasoning_decision.public(),
             "planner_status": "skipped",
             "plan": None,
-            "tool_execution": {
-                "status": "skipped",
-                "request_id": tool_execution["request_id"],
-                "receipts": [],
-                "read_only_calls": 0,
+            "automation": {
+                "status": "skipped" if automation_enabled else "disabled",
+                "audit_id": tool_execution["request_id"],
+                "read_only_checks": 0,
+                "evidence_receipts": 0,
+                "blocked_mutations": 0,
             },
             "verification": {"status": "skipped"},
             "revised": False,
@@ -1210,7 +1236,7 @@ class SayuriAgent:
                         text,
                         evidence_context=reasoning_evidence,
                         ui_context=safe_context,
-                        tool_catalog=self.tool_planner.catalog(),
+                        tool_catalog=self.tool_planner.catalog() if automation_enabled else [],
                     ),
                     max_tokens=900,
                     temperature=0.2,
@@ -1222,18 +1248,33 @@ class SayuriAgent:
                 plan = self.reasoning.fallback_plan(text)
                 reasoning_payload["planner_status"] = "fallback"
             reasoning_payload["plan"] = plan
-            tool_execution = self.tool_planner.execute_plan(
-                plan,
-                handlers=self._tool_handlers(safe_context),
-                request_id=tool_execution["request_id"],
-            )
-            reasoning_payload["tool_execution"] = {
-                "status": "completed",
-                "request_id": tool_execution["request_id"],
-                "receipts": tool_execution["receipts"],
-                "read_only_calls": tool_execution["read_only_calls"],
-            }
-            reasoning_evidence["tool_receipts"] = tool_execution["cloud_evidence"]
+            if automation_enabled:
+                handlers = self._tool_handlers(safe_context)
+                if isinstance(external_tool_handlers, dict):
+                    handlers.update(external_tool_handlers)
+                tool_execution = self.tool_planner.execute_plan(
+                    plan,
+                    handlers=handlers,
+                    request_id=tool_execution["request_id"],
+                )
+                completed_receipts = [
+                    item
+                    for item in tool_execution["receipts"]
+                    if item.get("status") == "completed"
+                ]
+                blocked_mutations = [
+                    item
+                    for item in tool_execution["receipts"]
+                    if item.get("status") == "requires_action_broker"
+                ]
+                reasoning_payload["automation"] = {
+                    "status": "completed",
+                    "audit_id": tool_execution["request_id"],
+                    "read_only_checks": tool_execution["read_only_calls"],
+                    "evidence_receipts": len(completed_receipts),
+                    "blocked_mutations": len(blocked_mutations),
+                }
+                reasoning_evidence["tool_receipts"] = tool_execution["cloud_evidence"]
 
         messages: list[dict[str, str]] = [
             {"role": "system", "content": SYSTEM_PROMPT},

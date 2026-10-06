@@ -597,9 +597,104 @@ class SayuriCore:
         )
         return result
 
+    def _sayuri_automation_handlers(self, context: Any) -> dict[str, Any]:
+        safe_context = context if isinstance(context, dict) else {}
+        current = safe_context.get("current_document")
+        current_file_id = (
+            str(current.get("id") or "")
+            if isinstance(current, dict) and current.get("kind") == "file"
+            else ""
+        )
+
+        def metadata(_args: dict[str, Any]) -> dict[str, Any]:
+            if not current_file_id:
+                return {
+                    "data": {"available": False},
+                    "evidence_refs": ["disk:current-document:none"],
+                }
+            item = self.disk.get_file(current_file_id)
+            if not self.agent.cloud_text_allowed(
+                item.get("name"),
+                item.get("category"),
+                item.get("content_type"),
+            ):
+                return {
+                    "data": {"available": False, "local_only": True},
+                    "evidence_refs": ["disk:current-document:local-only"],
+                }
+            sha256 = str(item.get("sha256") or "")
+            return {
+                "data": {
+                    "available": True,
+                    "name": item.get("name"),
+                    "category": item.get("category"),
+                    "content_type": item.get("content_type"),
+                    "size_bytes": item.get("size_bytes"),
+                    "sha256": sha256,
+                    "created_at": item.get("created_at"),
+                    "updated_at": item.get("updated_at"),
+                },
+                "evidence_refs": [
+                    "disk:file:" + (sha256[:16] if sha256 else "current")
+                ],
+            }
+
+        def ledger(_args: dict[str, Any]) -> dict[str, Any]:
+            if not current_file_id:
+                return {
+                    "data": {"available": False},
+                    "evidence_refs": ["dna-ledger:current-document:none"],
+                }
+            item = self.disk.get_file(current_file_id)
+            if not self.agent.cloud_text_allowed(
+                item.get("name"),
+                item.get("category"),
+                item.get("content_type"),
+            ):
+                return {
+                    "data": {"available": False, "local_only": True},
+                    "evidence_refs": ["dna-ledger:current-document:local-only"],
+                }
+            ledger_state = self.disk.dna_ledger(current_file_id, limit=24)
+            entries = [
+                {
+                    "sequence_no": entry.get("sequence_no"),
+                    "event_type": entry.get("event_type"),
+                    "created_at": entry.get("created_at"),
+                    "payload_sha256": entry.get("payload_sha256"),
+                    "chain_hash": entry.get("chain_hash"),
+                    "valid": entry.get("valid"),
+                }
+                for entry in ledger_state.get("entries", [])
+                if isinstance(entry, dict)
+            ]
+            sha256 = str(item.get("sha256") or "")
+            return {
+                "data": {
+                    "available": True,
+                    "valid": bool(ledger_state.get("valid")),
+                    "total": int(ledger_state.get("total") or 0),
+                    "chain_head": ledger_state.get("chain_head"),
+                    "entries": entries,
+                },
+                "evidence_refs": [
+                    "dna-ledger:" + (sha256[:16] if sha256 else "current")
+                ],
+            }
+
+        return {
+            "disk.current_document.metadata": metadata,
+            "disk.current_document.ledger": ledger,
+        }
+
     def sayuri_chat(self, *, message: str, history: Any = None, context: Any = None) -> dict[str, Any]:
         try:
-            result = self.agent.chat(message=message, history=history, context=context)
+            result = self.agent.chat(
+                message=message,
+                history=history,
+                context=context,
+                external_tool_handlers=self._sayuri_automation_handlers(context),
+            )
         except AgentRuntimeError as exc:
             raise ProviderError(str(exc), status=502) from exc
         self.database.record_event(
@@ -611,8 +706,9 @@ class SayuriCore:
                 "memory_used": result.get("memory_used", 0),
                 "memory_saved": bool(result.get("memory_saved")),
                 "response_id": result.get("response_id"),
-                "tool_receipts": len(
-                    ((result.get("reasoning") or {}).get("tool_execution") or {}).get("receipts", [])
+                "automation_checks": int(
+                    ((result.get("reasoning") or {}).get("automation") or {}).get("read_only_checks", 0)
+                    or 0
                 ),
             },
         )

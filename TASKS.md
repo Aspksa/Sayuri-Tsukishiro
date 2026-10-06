@@ -271,3 +271,19 @@
 - Web chat показывает цепочку «План -> Инструменты -> Доказательства -> Проверка» без изменения меню.
 - Приёмка: один атомарный commit от `main 0.1.47`, полный workflow Versions, merge через PR и зелёный финальный main CI.
 
+
+
+## AI-007 — Invisible Evidence Automation
+
+- Статус: `implemented in target 0.1.49`; релиз считается проверенным только после зелёного PR/main CI.
+- Версия проекта: `0.1.49`.
+- Технический Evidence Tool Planner остаётся внутренним и не получает отдельной пользовательской панели.
+- Из reasoning summary удаляются tool IDs, duration и отдельные receipt rows.
+- В Личном кабинете убирается список разрешённых инструментов; меню не меняется.
+- Добавляется один локальный переключатель «Автопроверка сложных задач».
+- При выключенной автопроверке tool catalog не передаётся Planner, read-only execution не запускается, но Planner/Verifier продолжают работать.
+- Chat response отдаёт только компактный `reasoning.automation`, а полный receipt ledger остаётся локальным.
+- Добавлены чистые read-only источники `disk.current_document.metadata` и `disk.current_document.ledger`.
+- Автоматический вызов `document_dna()` запрещён в read-only automation, так как метод может обновлять кэш/metadata.
+- Изменяющие действия по-прежнему выполняются только SayuriActionBroker после подтверждения.
+- Приёмка: один атомарный commit от `main 0.1.48`, полный workflow Versions, merge через PR и зелёный финальный main CI.

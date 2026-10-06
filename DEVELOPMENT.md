@@ -1139,3 +1139,72 @@ Tool evidence перед Cloud.ru ограничивается budget 9000 chars
 - Result Verifier получает execution evidence;
 - API/Web contract.
 
+
+
+## Invisible Evidence Automation 0.2
+
+Релиз проекта: `0.1.49`.
+
+### Пользовательская модель
+
+Evidence-aware Tool Planner остаётся backend-механизмом. Web UI не перечисляет внутренние инструменты и не показывает execution receipts построчно.
+
+В planned-response наружу передаётся только:
+
+- `automation.status`;
+- `automation.read_only_checks`;
+- `automation.evidence_receipts`;
+- `automation.blocked_mutations`;
+- `automation.audit_id` для внутренней корреляции.
+
+Полные receipts продолжают храниться в `data/sayuri-tool-receipts.db`.
+
+### Переключатель
+
+Web хранит локальную настройку `sayuri-evidence-automation`.
+
+В chat context передаётся:
+
+```json
+{"automation":{"evidence_checks":true}}
+```
+
+Если `evidence_checks=false`:
+
+1. complexity gate и Reasoning Planner остаются активными;
+2. tool catalog перед Planner не передаётся;
+3. read-only execution не запускается;
+4. Result Verifier проверяет ответ по остальному Cloud-safe evidence.
+
+### Read-only document evidence
+
+Допустимы два новых внутренних источника:
+
+- `disk.current_document.metadata` — имя, category, content type, size, SHA-256 и timestamps без локального path;
+- `disk.current_document.ledger` — valid/total/chain_head и hash-chain metadata существующего DNA-ledger без `details_json`.
+
+Оба handler работают через `SayuriCore`, потому что именно core владеет `DiskService`.
+
+`disk.document_dna()`/анализ ДНК автоматически не вызывается: cached path этого метода обновляет `disk_dna`, поэтому он не является чистым read-only источником.
+
+Перед Cloud evidence имя/category/content-type проходят Memory 4.1 sensitivity/instruction gate. Содержимое файла и локальный filesystem path не включаются.
+
+### Safety invariants
+
+- неизвестный tool отклоняется;
+- mutation intent получает `requires_action_broker`;
+- payload изменения от LLM не исполняется;
+- read-only limit и duplicate suppression сохраняются;
+- receipt ledger остаётся источником для Result Verifier;
+- меню проекта не изменяется.
+
+### Проверки
+
+- app/core unit tests;
+- automation off regression;
+- read-only disk catalog contract;
+- Web contract: нет `sayuri-tool-list` и `sayuri-tool-receipts`;
+- JS syntax;
+- preflight;
+- versioning each-commit;
+- Windows launcher workflow.

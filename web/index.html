@@ -354,13 +354,18 @@
           </article>
           <article class="sayuri-account-card sayuri-wide-card sayuri-actions-card">
             <div class="section-head">
-              <div><p class="eyebrow">ДЕЙСТВИЯ</p><h3>Безопасные действия Sayuri</h3></div>
-              <div class="sayuri-action-mode"><span></span><strong>Только после подтверждения</strong></div>
+              <div><p class="eyebrow">АВТОМАТИЗАЦИЯ</p><h3>Автопроверка Sayuri</h3></div>
+              <div class="sayuri-action-mode"><span></span><strong>Безопасное чтение автоматически</strong></div>
             </div>
-            <p class="sayuri-card-copy">Sayuri может подготовить действие по команде в чате, но не изменит проект сама. Перед выполнением вы всегда увидите точное действие, цель и уровень риска.</p>
-            <div class="sayuri-tool-list" id="sayuri-tool-list"></div>
+            <p class="sayuri-card-copy">Для сложных задач Sayuri может сама проверить разрешённые данные только на чтение и передать подтверждения Result Verifier. Любое изменение проекта по-прежнему выполняется только после вашего подтверждения.</p>
+            <div class="sayuri-preference-list sayuri-automation-preference">
+              <label>
+                <span><strong>Автопроверка сложных задач</strong><small>Память, состояние системы и безопасные данные открытого документа проверяются автоматически только когда это нужно плану.</small></span>
+                <input id="sayuri-evidence-automation-toggle" type="checkbox" checked>
+              </label>
+            </div>
             <div class="sayuri-actions-history-head">
-              <strong>Последние действия</strong>
+              <strong>Подтверждённые изменения</strong>
               <button class="secondary-button" id="sayuri-actions-refresh" type="button">Обновить</button>
             </div>
             <div class="sayuri-actions-history" id="sayuri-actions-history"><p class="muted">История действий загружается…</p></div>

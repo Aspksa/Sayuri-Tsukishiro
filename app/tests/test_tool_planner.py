@@ -103,6 +103,8 @@ class EvidenceToolPlannerTests(unittest.TestCase):
             catalog = {item["id"]: item for item in planner.catalog()}
             self.assertEqual(catalog["memory.search"]["mode"], "read_only")
             self.assertFalse(catalog["memory.search"]["confirmation_required"])
+            self.assertEqual(catalog["disk.current_document.metadata"]["mode"], "read_only")
+            self.assertEqual(catalog["disk.current_document.ledger"]["mode"], "read_only")
             self.assertEqual(catalog["memory.remember"]["mode"], "confirmation_gated")
             self.assertTrue(catalog["memory.remember"]["confirmation_required"])
 
@@ -114,6 +116,8 @@ class EvidenceToolPlannerTests(unittest.TestCase):
         self.assertIn("/api/sayuri/tools/receipts", server)
         self.assertIn("for_cloud=True", runtime)
         self.assertIn("requires_action_broker", runtime)
+        self.assertIn("external_tool_handlers", runtime)
+        self.assertIn("def _sayuri_automation_handlers", core)
 
 
 if __name__ == "__main__":

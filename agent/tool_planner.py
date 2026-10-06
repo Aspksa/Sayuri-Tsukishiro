@@ -47,6 +47,16 @@ READ_ONLY_TOOLS: dict[str, dict[str, Any]] = {
         "mode": "read_only",
         "args": {},
     },
+    "disk.current_document.metadata": {
+        "label": "Метаданные текущего документа",
+        "mode": "read_only",
+        "args": {},
+    },
+    "disk.current_document.ledger": {
+        "label": "Целостность DNA-ledger текущего документа",
+        "mode": "read_only",
+        "args": {},
+    },
 }
 
 MAX_TOOL_INTENTS = 8
@@ -66,7 +76,7 @@ def _utcnow() -> str:
 class EvidenceToolPlanner:
     """Deterministic tool policy + execution receipts for structured plans."""
 
-    VERSION = "0.1"
+    VERSION = "0.2"
 
     def __init__(self, path: Path):
         self.path = path
@@ -194,7 +204,15 @@ class EvidenceToolPlanner:
     @staticmethod
     def _normalize_args(tool: str, args: Any) -> dict[str, Any]:
         raw = args if isinstance(args, dict) else {}
-        if tool in {"system.status", "memory.stats", "memory.integrity", "experience.stats", "context.current_document"}:
+        if tool in {
+            "system.status",
+            "memory.stats",
+            "memory.integrity",
+            "experience.stats",
+            "context.current_document",
+            "disk.current_document.metadata",
+            "disk.current_document.ledger",
+        }:
             return {}
         if tool == "memory.search":
             query = " ".join(str(raw.get("query") or "").strip().split())[:1200]
