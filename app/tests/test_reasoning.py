@@ -64,18 +64,25 @@ class ReasoningEngineTests(unittest.TestCase):
         self.assertTrue(engine.public_status()["external_blockers"])
         self.assertTrue(engine.public_status()["cross_project_coordination"])
         self.assertTrue(engine.public_status()["metacognition"])
+        self.assertTrue(engine.public_status()["thinking_state_machine"])
+        self.assertTrue(engine.public_status()["decision_trace"])
+        self.assertEqual(engine.public_status()["reasoning_logic"]["version"], "2.0")
         self.assertIn("continuity_context", planner_messages[1]["content"])
 
     def test_plan_and_verifier_json_are_normalized_without_hidden_reasoning(self):
         engine = ReasoningEngine()
         plan = engine.parse_plan(
-            '{"goal":"Собрать модуль","steps":["Шаг 1","Шаг 2"],'
-            '"constraints":["Без второй LLM"],"evidence_needed":["Memory 4.1"],'
-            '"done_when":["Тесты зелёные"],"risk_level":"high",'
+            '{"goal":"Собрать модуль","intent":"plan","steps":["Шаг 1","Шаг 2"],'
+            '"constraints":["Без второй LLM"],"assumptions":["API доступен"],'
+            '"hypotheses":[{"claim":"Нужна проверка памяти","status":"unknown","evidence_needed":["Memory 4.1"]}],'
+            '"options":[{"id":"A","action":"Сначала сверить память","benefits":["Меньше риска"],'
+            '"risks":[],"evidence_needed":["Memory 4.1"]}],"selected_option":"A",'
+            '"decision_summary":"Сначала проверить память.","counterfactual_checks":["Если память недоступна — fallback."],'
+            '"evidence_needed":["Memory 4.1"],"done_when":["Тесты зелёные"],"risk_level":"high",'
             '"tool_intents":[{"step":1,"tool":"memory.stats","args":{},"purpose":"Сверить память"}]}'
         )
         verification = engine.parse_verification(
-            '{"status":"revise","score":0.82,'
+            '{"status":"revise","score":0.82,"confidence":0.74,'
             '"checks":{"goal":true,"constraints":true,"evidence":false},'
             '"issues":["Не хватает доказательства"],'
             '"unsupported_claims":["Один факт"],'
@@ -84,8 +91,12 @@ class ReasoningEngineTests(unittest.TestCase):
         self.assertEqual(plan["risk_level"], "high")
         self.assertEqual(plan["steps"], ["Шаг 1", "Шаг 2"])
         self.assertEqual(plan["tool_intents"][0]["tool"], "memory.stats")
+        self.assertEqual(plan["selected_option"], "A")
+        self.assertEqual(plan["hypotheses"][0]["status"], "unknown")
+        self.assertEqual(plan["counterfactual_checks"][0], "Если память недоступна — fallback.")
         self.assertTrue(engine.public_status()["evidence_aware_tool_planner"])
         self.assertEqual(verification["status"], "revise")
+        self.assertEqual(verification["confidence"], 0.74)
         self.assertEqual(verification["revised_answer"], "Исправленный ответ")
         self.assertFalse(engine.public_status()["chain_of_thought_storage"])
 
@@ -144,6 +155,15 @@ class ReasoningEngineTests(unittest.TestCase):
             self.assertEqual(result["reasoning"]["verification"]["status"], "revise")
             self.assertTrue(result["reasoning"]["revised"])
             self.assertEqual(result["reasoning"]["model_calls"], 3)
+            self.assertEqual(result["reasoning"]["logic"]["version"], "2.0")
+            self.assertEqual(result["reasoning"]["logic"]["current_state"], "REPLAN")
+            self.assertTrue(
+                any(
+                    item["stage"] == "VERIFY"
+                    for item in result["reasoning"]["logic"]["trace"]
+                )
+            )
+            self.assertFalse(result["reasoning"]["logic"]["chain_of_thought_stored"])
             automation = result["reasoning"]["automation"]
             self.assertEqual(automation["status"], "completed")
             self.assertEqual(automation["read_only_checks"], 1)
@@ -325,6 +345,13 @@ class ReasoningEngineTests(unittest.TestCase):
             self.assertEqual(result["reasoning"]["model_calls"], 1)
             self.assertEqual(result["reasoning"]["verification"]["status"], "skipped")
             self.assertEqual(result["reasoning"]["automation"]["status"], "skipped")
+            self.assertEqual(result["reasoning"]["logic"]["current_state"], "CONTINUE")
+            self.assertFalse(
+                any(
+                    item["stage"] == "VERIFY"
+                    for item in result["reasoning"]["logic"]["trace"]
+                )
+            )
             self.assertIn("evidence", result)
 
     def test_web_chat_exposes_structured_reasoning_summary(self):
@@ -334,8 +361,11 @@ class ReasoningEngineTests(unittest.TestCase):
         self.assertIn("result.reasoning", script)
         self.assertIn("результат проверен", script)
         self.assertIn("автопроверка", script)
+        self.assertIn("Reasoning Logic 2.0 + Planner + Verifier", script)
+        self.assertIn("sayuri-reasoning-trace", script)
         self.assertIn("SAYURI UI 0.25 — Background Evidence Automation", css)
         self.assertIn(".sayuri-reasoning-summary", css)
+        self.assertIn(".sayuri-reasoning-trace", css)
         self.assertNotIn("sayuri-tool-receipts", script)
         self.assertNotIn(".sayuri-tool-receipts", css)
         self.assertNotIn("sayuri-tool-list", script)

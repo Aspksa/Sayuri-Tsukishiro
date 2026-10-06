@@ -5492,6 +5492,17 @@ footer {
 .sayuri-reasoning-goal,
 .sayuri-reasoning-issues { margin: 7px 0; color: var(--ui-muted); }
 .sayuri-reasoning-summary small { display: block; margin-top: 6px; color: var(--ui-muted); }
+.sayuri-reasoning-logic-state {
+  margin: 8px 0 4px;
+  font-weight: 650;
+  color: var(--ui-text);
+}
+.sayuri-reasoning-trace {
+  margin: 6px 0 8px;
+  padding-left: 18px;
+  color: var(--ui-muted);
+}
+.sayuri-reasoning-trace li + li { margin-top: 3px; }
 
 /* ==========================================================================
    SAYURI UI 0.25 — Background Evidence Automation

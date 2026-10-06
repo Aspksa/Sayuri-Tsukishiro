@@ -6,17 +6,17 @@
 Основная ветка: `main`  
 Текущая версия: [VERSION](VERSION).
 
-## Последнее опубликованное состояние — 0.2.8
+## Последнее опубликованное состояние — 0.2.9
 
 GitHub синхронизирован с фактическим `main`. Функциональная база — **0.2.7 Portfolio Milestones & Cross-Project Coordination**, успешно прошедшая branch CI, PR CI и финальный push-CI на `main`.
 
-- Project: `0.2.8` — публикационная синхронизация документации.
-- App/Core: `0.1.55`.
-- Agent Core: `0.15.2`.
+- Project: `0.2.9` — Reasoning Logic 2.0.
+- App/Core: `0.1.56`.
+- Agent Core: `0.16.0`.
 - Cognitive Project Brain: `1.3.2`.
-- Reasoning Planner: `1.1`.
+- Reasoning Logic / Planner: `2.0`.
 - Evidence Tool Planner: `0.4.2`.
-- Web UI: `0.31.0`.
+- Web UI: `0.31.1`.
 - Disk Sayuri: `0.8.0`.
 - Основная ветка: `main`.
 - Функциональный merge: `bb7151baf72d7d681e84cd124f52e623bb3588c1`.
@@ -35,6 +35,24 @@ GitHub синхронизирован с фактическим `main`. Функ
 
 Подробный контракт: [COGNITIVE_BRAIN.md](COGNITIVE_BRAIN.md).  
 Актуальная контрольная точка: [PROJECT_STATE.md](PROJECT_STATE.md).
+
+## Reasoning Logic 2.0
+
+Sayuri использует локальную deterministic state machine поверх существующих Planner/Verifier:
+
+`UNDERSTAND → RETRIEVE → FRAME → PLAN → CHECK → ACT → VERIFY → REFLECT → CONTINUE`.
+
+При неопределённости и сбоях используются отдельные ветви `GATHER_EVIDENCE`, `REPLAN` и `READY_FOR_CONFIRMATION`.
+
+- blockers и high uncertainty имеют приоритет над уверенным текстом модели;
+- Planner 2.0 возвращает проверяемые assumptions/hypotheses/options/counterfactual checks без chain-of-thought;
+- Result Verifier проверяет goal/constraints/evidence и может отправить маршрут в REPLAN;
+- completion readiness не превращается в автоматический `done`;
+- пользователь видит компактный Decision Trace, а не скрытые рассуждения;
+- простые запросы остаются быстрыми и не вызывают лишние Planner/Verifier calls;
+- единственная внешняя LLM — `deepseek-ai/DeepSeek-V4-Flash`.
+
+Подробный контракт: [REASONING_LOGIC.md](REASONING_LOGIC.md).
 
 ## Быстрый запуск
 

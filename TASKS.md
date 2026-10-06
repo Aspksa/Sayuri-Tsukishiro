@@ -604,3 +604,19 @@
 - Candidate `0.2.6` commit `09ce260e6849587473ea3f7fd5e1ea61767ebcde` остановлен workflow #37417751833 только из-за stale runtime assertion Cognitive Brain `1.2`; 168/169 app tests прошли. Assertion исправляется в отдельном `0.2.7`.
 - Приёмка: `completed` — portfolio regressions, полный Python suite, JS syntax, preflight, version each-commit, Windows launcher, PR CI, squash merge и final green main CI.
 
+## AI-015 — Reasoning Logic 2.0
+
+- Статус: `implemented in target 0.2.9`; приёмка только после branch/PR/main CI.
+- База: `main 0.2.8`, commit `8fbde3ff73d27bb362f556b11367f2d3553464ea`.
+- Цель: превратить Planner+Verifier в управляемый reasoning lifecycle без второй LLM, второй памяти и chain-of-thought storage.
+- State machine: `UNDERSTAND → RETRIEVE → FRAME → PLAN → CHECK → ACT → VERIFY → REFLECT → CONTINUE`.
+- Safety branches: `UNCERTAIN → GATHER_EVIDENCE`, `FAILED → DIAGNOSE → REPLAN`, `READY_FOR_CONFIRMATION`.
+- Intent resolver: continue / compare / plan / action / analyze / question / request.
+- Constraint Gate: blockers сильнее плана; high uncertainty требует evidence; mutation остаётся за Action Broker.
+- Planner 2.0: assumptions, hypotheses, options, selected_option, decision_summary, counterfactual_checks.
+- Decision Trace: только stage/status/code/summary; chain-of-thought не сохраняется и не показывается.
+- UI: existing reasoning summary показывает state/confidence/последние safe trace entries; новая постоянная панель не создаётся.
+- Direct path: простой чат не вызывает Planner/Verifier.
+- Приёмка: state-transition regressions, blocker gate, evidence-first uncertainty, replan after revise, human confirmation, direct one-call path, UI contract, полный CI.
+- Версии: Project `0.2.9`, App/Core `0.1.56`, Agent Core `0.16.0`, Reasoning Logic `2.0`, Reasoning Planner `2.0`, Web UI `0.31.1`.
+

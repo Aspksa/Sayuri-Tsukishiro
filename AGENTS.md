@@ -122,3 +122,19 @@
 - Cloud cognition должна оставаться минимальной: не возвращай DB/action/replan/causal identifiers, если модель не обязана знать их для ответа.
 - Не запускай `cognition.next` автоматически только из-за слов «проект» или «модуль». Нужен конкретный cognitive intent.
 - Масштабирование новых модулей делается через canonical project/module/task contract, а не через отдельные Planner/Scheduler.
+
+## Reasoning Logic contract (0.2.9+)
+
+- Не создавать отдельный reasoning engine/Planner/Verifier для нового модуля.
+- Все модули используют общий `ReasoningLogic 2.0` внутри Agent Core.
+- Reasoning Logic request-scoped: не добавлять отдельную БД reasoning state без нового явного архитектурного решения.
+- Goal/Task lifecycle остаётся в Memory 4.x; project/module blockers и scheduler — в Cognitive Project Brain.
+- Active blocker имеет приоритет над plan/answer и запрещает переход к executable ACT.
+- High uncertainty требует evidence-first path.
+- Planner может предлагать hypotheses/options/counterfactual checks только как краткие проверяемые структуры, не как chain-of-thought.
+- Decision Trace содержит только безопасный summary: stage/status/code/summary/confidence.
+- Result Verifier не закрывает task и не выполняет mutation.
+- `READY_FOR_CONFIRMATION` не является `done`.
+- Все mutations по-прежнему проходят через SayuriActionBroker и явное подтверждение пользователя.
+- Простые запросы не должны получать лишние Planner/Verifier model calls только ради отображения reasoning.
+

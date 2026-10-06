@@ -4,21 +4,21 @@
 
 - Дата: 2026-10-06.
 - Репозиторий: https://github.com/Aspksa/Sayuri-Tsukishiro
-- Проверенная функциональная ревизия: `bb7151baf72d7d681e84cd124f52e623bb3588c1` — опубликованный `main 0.2.7`, Versions #37418057599 success.
-- Рабочая ветка публикационной синхронизации: `publish-sync-v0208`.
+- Проверенная исходная ревизия: `8fbde3ff73d27bb362f556b11367f2d3553464ea` — опубликованный `main 0.2.8`, Versions #37418657247 success.
+- Рабочая ветка этапа: `reasoning-logic-v0209`.
 - Старый PR #27 (`0.2.2`) закрыт как superseded и не должен сливаться поверх `main 0.2.3+`.
-- Текущий результат: **0.2.8 — GitHub Publication Sync**.
-- Задача: **AI-014**.
+- Текущий целевой результат: **0.2.9 — Reasoning Logic 2.0**.
+- Задача: **AI-015**.
 
 ## Версии результата
 
-- Project: `0.2.8`.
-- App/Core: `0.1.55`.
-- Agent Core: `0.15.2`.
+- Project: `0.2.9`.
+- App/Core: `0.1.56`.
+- Agent Core: `0.16.0`.
 - Cognitive Project Brain: `1.3.2`.
-- Reasoning Planner: `1.1`.
+- Reasoning Planner: `2.0`.
 - Evidence Tool Planner: `0.4.2`.
-- Web UI: `0.31.0` — без изменений.
+- Web UI: `0.31.1`.
 - Disk: `0.8.0` — без изменений.
 - dev-tools: `0.1.6` — без изменений.
 
@@ -32,6 +32,21 @@
 - PR #28 merged.
 - Финальный workflow #37418057599 — `success`.
 - Причина визуальной путаницы: README оставался с верхним разделом `0.2.3`, хотя код и VERSION уже были `0.2.7`. В `0.2.8` это синхронизировано.
+
+## Reasoning Logic 2.0
+
+- Новый внутренний компонент: `agent/reasoning_logic.py`, версия `2.0`.
+- Request-scoped deterministic state machine; отдельная БД и вторая память не создаются.
+- Состояния: UNDERSTAND, RETRIEVE, FRAME, PLAN, CHECK, ACT, VERIFY, REFLECT, CONTINUE, UNCERTAIN, GATHER_EVIDENCE, REPLAN, FAILED, DIAGNOSE, READY_FOR_CONFIRMATION.
+- Active blocker запрещает переход в ACT.
+- High uncertainty требует evidence-first path.
+- Planner 2.0 возвращает structured assumptions/hypotheses/options/counterfactual checks.
+- Result Verifier получает logic context и возвращает confidence.
+- revise/unsupported claims переводят state в REPLAN.
+- ready_for_completion_confirmation переводится только в READY_FOR_CONFIRMATION.
+- Decision Trace содержит только безопасные stage/status/code/summary и не хранит chain-of-thought.
+- Direct chat сохраняет один model call.
+- UI показывает state/confidence/последние safe trace entries в существующем reasoning summary.
 
 ## Цель этапа
 
@@ -124,6 +139,6 @@
 - squash merge;
 - финального зелёного workflow на `main`.
 
-## Следующий этап после 0.2.8
+## Следующий этап после 0.2.9
 
 После стабилизации portfolio coordination не добавлять ещё один абстрактный cognitive layer. Подключить первый реальный крупный прикладной модуль к canonical contract и измерить качество scheduler, milestones, blockers, completion criteria и strategy transfer на настоящем workflow.

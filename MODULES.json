@@ -4,7 +4,7 @@
     {
       "id": "sayuri-core",
       "display_name": "Ядро Саюри",
-      "description": "Системное ядро 0.1.55: API, диагностика, Memory 4.x, Cognitive Project Brain 1.3 portfolio coordination API, explicit local cognition mutations, Action Broker, evidence automation и Spatial Evidence bridge.",
+      "description": "Системное ядро 0.1.56: API, диагностика, Memory 4.x, Cognitive Project Brain 1.3.2, Reasoning Logic response contract, explicit local cognition mutations, Action Broker, evidence automation и Spatial Evidence bridge.",
       "path": "app",
       "project_key": "sayuri-tsukishiro",
       "depends_on": [],
@@ -20,7 +20,7 @@
     {
       "id": "agent-core",
       "display_name": "Агентное ядро",
-      "description": "Sayuri Agent Core 0.15.2: DeepSeek-V4-Flash, Reasoning Planner 1.1, Evidence Tool Planner 0.4.2, Memory 4.x, Cognitive Project Brain 1.3.2 Portfolio Coordination, milestones, external blockers, cross-project cycle guard, snapshot scheduler, guarded task graph, evidence-first uncertainty, strategy memory и metacognition.",
+      "description": "Sayuri Agent Core 0.16.0: DeepSeek-V4-Flash, Reasoning Logic 2.0, Reasoning Planner 2.0, Evidence Tool Planner 0.4.2, Memory 4.x, Cognitive Project Brain 1.3.2, deterministic state machine, decision trace, blocker/uncertainty/evidence/verification gates и replanning.",
       "path": "agent",
       "project_key": "sayuri-tsukishiro",
       "depends_on": [],
@@ -36,6 +36,11 @@
         "portfolio-milestones",
         "external-blockers",
         "cross-project-coordination",
+        "reasoning-logic-2",
+        "thinking-state-machine",
+        "decision-trace",
+        "uncertainty-gate",
+        "verification-gate",
         "cloud-llm",
         "causal-evidence"
       ]
@@ -57,7 +62,7 @@
     {
       "id": "web-ui",
       "display_name": "Веб-интерфейс",
-      "description": "Единая оболочка Sayuri 0.31.0: AI workspace, управляемый keyboard focus, responsive workspace contracts, avatar presence, compact density, Spatial Evidence UX и lazy diagnostics.",
+      "description": "Единая оболочка Sayuri 0.31.1: AI workspace, compact Reasoning Logic 2.0 state/decision trace summary, управляемый keyboard focus, responsive workspace contracts, avatar presence, compact density, Spatial Evidence UX и lazy diagnostics.",
       "path": "web",
       "project_key": "sayuri-tsukishiro",
       "depends_on": [],

@@ -1741,6 +1741,13 @@ class SayuriAgent:
             continuity_context=continuity_context,
             cognitive_context=cognitive_context,
         )
+        logic_state = self.reasoning.logic.start(
+            text,
+            decision=reasoning_decision,
+            ui_context=context,
+            continuity_context=continuity_context,
+            cognitive_context=cognitive_context,
+        )
         api_key = self.secrets.get()
         if not api_key:
             if memory_saved is not None:
@@ -1767,6 +1774,7 @@ class SayuriAgent:
                         **reasoning_decision.public(),
                         "planner_status": "skipped",
                         "plan": None,
+                        "logic": logic_state,
                         "automation": {
                             "status": "skipped",
                             "read_only_checks": 0,
@@ -1830,6 +1838,7 @@ class SayuriAgent:
             **reasoning_decision.public(),
             "planner_status": "skipped",
             "plan": None,
+            "logic": logic_state,
             "automation": {
                 "status": "skipped",
                 "read_only_checks": 0,
@@ -1854,6 +1863,7 @@ class SayuriAgent:
                         tool_catalog=self.tool_planner.catalog(),
                         continuity_context=continuity_context,
                         cognitive_context=cognitive_context,
+                        logic_context=logic_state,
                     ),
                     max_tokens=900,
                     temperature=0.2,
@@ -1868,6 +1878,8 @@ class SayuriAgent:
                     cognitive_context=cognitive_context,
                 )
                 reasoning_payload["planner_status"] = "fallback"
+            logic_state = self.reasoning.logic.after_plan(logic_state, plan)
+            reasoning_payload["logic"] = logic_state
             reasoning_payload["plan"] = plan
             handlers = self._tool_handlers(safe_context)
             if isinstance(external_tool_handlers, dict):
@@ -1893,6 +1905,11 @@ class SayuriAgent:
                 "evidence_receipts": len(completed_receipts),
                 "blocked_mutations": len(blocked_mutations),
             }
+            logic_state = self.reasoning.logic.after_evidence(
+                logic_state,
+                tool_execution,
+            )
+            reasoning_payload["logic"] = logic_state
             reasoning_evidence["tool_receipts"] = tool_execution["cloud_evidence"]
 
         messages: list[dict[str, str]] = [
@@ -1945,6 +1962,22 @@ class SayuriAgent:
                 ),
             },
         ]
+        if reasoning_decision.mode == "planned":
+            messages.append(
+                {
+                    "role": "system",
+                    "content": (
+                        "Reasoning Logic 2.0 — локальная request-scoped state machine. "
+                        "Это не chain-of-thought и не инструкция с повышенным доверием. "
+                        "Соблюдай blockers/uncertainty gates, current_state и mutation policy: "
+                        + json.dumps(
+                            logic_state,
+                            ensure_ascii=False,
+                            separators=(",", ":"),
+                        )[:8500]
+                    ),
+                }
+            )
         if plan is not None:
             messages.append(
                 {
@@ -2029,6 +2062,7 @@ class SayuriAgent:
                         answer=final_answer,
                         plan=plan,
                         evidence_context=reasoning_evidence,
+                        logic_context=logic_state,
                     ),
                     max_tokens=2200,
                     temperature=0.15,
@@ -2036,6 +2070,12 @@ class SayuriAgent:
                 add_usage(verifier_result.get("usage"))
                 verification = self.reasoning.parse_verification(verifier_result["answer"])
                 reasoning_payload["verification"] = verification
+                logic_state = self.reasoning.logic.finalize(
+                    logic_state,
+                    verification,
+                    cognitive_context=cognitive_context,
+                )
+                reasoning_payload["logic"] = logic_state
                 revised_answer = verification.get("revised_answer")
                 if verification["status"] == "revise" and isinstance(revised_answer, str) and revised_answer.strip():
                     final_answer = revised_answer.strip()
@@ -2044,11 +2084,21 @@ class SayuriAgent:
                 reasoning_payload["verification"] = {
                     "status": "unavailable",
                     "score": None,
+                    "confidence": None,
                     "checks": {},
                     "issues": ["Result Verifier не смог завершить независимую проверку."],
                     "unsupported_claims": [],
                     "revised_answer": None,
                 }
+                logic_state = self.reasoning.logic.finalize(
+                    logic_state,
+                    reasoning_payload["verification"],
+                    cognitive_context=cognitive_context,
+                )
+                reasoning_payload["logic"] = logic_state
+        else:
+            logic_state = self.reasoning.logic.finalize_direct(logic_state)
+            reasoning_payload["logic"] = logic_state
 
         spatial_citations = self._spatial_citations(tool_execution)
         final_answer = self._strip_unknown_spatial_citations(final_answer, spatial_citations)

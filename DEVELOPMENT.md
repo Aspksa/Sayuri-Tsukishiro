@@ -1931,3 +1931,42 @@ cognitive_external_blockers
 
 Milestone completion requires `confirmation=COMPLETE_MILESTONE`. These mutations are not LLM tools.
 
+## Reasoning Logic 2.0
+
+### Files
+
+- `agent/reasoning_logic.py` — deterministic request-scoped state machine.
+- `agent/reasoning.py` — complexity gate, Planner 2.0, Verifier и structured plan parsing.
+- `agent/runtime.py` — integration into chat lifecycle.
+- `app/tests/test_reasoning_logic.py` — state-machine regressions.
+
+### Runtime flow
+
+```text
+request
+→ Memory/Cognitive context
+→ ReasoningLogic.start()
+→ complexity gate
+→ [planned] DeepSeek Planner 2.0
+→ ReasoningLogic.after_plan()
+→ EvidenceToolPlanner read-only execution
+→ ReasoningLogic.after_evidence()
+→ main DeepSeek answer
+→ [planned] Result Verifier
+→ ReasoningLogic.finalize()
+→ safe public Decision Trace
+```
+
+Direct requests skip Planner/Verifier and finish through `finalize_direct()`.
+
+### Security boundaries
+
+- `ReasoningLogic` has no persistence and no mutation executor.
+- `mutation_allowed=false` in gate state.
+- Tool mutations remain `requires_action_broker`.
+- Active blockers prevent ACT.
+- High uncertainty produces evidence-first state.
+- Completion readiness never writes `done`.
+- Trace is a structured summary, not chain-of-thought.
+- New modules reuse this contract instead of creating their own Planner/Scheduler.
+

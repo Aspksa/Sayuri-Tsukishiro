@@ -4409,12 +4409,31 @@ function createSayuriReasoningSummary(metadata) {
   details.className = 'sayuri-reasoning-summary';
   const summary = document.createElement('summary');
   const verification = reasoning.verification || {};
+  const logic = reasoning.logic || {};
   let state = 'проверка с замечаниями';
   if (verification.status === 'pass') state = 'проверено';
   else if (reasoning.revised) state = 'исправлено после проверки';
   else if (verification.status === 'unavailable') state = 'проверка недоступна';
   const stepCount = reasoning.plan?.steps?.length || 0;
-  summary.textContent = `План · ${stepCount} шагов · ${state}`;
+  const logicStateLabels = {
+    UNDERSTAND: 'понимает запрос',
+    RETRIEVE: 'собирает контекст',
+    FRAME: 'формирует задачу',
+    PLAN: 'строит план',
+    CHECK: 'проверяет ограничения',
+    ACT: 'выполняет безопасный шаг',
+    VERIFY: 'проверяет результат',
+    REFLECT: 'оценивает результат',
+    CONTINUE: 'готова продолжить',
+    UNCERTAIN: 'есть неопределённость',
+    GATHER_EVIDENCE: 'нужны доказательства',
+    REPLAN: 'нужно перепланирование',
+    FAILED: 'шаг не выполнен',
+    DIAGNOSE: 'диагностирует причину',
+    READY_FOR_CONFIRMATION: 'нужно подтверждение'
+  };
+  const logicState = logicStateLabels[logic.current_state] || logic.current_state || '';
+  summary.textContent = `План · ${stepCount} шагов · ${state}${logicState ? ` · ${logicState}` : ''}`;
   details.append(summary);
 
   if (reasoning.plan?.goal) {
@@ -4432,6 +4451,27 @@ function createSayuriReasoningSummary(metadata) {
     });
     details.append(list);
   }
+  if (logic.current_state) {
+    const logicLine = document.createElement('p');
+    logicLine.className = 'sayuri-reasoning-logic-state';
+    const confidence = Number.isFinite(Number(logic.confidence))
+      ? ` · уверенность ${Math.round(Number(logic.confidence) * 100)}%`
+      : '';
+    logicLine.textContent = `Логика: ${logicState || logic.current_state}${confidence}`;
+    details.append(logicLine);
+  }
+  if (Array.isArray(logic.trace) && logic.trace.length) {
+    const trace = document.createElement('ul');
+    trace.className = 'sayuri-reasoning-trace';
+    logic.trace.slice(-6).forEach((entry) => {
+      if (!entry || !entry.summary) return;
+      const item = document.createElement('li');
+      const stage = logicStateLabels[entry.stage] || entry.stage || 'этап';
+      item.textContent = `${stage}: ${entry.summary}`;
+      trace.append(item);
+    });
+    if (trace.childElementCount) details.append(trace);
+  }
   if (Array.isArray(verification.issues) && verification.issues.length) {
     const note = document.createElement('p');
     note.className = 'sayuri-reasoning-issues';
@@ -4444,7 +4484,7 @@ function createSayuriReasoningSummary(metadata) {
     : '';
   const checked = Number(reasoning.automation?.evidence_receipts || 0);
   const automation = checked > 0 ? ` · автопроверка ${checked}` : '';
-  meta.textContent = `Reasoning Planner + Result Verifier · вызовов модели ${reasoning.model_calls || 0}${score}${automation}`;
+  meta.textContent = `Reasoning Logic 2.0 + Planner + Verifier · вызовов модели ${reasoning.model_calls || 0}${score}${automation}`;
   details.append(meta);
   return details;
 }

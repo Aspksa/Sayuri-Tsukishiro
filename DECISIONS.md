@@ -810,3 +810,28 @@ LLM не получает mutation tool для replan. Старый proposal н�
 
 Silent repair запрещён, потому что удаление межпроектной зависимости является business/project mutation и требует явного решения.
 
+## D-073 — Reasoning Logic является request-scoped state machine, а не второй памятью
+
+- Дата: 2026-10-06.
+- Статус: принято.
+- Источник: прямой запрос пользователя развивать логику мышления Sayuri.
+- Решение: Reasoning Logic 2.0 располагается внутри Agent Core и не создаёт отдельную БД, автономный Planner или вторую LLM.
+- Goal/Task state остаётся в Memory 4.x; blockers/scheduler — в Cognitive Project Brain; mutations — только через Action Broker.
+- Причина: будущие модули должны использовать один общий reasoning contract без размножения когнитивных контуров.
+
+## D-074 — Decision Trace заменяет хранение скрытого chain-of-thought
+
+- Дата: 2026-10-06.
+- Статус: принято.
+- Решение: пользовательский trace содержит только stage/status/code/summary, confidence и проверяемые summaries.
+- Запрещено сохранять или показывать скрытый chain-of-thought, system prompt, raw receipts, secrets или внутренние токены модели.
+- Причина: нужна прозрачность решения без утечки внутреннего reasoning transcript.
+
+## D-075 — Blocker, uncertainty и human confirmation имеют приоритет над Planner
+
+- Дата: 2026-10-06.
+- Статус: принято.
+- Решение: local Reasoning Logic Gate может остановить маршрут модели.
+- Active blocker запрещает ACT; high uncertainty требует GATHER_EVIDENCE; verifier revise приводит к REPLAN; completion readiness приводит только к READY_FOR_CONFIRMATION.
+- Planner/Verifier не могут отменить эти правила текстом ответа.
+
