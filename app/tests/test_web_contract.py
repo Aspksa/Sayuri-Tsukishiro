@@ -104,7 +104,8 @@ class WebContractTests(unittest.TestCase):
         css = (ROOT / "web" / "styles.css").read_text(encoding="utf-8")
 
         self.assertIn('id="view-sayuri"', html)
-        self.assertIn('id="sayuri-account-nav"', html)
+        self.assertNotIn('id="sayuri-account-nav"', html)
+        self.assertIn('data-sayuri-action="account"', html)
         self.assertIn('id="sayuri-orb"', html)
         self.assertIn('id="sayuri-context-menu"', html)
         self.assertIn('id="sayuri-chat-window"', html)
@@ -124,7 +125,40 @@ class WebContractTests(unittest.TestCase):
         self.assertIn('.sayuri-orb', css)
         self.assertIn('.sayuri-chat-window', css)
         self.assertIn('.sayuri-account-grid', css)
+        self.assertIn('.sayuri-account-tabs', css)
         self.assertIn('SAYURI UI 0.14 — Global Assistant & Personal Cabinet', css)
+        self.assertIn('SAYURI UI 0.26 — Presence UX / ChatGPT-like Chat / Cabinet Tabs', css)
+
+    def test_sayuri_presence_ux_has_smooth_drag_resize_and_cabinet_tabs(self):
+        html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+        css = (ROOT / "web" / "styles.css").read_text(encoding="utf-8")
+
+        self.assertNotIn('id="sayuri-account-nav"', html)
+        self.assertIn('data-sayuri-tab="profile"', html)
+        self.assertIn('data-sayuri-tab="memory"', html)
+        self.assertIn('data-sayuri-tab="diagnostics"', html)
+        self.assertIn('data-sayuri-memory-tab="overview"', html)
+        self.assertIn('data-sayuri-memory-tab="quality"', html)
+        self.assertIn('id="sayuri-chat-resize"', html)
+        self.assertIn('id="sayuri-chat-reset-size"', html)
+        self.assertIn('sayuri-chat-footer', html)
+
+        self.assertIn('requestAnimationFrame', script)
+        self.assertIn('translate3d', script)
+        self.assertIn('setPointerCapture', script)
+        self.assertIn('beginChatResize', script)
+        self.assertIn('sayuri-chat-size', script)
+        self.assertIn('setSayuriAccountTab', script)
+        self.assertIn('setSayuriMemoryTab', script)
+        self.assertIn('autoSizeSayuriComposer', script)
+
+        self.assertIn('.sayuri-chat-resize-handle', css)
+        self.assertIn('.sayuri-chat-send-button', css)
+        self.assertIn('.sayuri-profile-overview', css)
+        self.assertIn('.sayuri-memory-tabs', css)
+        self.assertIn('[data-sayuri-panel][hidden]', css)
+        self.assertIn('[data-sayuri-memory-panel][hidden]', css)
 
     def test_personal_cabinet_has_memory_and_avatar_studio(self):
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")

@@ -5497,3 +5497,434 @@ footer {
    SAYURI UI 0.25 — Background Evidence Automation
    Technical execution receipts stay out of the ordinary UI.
    ========================================================================== */
+
+
+/* ==========================================================================
+   SAYURI UI 0.26 — Presence UX / ChatGPT-like Chat / Cabinet Tabs
+   ========================================================================== */
+
+/* Personal cabinet: one clear section at a time. */
+.sayuri-account-tabs {
+  position: sticky;
+  top: 12px;
+  z-index: 18;
+  display: flex;
+  gap: 6px;
+  margin: 18px 0 16px;
+  padding: 5px;
+  overflow-x: auto;
+  border: 1px solid var(--ui-line, #e4e8ee);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, .94);
+  box-shadow: 0 8px 24px rgba(26, 32, 44, .06);
+  backdrop-filter: blur(14px);
+  scrollbar-width: none;
+}
+.sayuri-account-tabs::-webkit-scrollbar { display: none; }
+.sayuri-account-tabs button {
+  flex: 0 0 auto;
+  min-height: 38px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ui-muted, #667085);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease, box-shadow 140ms ease;
+}
+.sayuri-account-tabs button:hover {
+  background: #f5f6f8;
+  color: var(--ui-text, #171b24);
+}
+.sayuri-account-tabs button.active {
+  background: #fff;
+  color: var(--ui-text, #171b24);
+  box-shadow: 0 1px 3px rgba(16, 24, 40, .10), 0 0 0 1px rgba(16, 24, 40, .05);
+}
+[data-sayuri-panel][hidden] {
+  display: none !important;
+}
+.sayuri-profile-overview {
+  display: grid;
+  grid-template-columns: minmax(240px, .85fr) minmax(360px, 1.4fr);
+  gap: 22px;
+  align-items: start;
+}
+.sayuri-profile-overview h3 {
+  margin: 4px 0 8px;
+}
+.sayuri-profile-overview p {
+  margin: 0;
+  color: var(--ui-muted, #667085);
+  line-height: 1.6;
+}
+.sayuri-profile-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+.sayuri-profile-overview-grid button {
+  display: grid;
+  gap: 4px;
+  min-height: 72px;
+  padding: 12px 13px;
+  border: 1px solid #e5e8ed;
+  border-radius: 13px;
+  background: #fbfcfd;
+  color: var(--ui-text, #171b24);
+  text-align: left;
+  cursor: pointer;
+  transition: transform 140ms ease, border-color 140ms ease, background 140ms ease;
+}
+.sayuri-profile-overview-grid button:hover {
+  transform: translateY(-1px);
+  border-color: #d6dbe3;
+  background: #fff;
+}
+.sayuri-profile-overview-grid span {
+  color: var(--ui-muted, #667085);
+  font-size: 11px;
+  font-weight: 700;
+}
+.sayuri-profile-overview-grid strong {
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+/* Orb movement: compositor-only while pointer is moving. */
+.sayuri-orb {
+  will-change: transform;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+.sayuri-orb.is-dragging,
+.sayuri-orb.is-dragging:hover {
+  cursor: grabbing;
+  transition: none !important;
+  transform-origin: center;
+  box-shadow: 0 24px 58px rgba(45, 34, 71, .28);
+}
+.sayuri-orb.is-dragging img {
+  pointer-events: none;
+}
+
+/* ChatGPT-like floating conversation surface. */
+.sayuri-chat-window {
+  width: min(560px, calc(100vw - 32px));
+  height: min(720px, calc(100vh - 32px));
+  min-width: 420px;
+  min-height: 480px;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  border: 1px solid #dedfe3;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, .20);
+  backdrop-filter: none;
+  will-change: transform, width, height;
+}
+.sayuri-chat-window.is-dragging,
+.sayuri-chat-window.is-resizing {
+  transition: none !important;
+  user-select: none;
+}
+.sayuri-chat-head {
+  display: flex;
+  grid-template-columns: none;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 56px;
+  padding: 8px 10px 8px 12px;
+  border-bottom: 1px solid #ececef;
+  background: #fff;
+  cursor: grab;
+}
+.sayuri-chat-window.is-dragging .sayuri-chat-head {
+  cursor: grabbing;
+}
+.sayuri-chat-identity,
+.sayuri-chat-head-actions {
+  display: flex;
+  align-items: center;
+}
+.sayuri-chat-identity {
+  min-width: 0;
+  gap: 9px;
+}
+.sayuri-chat-identity > div {
+  display: grid;
+  min-width: 0;
+  line-height: 1.2;
+}
+.sayuri-chat-identity strong {
+  font-size: 14px;
+  font-weight: 700;
+}
+.sayuri-chat-identity small {
+  max-width: 260px;
+  overflow: hidden;
+  color: #7b8190;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sayuri-chat-head img {
+  width: 34px;
+  height: 34px;
+  border: 1px solid #e7e7ea;
+}
+.sayuri-chat-head-actions {
+  gap: 2px;
+}
+.sayuri-chat-head-actions .icon-button {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  color: #606673;
+  background: transparent;
+}
+.sayuri-chat-head-actions .icon-button:hover {
+  background: #f4f4f5;
+}
+.sayuri-chat-messages {
+  min-height: 0;
+  padding: 22px 22px 12px;
+  overflow-y: auto;
+  background: #fff;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.sayuri-message {
+  align-items: flex-start;
+  gap: 9px;
+  margin: 0 auto 18px;
+  max-width: 760px;
+}
+.sayuri-message img {
+  width: 28px;
+  height: 28px;
+  flex-basis: 28px;
+  margin-top: 2px;
+}
+.sayuri-message > div {
+  max-width: calc(100% - 38px);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #24262b;
+  font-size: 14px;
+  line-height: 1.62;
+  box-shadow: none;
+}
+.sayuri-message.user {
+  justify-content: flex-end;
+}
+.sayuri-message.user img {
+  display: none;
+}
+.sayuri-message.user > div {
+  max-width: 82%;
+  padding: 10px 14px;
+  border: 0;
+  border-radius: 18px;
+  background: #f2f2f3;
+  color: #202124;
+}
+.sayuri-reasoning-summary {
+  margin-top: 10px;
+  border-color: #e6e7ea;
+  background: #fafafa;
+}
+.sayuri-chat-footer {
+  padding: 0 14px 12px;
+  background: #fff;
+}
+.sayuri-chat-status {
+  min-height: 20px;
+  padding: 0 4px 5px;
+  border: 0;
+  color: #8a8f99;
+  font-size: 10px;
+}
+.sayuri-chat-form {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 8px 8px 8px 14px;
+  border: 1px solid #d9dadd;
+  border-radius: 22px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, .04), 0 8px 24px rgba(16, 24, 40, .06);
+}
+.sayuri-chat-form:focus-within {
+  border-color: #c8c9ce;
+  box-shadow: 0 0 0 2px rgba(100, 102, 108, .06), 0 8px 24px rgba(16, 24, 40, .07);
+}
+.sayuri-chat-form textarea {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 26px;
+  max-height: 180px;
+  height: 26px;
+  padding: 3px 0;
+  border: 0;
+  outline: 0;
+  resize: none;
+  background: transparent;
+  color: #202124;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.45;
+  overflow-y: auto;
+}
+.sayuri-chat-form textarea:focus {
+  border: 0;
+  outline: 0;
+  box-shadow: none;
+}
+.sayuri-chat-send-button {
+  display: grid;
+  place-items: center;
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: #222;
+  color: #fff;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform 120ms ease, opacity 120ms ease;
+}
+.sayuri-chat-send-button:hover {
+  transform: translateY(-1px);
+}
+.sayuri-chat-send-button:disabled {
+  opacity: .35;
+  cursor: default;
+  transform: none;
+}
+.sayuri-chat-hint {
+  display: block;
+  margin-top: 6px;
+  color: #999da6;
+  font-size: 9.5px;
+  text-align: center;
+}
+.sayuri-chat-resize-handle {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  z-index: 4;
+  width: 18px;
+  height: 18px;
+  cursor: nwse-resize;
+  touch-action: none;
+}
+.sayuri-chat-resize-handle::after {
+  content: "";
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid #c6c9cf;
+  border-bottom: 2px solid #c6c9cf;
+  border-radius: 1px;
+}
+
+/* The account entry is intentionally avatar-only from v0.1.50 onward. */
+.sayuri-account-nav {
+  display: none !important;
+}
+
+@media (max-width: 900px) {
+  .sayuri-profile-overview {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .sayuri-account-tabs {
+    top: 8px;
+    margin-top: 12px;
+    border-radius: 12px;
+  }
+  .sayuri-account-tabs button {
+    min-height: 36px;
+    padding: 0 11px;
+    font-size: 12px;
+  }
+  .sayuri-profile-overview-grid {
+    grid-template-columns: 1fr;
+  }
+  .sayuri-chat-window {
+    left: 6px !important;
+    right: 6px !important;
+    top: 6px !important;
+    bottom: 6px !important;
+    width: auto !important;
+    height: auto !important;
+    min-width: 0;
+    min-height: 0;
+    border-radius: 16px;
+  }
+  .sayuri-chat-messages {
+    padding: 18px 14px 8px;
+  }
+  .sayuri-message > div {
+    font-size: 13.5px;
+  }
+  .sayuri-chat-footer {
+    padding: 0 8px 8px;
+  }
+  .sayuri-chat-resize-handle,
+  #sayuri-chat-reset-size {
+    display: none;
+  }
+}
+
+.sayuri-memory-tabs {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 6px;
+  margin: 0 0 2px;
+  padding: 4px;
+  overflow-x: auto;
+  border: 1px solid #e5e8ed;
+  border-radius: 12px;
+  background: #f8f9fb;
+  scrollbar-width: none;
+}
+.sayuri-memory-tabs::-webkit-scrollbar { display: none; }
+.sayuri-memory-tabs button {
+  flex: 0 0 auto;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: #697181;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.sayuri-memory-tabs button:hover {
+  background: #fff;
+  color: #24262b;
+}
+.sayuri-memory-tabs button.active {
+  background: #fff;
+  color: #24262b;
+  box-shadow: 0 1px 3px rgba(16, 24, 40, .10);
+}
+[data-sayuri-memory-panel][hidden] {
+  display: none !important;
+}

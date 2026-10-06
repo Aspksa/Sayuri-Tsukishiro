@@ -1182,3 +1182,75 @@ reasoning.automation
 ### Evidence budget
 
 Перед Cloud.ru каждый output ограничивается отдельно. Oversized output заменяется объектом `{truncated:true, excerpt_json:...}`, затем весь evidence-list укладывается в общий 9000-char budget. Локальный SHA-256 считается по sanitized полному output до Cloud truncation.
+
+
+## Sayuri Presence UX 0.26
+
+Релиз проекта: `0.1.50`.
+
+### Floating avatar
+
+Аватар Sayuri больше не обновляет `left/top` на каждом `pointermove`.
+
+Pipeline:
+
+```text
+pointerdown
+→ threshold 5px
+→ pointer capture
+→ pointermove
+→ requestAnimationFrame
+→ translate3d()
+→ viewport clamp
+→ pointerup
+→ one-time left/top commit
+→ one-time localStorage write
+```
+
+Это уменьшает layout/reflow во время движения и устраняет ощущение «залипания».
+
+Local state:
+
+- `sayuri-orb-position` — финальная позиция аватара;
+- `sayuri-chat-position` — финальная позиция окна;
+- `sayuri-chat-size` — ширина/высота окна;
+- `sayuri-account-tab` — активная вкладка кабинета;
+- `sayuri-memory-tab` — активный подраздел памяти.
+
+### Floating chat
+
+Desktop:
+
+- default около 560×720;
+- min 420×480;
+- max ограничивается viewport;
+- drag только за header;
+- resize через `#sayuri-chat-resize`;
+- размер сохраняется после `pointerup`;
+- кнопка `#sayuri-chat-reset-size` сбрасывает только размер.
+
+Mobile <=640 px:
+
+- окно занимает безопасную область с отступом 6 px;
+- manual resize отключён;
+- сохранённый desktop size не ломает mobile layout.
+
+Composer автоматически меняет высоту через `scrollHeight` до 180 px.
+
+### Personal cabinet
+
+Левого navigation entry больше нет. Доступ:
+
+- ЛКМ по orb -> chat;
+- ПКМ по orb -> context menu;
+- context action `account` -> `showView('sayuri')`.
+
+Top-level tabs:
+
+`profile | ai | behavior | memory | appearance | diagnostics`.
+
+Memory sub-tabs:
+
+`overview | architecture | quality | experience`.
+
+Скрытие выполняется нативным `hidden` на `data-sayuri-panel` и `data-sayuri-memory-panel`, поэтому функции остаются в DOM и существующие API/loaders не переписываются.
