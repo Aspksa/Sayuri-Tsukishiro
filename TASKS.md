@@ -302,3 +302,18 @@
 - Разделить Личный кабинет на смысловые вкладки без удаления существующей функциональности.
 - Добавить regression contract для avatar-only entry, tabs, smooth drag и resize.
 - Приёмка: один атомарный commit от `main 0.1.49`, полный workflow Versions, PR merge и зелёный финальный main CI.
+
+
+## UI-005 — UI System & Chat Polish
+
+- Статус: `implemented in target 0.1.51`; выпуск считается проверенным только после зелёного branch/PR/main CI.
+- Версия проекта: `0.1.51`.
+- Сохранить текущую структуру левого меню.
+- Добавить UI 0.27 design-system layer без новой зависимости и без переписывания backend.
+- Добавить fullscreen/maximize существующего floating chat.
+- Добавить Ctrl/⌘+K command palette без постоянной визуальной панели.
+- Упростить постоянный chat status и оставить технические детали в reasoning summary.
+- Добавить copy action для сообщений и transient toast feedback.
+- Усилить focus-visible, responsive behavior, scrollbars и prefers-reduced-motion.
+- Добавить Web contract regressions для всех новых UX-инвариантов.
+- Приёмка: один атомарный commit от подтверждённого `main 0.1.50`, Versions workflow success, PR merge и зелёный финальный main CI.

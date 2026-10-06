@@ -5885,7 +5885,8 @@ footer {
     padding: 0 8px 8px;
   }
   .sayuri-chat-resize-handle,
-  #sayuri-chat-reset-size {
+  #sayuri-chat-reset-size,
+  #sayuri-chat-maximize {
     display: none;
   }
 }
@@ -5927,4 +5928,461 @@ footer {
 }
 [data-sayuri-memory-panel][hidden] {
   display: none !important;
+}
+
+
+/* ==========================================================================
+   SAYURI UI 0.27 — Global Product Polish
+   Professional tokens, command palette, fullscreen chat and accessibility.
+   ========================================================================== */
+
+:root {
+  --ui-bg: #f6f7f9;
+  --ui-surface: #ffffff;
+  --ui-surface-soft: #f8f9fb;
+  --ui-surface-raised: #ffffff;
+  --ui-surface-hover: #f2f4f7;
+  --ui-text: #181b20;
+  --ui-text-2: #495363;
+  --ui-muted: #697586;
+  --ui-subtle: #8c95a3;
+  --ui-line: #e4e7eb;
+  --ui-line-strong: #d6dbe1;
+  --ui-focus: #586a85;
+  --ui-success: #277b54;
+  --ui-warning: #946b24;
+  --ui-danger: #b34343;
+
+  --ui-space-1: 4px;
+  --ui-space-2: 8px;
+  --ui-space-3: 12px;
+  --ui-space-4: 16px;
+  --ui-space-5: 20px;
+  --ui-space-6: 24px;
+  --ui-space-8: 32px;
+  --ui-space-10: 40px;
+
+  --ui-radius-xs: 7px;
+  --ui-radius-sm: 10px;
+  --ui-radius-md: 14px;
+  --ui-radius-lg: 18px;
+  --ui-radius-xl: 24px;
+
+  --ui-shadow-xs: 0 1px 2px rgba(16, 24, 40, .04);
+  --ui-shadow-sm: 0 6px 20px rgba(16, 24, 40, .055);
+  --ui-shadow-md: 0 14px 40px rgba(16, 24, 40, .09);
+  --ui-shadow-float: 0 28px 80px rgba(15, 23, 42, .20);
+
+  --ui-duration-fast: 120ms;
+  --ui-duration: 170ms;
+}
+
+body {
+  color: var(--ui-text);
+  background: var(--ui-bg);
+}
+
+button,
+a,
+input,
+select,
+textarea,
+summary {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button,
+.primary-button,
+.secondary-button {
+  transition:
+    background var(--ui-duration-fast) ease,
+    border-color var(--ui-duration-fast) ease,
+    color var(--ui-duration-fast) ease,
+    box-shadow var(--ui-duration-fast) ease,
+    transform var(--ui-duration-fast) ease;
+}
+
+.primary-button,
+.secondary-button {
+  min-height: 40px;
+  padding: 9px 14px;
+  border-radius: var(--ui-radius-sm);
+  font-size: 12.5px;
+  font-weight: 650;
+}
+
+.primary-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: var(--ui-shadow-xs);
+}
+
+.secondary-button:hover:not(:disabled) {
+  border-color: var(--ui-line-strong);
+  background: var(--ui-surface-hover);
+}
+
+input:not([type="checkbox"]):not([type="radio"]),
+select,
+textarea {
+  border-color: var(--ui-line-strong);
+  border-radius: var(--ui-radius-sm);
+  background: var(--ui-surface);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #9aa2ae;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--ui-focus) 72%, white);
+  outline-offset: 2px;
+}
+
+.summary-card,
+.settings-section,
+.home-note,
+.disk-panel,
+.sayuri-account-card {
+  border-color: var(--ui-line);
+  box-shadow: var(--ui-shadow-xs);
+}
+
+.summary-card:hover {
+  border-color: var(--ui-line-strong);
+  box-shadow: var(--ui-shadow-sm);
+}
+
+.section-head h3,
+.settings-intro h2,
+.sayuri-profile-copy h2 {
+  text-wrap: balance;
+}
+
+.lead,
+.sayuri-card-copy,
+.settings-intro p,
+.home-note p {
+  text-wrap: pretty;
+}
+
+.muted {
+  color: var(--ui-muted);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  min-height: 34px;
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: #c7ccd4;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #aeb5c0;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Chat: focused conversation first, technical details second. */
+.sayuri-chat-window {
+  isolation: isolate;
+}
+.sayuri-chat-window.is-maximized {
+  inset: 12px !important;
+  width: auto !important;
+  height: auto !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  border-radius: 20px;
+  box-shadow: 0 30px 100px rgba(15, 23, 42, .24);
+  transform: none !important;
+}
+.sayuri-chat-window.is-maximized .sayuri-chat-resize-handle {
+  display: none;
+}
+.sayuri-chat-window.is-maximized .sayuri-chat-messages {
+  padding-inline: max(22px, calc((100% - 900px) / 2));
+}
+.sayuri-chat-window.is-maximized .sayuri-message {
+  max-width: 860px;
+}
+.sayuri-chat-window.is-maximized .sayuri-chat-footer {
+  width: min(900px, calc(100% - 32px));
+  margin-inline: auto;
+}
+.sayuri-chat-head-actions .icon-button {
+  border: 0;
+}
+.sayuri-chat-status {
+  min-height: 18px;
+  color: #858b95;
+  font-size: 10.5px;
+  letter-spacing: .01em;
+}
+.sayuri-message {
+  position: relative;
+}
+.sayuri-message-text {
+  margin: 0;
+  white-space: pre-wrap;
+}
+.sayuri-message-actions {
+  display: flex;
+  gap: 4px;
+  min-height: 24px;
+  margin-top: 6px;
+  opacity: 0;
+  transition: opacity var(--ui-duration-fast) ease;
+}
+.sayuri-message:hover .sayuri-message-actions,
+.sayuri-message:focus-within .sayuri-message-actions {
+  opacity: 1;
+}
+.sayuri-message-actions button {
+  width: 28px;
+  min-height: 26px;
+  padding: 2px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #858b95;
+  font-size: 15px;
+  line-height: 1;
+}
+.sayuri-message-actions button:hover {
+  background: #f2f3f5;
+  color: #474d57;
+}
+.sayuri-message.user .sayuri-message-actions {
+  justify-content: flex-end;
+}
+.sayuri-chat-form {
+  transition: border-color var(--ui-duration) ease, box-shadow var(--ui-duration) ease;
+}
+.sayuri-chat-hint {
+  user-select: none;
+}
+
+/* Command palette: one global way to navigate without adding UI clutter. */
+.command-palette-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: grid;
+  place-items: start center;
+  padding: min(16vh, 150px) 16px 16px;
+  background: rgba(15, 18, 24, .32);
+  backdrop-filter: blur(5px);
+}
+.command-palette-backdrop.hidden {
+  display: none;
+}
+.command-palette {
+  width: min(640px, calc(100vw - 28px));
+  overflow: hidden;
+  border: 1px solid rgba(215, 219, 225, .92);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, .99);
+  box-shadow: 0 28px 90px rgba(15, 23, 42, .24);
+  animation: commandPaletteIn 140ms ease-out;
+}
+.command-palette-search {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  min-height: 58px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--ui-line);
+}
+.command-palette-search > span {
+  color: #8c94a0;
+  font-size: 16px;
+  text-align: center;
+}
+.command-palette-search input {
+  width: 100%;
+  min-height: 40px;
+  padding: 0;
+  border: 0 !important;
+  outline: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  font-size: 15px;
+}
+.command-palette-search kbd {
+  padding: 3px 7px;
+  border: 1px solid #dfe2e7;
+  border-bottom-width: 2px;
+  border-radius: 7px;
+  background: #f7f8fa;
+  color: #7a828e;
+  font: 10px var(--font-ui);
+}
+.command-palette-list {
+  max-height: min(48vh, 430px);
+  padding: 7px;
+  overflow-y: auto;
+}
+.command-palette-item {
+  width: 100%;
+  min-height: 46px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ui-text);
+  text-align: left;
+}
+.command-palette-item span {
+  font-size: 13px;
+  font-weight: 600;
+}
+.command-palette-item small {
+  color: var(--ui-muted);
+  font-size: 10.5px;
+}
+.command-palette-item:hover,
+.command-palette-item.active {
+  background: #f1f3f6;
+}
+.command-palette-empty {
+  padding: 30px 12px;
+  color: var(--ui-muted);
+  font-size: 12px;
+  text-align: center;
+}
+.command-palette-foot {
+  display: flex;
+  gap: 16px;
+  padding: 8px 14px 10px;
+  border-top: 1px solid var(--ui-line);
+  background: #fafbfc;
+  color: #8c94a0;
+  font-size: 9.5px;
+}
+
+/* Lightweight transient feedback instead of adding permanent status panels. */
+.ui-toast-region {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 350;
+  display: grid;
+  gap: 8px;
+  width: min(340px, calc(100vw - 32px));
+  pointer-events: none;
+}
+.ui-toast {
+  transform: translateY(6px);
+  opacity: 0;
+  padding: 11px 13px;
+  border: 1px solid var(--ui-line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, .98);
+  color: var(--ui-text-2);
+  box-shadow: var(--ui-shadow-md);
+  font-size: 12px;
+  line-height: 1.45;
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+.ui-toast.visible {
+  transform: translateY(0);
+  opacity: 1;
+}
+.ui-toast.success {
+  border-color: #cde4d7;
+}
+.ui-toast.error {
+  border-color: #ebcaca;
+}
+
+/* Consistent empty/loading presentation. */
+.disk-empty,
+.preview-unsupported,
+.command-palette-empty {
+  text-wrap: balance;
+}
+.disk-empty {
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(249, 250, 251, .6), rgba(255, 255, 255, .9));
+}
+
+/* More stable responsive behavior on common laptop resolutions. */
+@media (max-height: 760px) and (min-width: 641px) {
+  .sayuri-chat-window {
+    height: calc(100vh - 24px);
+    bottom: 12px;
+  }
+}
+@media (max-width: 760px) {
+  .command-palette-backdrop {
+    place-items: start stretch;
+    padding: 10px;
+  }
+  .command-palette {
+    width: 100%;
+    border-radius: 15px;
+  }
+  .command-palette-foot {
+    display: none;
+  }
+  .ui-toast-region {
+    right: 10px;
+    bottom: 10px;
+    width: calc(100vw - 20px);
+  }
+}
+@media (max-width: 640px) {
+  .sayuri-chat-window.is-maximized {
+    inset: 6px !important;
+    border-radius: 16px;
+  }
+  .sayuri-chat-hint {
+    display: none;
+  }
+  .sayuri-message-actions {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+  }
+}
+
+@keyframes commandPaletteIn {
+  from {
+    transform: translateY(-8px) scale(.99);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
 }
