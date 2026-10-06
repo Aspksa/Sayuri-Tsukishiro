@@ -1384,3 +1384,93 @@ Skeleton state: `.sayuri-lazy-loading`, `aria-busy`.
 ### Security regression
 
 Web contract должен проверять, что участок `renderSayuriRichText` не содержит `innerHTML`. Backend regression должен проверять, что public evidence не содержит `receipt:` и `sha256:`.
+
+
+## Spatial Evidence Citations 0.1.53
+
+### Версии
+
+- Project: `0.1.53`.
+- Core: `0.1.45`.
+- Agent Core: `0.11.0`.
+- Web UI: `0.29.0`.
+- Disk: `0.8.0`.
+- SpatialDNAEngine: `0.8.0`.
+- DB schema и DNA JSON schema не меняются.
+
+### Pipeline
+
+```text
+complex document question
+→ Reasoning Planner
+→ document.evidence_search (read-only)
+→ cached disk_dna facts only
+→ quality + exact locator gate
+→ Memory 4.1 privacy/instruction filter
+→ bounded D1..D6 evidence to Cloud.ru
+→ answer with supported [D#]
+→ Result Verifier
+→ runtime removes unknown D#
+→ public evidence metadata
+→ click citation
+→ file_id + fact_id
+→ backend resolves stored locator
+→ PDFium/Pillow Evidence Focus
+```
+
+### Read-only evidence search
+
+`DiskService.search_cached_evidence(file_id, query, limit<=6)`:
+
+- читает только существующий `disk_dna.dna_json`;
+- не вызывает `document_dna()`;
+- не запускает OCR;
+- не обновляет cache/version/ledger;
+- исключает rejected facts;
+- требует exact Spatial locator;
+- ранжирует локально по token overlap, phrase match, quality gate и confidence.
+
+### Cloud boundary
+
+`SayuriCore._sayuri_document_evidence_handlers()` владеет доступом к DiskService, потому что Agent Core не получает прямой файловый доступ.
+
+Перед Cloud удаляются:
+
+- bbox;
+- физический path;
+- raw receipt metadata;
+- rejected/local-only evidence.
+
+Остаются citation_id, безопасный fact/excerpt, page/line, quality/confidence.
+
+### Citation firewall
+
+D-ID имеют фиксированный формат `D1..D6`.
+
+`SayuriAgent._strip_unknown_spatial_citations()` удаляет marker, которого нет в фактически выполненном `document.evidence_search`.
+
+Public `evidence` содержит `target={type:"disk_evidence",file_id,fact_id}`, но не raw bbox.
+
+### Evidence Focus
+
+API:
+
+`GET /api/disk/files/{file_id}/evidence-focus?fact_id={fact_id}`
+
+Endpoint не принимает координаты. `DiskService.render_evidence_focus()`:
+
+1. читает cached DNA;
+2. находит exact fact_id;
+3. проверяет non-rejected + exact locator;
+4. локально передаёт сохранённый bbox SpatialDNAEngine;
+5. возвращает PNG page/image с жёлтой подсветкой.
+
+Для PDF используется PDFium, для image — Pillow. Если точной геометрии нет, endpoint отказывает вместо приблизительной подсветки.
+
+### Web UI
+
+- `[D1]` внутри safe rich renderer становится `.sayuri-inline-citation` только при наличии matching public evidence.
+- нижний Evidence Summary показывает D-ID, документ, page/line и excerpt;
+- клик открывает существующий Disk viewer и заменяет preview на Evidence Focus;
+- «Обычный просмотр» возвращает штатный preview;
+- menu/navigation structure не изменяется.

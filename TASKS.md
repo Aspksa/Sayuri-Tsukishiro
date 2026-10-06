@@ -333,3 +333,19 @@
 - После mutations обновлять тяжёлые панели только если они уже были открыты.
 - Добавить regressions на XSS boundary, evidence privacy и lazy loading.
 - Приёмка: один атомарный commit от подтверждённого `main 0.1.51`, зелёный Versions workflow, PR merge и зелёный финальный main CI.
+
+
+## AI-008 — Spatial Evidence Citations
+
+- Статус: `implemented in target 0.1.53`; релиз считается проверенным только после зелёного branch/PR/main CI.
+- База: `main 0.1.52`, commit `ab10ff8d0388c1f26c7dd7b635635298e9b129ba`, Versions #493 success.
+- Добавить read-only `document.evidence_search` в Evidence Tool Planner.
+- Искать evidence только по cached DNA текущего файла; автоматический reanalysis/OCR не запускать.
+- Разрешать точные citations только для `exact_from_document_engine` locator.
+- Не передавать bbox в Cloud.ru; DeepSeek получает bounded D1..D6 facts с page/line.
+- Runtime обязан удалить неизвестные D-citations перед выдачей ответа.
+- Evidence Focus endpoint принимает только file_id + fact_id и сам разрешает bbox из DNA.
+- Web chat отображает inline D-citation и компактный источник; клик открывает точную подсветку в существующем viewer.
+- Меню проекта не менять.
+- Добавить regression tests tool policy, cached evidence, fact-id focus, privacy projection, citation firewall и Web/API contracts.
+- Приёмка: один атомарный commit от подтверждённого `main 0.1.52`, branch CI, PR CI, merge и зелёный финальный main workflow.

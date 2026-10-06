@@ -353,7 +353,7 @@ class DiskApiTests(unittest.TestCase):
         ) as response:
             dna = json.loads(response.read().decode("utf-8"))
         self.assertEqual(dna["analyzer_version"], "0.7.0")
-        self.assertEqual(dna["spatial"]["engine_version"], "0.7.0")
+        self.assertEqual(dna["spatial"]["engine_version"], "0.8.0")
         self.assertIn(dna["spatial"]["status"], {"not_applicable", "unavailable"})
 
         with urllib.request.urlopen(
