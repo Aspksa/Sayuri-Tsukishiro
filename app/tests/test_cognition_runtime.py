@@ -111,14 +111,96 @@ class CognitiveRuntimeIntegrationTests(unittest.TestCase):
         self.assertIn("/api/sayuri/cognition/projects", server_source)
         self.assertIn("/api/sayuri/cognition/modules", server_source)
         self.assertIn("/api/sayuri/cognition/dependencies", server_source)
+        self.assertIn("/api/sayuri/cognition/milestones", server_source)
+        self.assertIn("/api/sayuri/cognition/external-blockers", server_source)
         self.assertIn("/api/sayuri/cognition/tasks/", server_source)
         self.assertIn("/api/sayuri/cognition/uncertainties/", server_source)
         self.assertIn("/api/sayuri/cognition/replans/", server_source)
         self.assertIn("APPLY_REPLAN", server_source)
         self.assertIn("def add_sayuri_cognitive_dependency", core_source)
+        self.assertIn("def register_sayuri_cognitive_milestone", core_source)
+        self.assertIn("def add_sayuri_cognitive_external_blocker", core_source)
+        self.assertIn("COMPLETE_MILESTONE", server_source)
         self.assertIn('"cognition.next"', tool_source)
         self.assertNotIn('"cognition.apply_replan"', tool_source)
         self.assertNotIn('"cognition.add_dependency"', tool_source)
+        self.assertNotIn('"cognition.complete_milestone"', tool_source)
+        self.assertNotIn('"cognition.add_external_blocker"', tool_source)
+
+
+    def test_portfolio_milestone_and_external_blocker_local_api(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            core = SayuriCore(Settings(root=Path(tmp)))
+            core.initialize(record_event=False)
+            source_task = core.create_sayuri_memory_v4_task(
+                title="Подготовить общий API",
+                next_action="Проверить API.",
+                context={"project_key": "platform"},
+            )["task"]
+            target_task = core.create_sayuri_memory_v4_task(
+                title="Использовать общий API",
+                next_action="Подключить API.",
+                context={"project_key": "consumer"},
+            )["task"]
+            milestone = core.register_sayuri_cognitive_milestone(
+                "platform",
+                "api-ready",
+                title="API Ready",
+                priority=5,
+            )["milestone"]
+            core.link_sayuri_cognitive_milestone_task(
+                milestone["id"],
+                source_task["id"],
+                required=True,
+            )
+            blocker = core.add_sayuri_cognitive_external_blocker(
+                "consumer",
+                "wait-platform",
+                "Ожидается API Ready",
+                task_id=target_task["id"],
+                source_project_key="platform",
+                source_milestone_id=milestone["id"],
+            )["external_blocker"]
+
+            before = core.sayuri_cognition(
+                query="Использовать общий API",
+                context={"project_key": "consumer"},
+            )
+            self.assertIsNone(before["context"]["scheduler"]["selected"])
+            self.assertEqual(
+                before["context"]["scheduler"]["blocked_by_external"],
+                1,
+            )
+
+            core.update_sayuri_memory_v4_task(
+                source_task["id"],
+                status="done",
+            )
+            with self.assertRaises(BadRequestError):
+                core.complete_sayuri_cognitive_milestone(
+                    milestone["id"],
+                    confirmation="",
+                )
+            completed = core.complete_sayuri_cognitive_milestone(
+                milestone["id"],
+                confirmation="COMPLETE_MILESTONE",
+            )
+            self.assertEqual(completed["milestone"]["status"], "done")
+
+            after = core.sayuri_cognition(
+                query="Использовать общий API",
+                context={"project_key": "consumer"},
+            )
+            self.assertEqual(
+                after["context"]["scheduler"]["selected"]["id"],
+                target_task["id"],
+            )
+            listed = core.sayuri_cognitive_external_blockers(
+                project_key="consumer",
+                task_id=target_task["id"],
+            )["external_blockers"]
+            self.assertEqual(listed[0]["id"], blocker["id"])
+            self.assertEqual(listed[0]["effective_status"], "resolved")
 
 
 if __name__ == "__main__":

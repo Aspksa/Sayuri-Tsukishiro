@@ -274,7 +274,25 @@ class EvidenceToolPlannerTests(unittest.TestCase):
             )
             self.assertEqual(receipt["status"], "completed")
             self.assertEqual(receipt["mode"], "read_only")
-            self.assertEqual(planner.public_status()["version"], "0.4.1")
+            self.assertEqual(planner.public_status()["version"], "0.4.2")
+
+            milestone = planner.execute_plan(
+                {
+                    "goal": "Проверить milestone и внешний блокер перед продолжением",
+                    "steps": ["Сверить portfolio coordination"],
+                    "evidence_needed": ["Milestone readiness"],
+                    "tool_intents": [],
+                },
+                handlers={"cognition.next": handler},
+                request_id="req-milestone-cognition",
+            )
+            self.assertEqual(len(calls), 2)
+            milestone_receipt = next(
+                item
+                for item in milestone["receipts"]
+                if item["tool"] == "cognition.next"
+            )
+            self.assertEqual(milestone_receipt["status"], "completed")
 
     def test_large_output_is_bounded_before_cloud_evidence(self):
         with tempfile.TemporaryDirectory() as tmp:

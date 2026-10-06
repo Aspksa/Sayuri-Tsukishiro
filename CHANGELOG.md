@@ -2,6 +2,55 @@
 
 ## Невыпущенные изменения
 
+### 0.2.7 — 2026-10-06 — Portfolio Coordination Acceptance Contract
+
+- Candidate `0.2.6` устранил все runtime/graph regressions: app suite дошёл до результата 168/169 success.
+- Последний failure оказался устаревшим test contract: `test_agent_runtime.py` ожидал Cognitive Brain `1.2`, хотя новый публичный context contract корректно имеет версию `1.3.2`.
+- Assertion обновлён на `1.3.2`; production code и semantics Portfolio Coordination не меняются.
+- Поскольку изменяется `app/tests`, App/Core повышен до `0.1.55`; Project — до `0.2.7`. Agent остаётся `0.15.2`, Cognitive Brain — `1.3.2`.
+- Candidate `0.2.6` commit `09ce260e6849587473ea3f7fd5e1ea61767ebcde`, workflow #37417751833, не принят только из-за stale version assertion.
+
+
+### 0.2.6 — 2026-10-06 — Portfolio Coordination Regression Fix
+
+- Второй branch candidate `0.2.5` прошёл import stage и запустил 169 app tests, что подтвердило исправление SyntaxError из `0.2.4`.
+- Исправлен `graph_integrity()`: milestone/task/portfolio rows теперь явно читаются внутри собственного diagnostic snapshot; устранён `NameError: milestone_rows is not defined`.
+- Обновлён scale regression на фактический scheduler contract `cognitive-scheduler-v1.3` вместо старого `v1.2`.
+- Cognitive Project Brain повышен до `1.3.2`; Agent Core — `0.15.2`.
+- Поскольку корректируется regression в `app/tests`, App/Core повышен до `0.1.54` согласно VERSIONING.md.
+- Candidate `0.2.5` commit `c1816efdade9d44ff98bb925bb565319eb8f068b`, workflow #37417544393, не принят: 1 stale assertion + 5 ошибок, все 5 ошибок имели один корень в missing integrity queries.
+- Project: `0.2.6`; App/Core: `0.1.54`; Agent Core: `0.15.2`; Cognitive Brain: `1.3.2`. Reasoning Planner `1.1`, Tool Planner `0.4.2`, Web UI, Disk и dev-tools без изменений.
+
+
+### 0.2.5 — 2026-10-06 — Portfolio Coordination Acceptance Fix
+
+- Исправлена синтаксическая ошибка branch candidate `0.2.4`: автоматическая сборка блока metacognition оставила двойную сигнатуру `def self_evaluation(`, из-за чего Python suite останавливался на import-time SyntaxError.
+- Архитектура Portfolio Coordination не откатывается: milestones, external blockers, strict project boundary, Cloud privacy и cycle guards остаются без изменения semantics.
+- Cognitive Project Brain повышен до `1.3.1`; Agent Core до `0.15.1`; Project до `0.2.5`.
+- App/Core остаётся `0.1.53`: исправление не меняет app source/tests/API после уже versioned candidate `0.2.4`.
+- Candidate `0.2.4` commit `5c0532f1c92c56d921ce49eba327b39277eb9747` не принят: branch workflow #37417246205 остановился на Python import SyntaxError. Версионная история не переписывается.
+- Новый acceptance candidate строится поверх `0.2.4` отдельным versioned commit согласно VERSIONING.md.
+
+
+### 0.2.4 — 2026-10-06 — Portfolio Milestones & Cross-Project Coordination
+
+- Cognitive Project Brain обновлён до `1.3`: над существующим task graph добавлен портфельный уровень milestones и explicit external blockers без создания нового Planner или второй памяти.
+- Milestone принадлежит одному проекту, может быть привязан к модулю и содержит required/optional task links; обязательные задачи другого проекта привязать нельзя.
+- Milestone никогда не закрывается автоматически. Даже после выполнения всех required tasks он получает только `ready_for_confirmation`; переход в `done` требует явного `COMPLETE_MILESTONE`.
+- Межпроектные зависимости больше не моделируются запрещёнными direct task edges: target project/module/task получает persistent external blocker, который может ссылаться на source project и source milestone.
+- External blocker автоматически считается эффективно разрешённым только после подтверждённого `done` связанного source milestone либо после отдельного explicit local resolution.
+- Добавлен portfolio-cycle guard: цепочки project A → B → … → A отклоняются при создании; legacy цикл выявляется read-only integrity diagnostics и не ремонтируется молча.
+- Scheduler использует milestones/external blockers внутри существующего snapshot, учитывает milestone priority и различает `blocked_by_dependencies` и `blocked_by_external`.
+- Явный `project_key` стал жёсткой границей scheduler: контекст одного проекта больше не может выбрать task другого проекта только из-за более высокого priority.
+- Context path переиспользует один portfolio snapshot для scheduler + metacognition; при отсутствии actionable task metacognition анализирует лучший blocked candidate текущего project scope вместо ухода в другой проект.
+- Cloud cognition projection скрывает task/milestone/blocker/project database IDs и оставляет только bounded key/title/status/relation/summary, необходимые DeepSeek-V4-Flash для рассуждения.
+- Reasoning Planner обновлён до `1.1`: milestones и external blockers являются обязательными read-only ограничениями; модель не может объявить blocker снятым или milestone завершённым.
+- Evidence Tool Planner обновлён до `0.4.2`: добавлены узкие read-only triggers для milestone/external-blocker/cross-project intent без возврата generic trigger от слов «проект/модуль».
+- Добавлены explicit local API для milestones, task links, milestone completion, external blockers и resolution; эти mutation endpoints не включены в Evidence Tool Planner catalog.
+- Добавлены regressions на strict project boundary, milestone confirmation, derived cross-project unlock, portfolio-cycle guard, Cloud ID privacy, integrity diagnostics, narrow tool trigger и local API boundary.
+- Старый PR #27 закрыт как superseded после публикации `main 0.2.3`; `0.2.4` строится от проверенного commit `a609762d1f82763110d9b0a6fc88d3c1abbf389a`.
+- Project: `0.2.4`; App/Core: `0.1.53`; Agent Core: `0.15.0`; Cognitive Brain: `1.3`; Reasoning Planner: `1.1`; Evidence Tool Planner: `0.4.2`. Web UI, Disk и dev-tools без изменений.
+
 ### 0.2.3 — 2026-10-06 — Portfolio Scale & Integrity
 
 - Cognitive Project Brain обновлён до `1.2`: scheduler и self-evaluation используют пакетный portfolio snapshot вместо повторных per-task SQLite/Memory запросов.

@@ -281,6 +281,23 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
                     limit = 30
                 self._json(self.server.core.sayuri_actions(limit))
                 return
+            if parsed.path == "/api/sayuri/cognition/milestones":
+                self._json(
+                    self.server.core.sayuri_cognitive_milestones(
+                        project_key=query.get("project_key", [""])[0].strip() or None,
+                        module_key=query.get("module_key", [""])[0].strip() or None,
+                    )
+                )
+                return
+            if parsed.path == "/api/sayuri/cognition/external-blockers":
+                self._json(
+                    self.server.core.sayuri_cognitive_external_blockers(
+                        project_key=query.get("project_key", [""])[0].strip() or None,
+                        module_key=query.get("module_key", [""])[0].strip() or None,
+                        task_id=query.get("task_id", [""])[0].strip() or None,
+                    )
+                )
+                return
             if parsed.path == "/api/sayuri/cognition":
                 context = {
                     "project_key": query.get("project_key", [""])[0],
@@ -596,6 +613,132 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
                         path=path,
                     ),
                     HTTPStatus.CREATED,
+                )
+                return
+
+            if parsed.path == "/api/sayuri/cognition/milestones":
+                payload = self._read_json()
+                project_key = payload.get("project_key")
+                milestone_key = payload.get("milestone_key")
+                title = payload.get("title", "")
+                module_key = payload.get("module_key")
+                description = payload.get("description", "")
+                priority = payload.get("priority", 3)
+                if not isinstance(project_key, str) or not project_key.strip():
+                    raise BadRequestError("Поле project_key должно быть непустой строкой.")
+                if not isinstance(milestone_key, str) or not milestone_key.strip():
+                    raise BadRequestError("Поле milestone_key должно быть непустой строкой.")
+                if not isinstance(title, str) or not isinstance(description, str):
+                    raise BadRequestError("Поля title и description должны быть строками.")
+                if module_key is not None and not isinstance(module_key, str):
+                    raise BadRequestError("Поле module_key должно быть строкой или null.")
+                if not isinstance(priority, int):
+                    raise BadRequestError("Поле priority должно быть целым числом.")
+                self._json(
+                    self.server.core.register_sayuri_cognitive_milestone(
+                        project_key,
+                        milestone_key,
+                        title=title,
+                        module_key=module_key,
+                        description=description,
+                        priority=priority,
+                    ),
+                    HTTPStatus.CREATED,
+                )
+                return
+
+            if parsed.path.startswith("/api/sayuri/cognition/milestones/") and parsed.path.endswith("/tasks"):
+                milestone_id = parsed.path[len("/api/sayuri/cognition/milestones/"):-len("/tasks")].strip("/")
+                if not milestone_id:
+                    raise BadRequestError("Не указан milestone.")
+                payload = self._read_json()
+                task_id = payload.get("task_id")
+                required = payload.get("required", True)
+                if not isinstance(task_id, str) or not task_id.strip():
+                    raise BadRequestError("Поле task_id должно быть непустой строкой.")
+                if not isinstance(required, bool):
+                    raise BadRequestError("Поле required должно быть boolean.")
+                self._json(
+                    self.server.core.link_sayuri_cognitive_milestone_task(
+                        milestone_id,
+                        task_id,
+                        required=required,
+                    )
+                )
+                return
+
+            if parsed.path.startswith("/api/sayuri/cognition/milestones/") and parsed.path.endswith("/complete"):
+                milestone_id = parsed.path[len("/api/sayuri/cognition/milestones/"):-len("/complete")].strip("/")
+                if not milestone_id:
+                    raise BadRequestError("Не указан milestone.")
+                payload = self._read_json()
+                confirmation = payload.get("confirmation")
+                if confirmation != "COMPLETE_MILESTONE":
+                    raise BadRequestError(
+                        "Для завершения milestone требуется confirmation=COMPLETE_MILESTONE."
+                    )
+                self._json(
+                    self.server.core.complete_sayuri_cognitive_milestone(
+                        milestone_id,
+                        confirmation=confirmation,
+                    )
+                )
+                return
+
+            if parsed.path == "/api/sayuri/cognition/external-blockers":
+                payload = self._read_json()
+                project_key = payload.get("project_key")
+                blocker_key = payload.get("blocker_key")
+                title = payload.get("title")
+                task_id = payload.get("task_id")
+                module_key = payload.get("module_key")
+                source_project_key = payload.get("source_project_key")
+                source_milestone_id = payload.get("source_milestone_id")
+                if not isinstance(project_key, str) or not project_key.strip():
+                    raise BadRequestError("Поле project_key должно быть непустой строкой.")
+                if not isinstance(blocker_key, str) or not blocker_key.strip():
+                    raise BadRequestError("Поле blocker_key должно быть непустой строкой.")
+                if not isinstance(title, str) or not title.strip():
+                    raise BadRequestError("Поле title должно быть непустой строкой.")
+                for field_name, value in (
+                    ("task_id", task_id),
+                    ("module_key", module_key),
+                    ("source_project_key", source_project_key),
+                    ("source_milestone_id", source_milestone_id),
+                ):
+                    if value is not None and not isinstance(value, str):
+                        raise BadRequestError(
+                            f"Поле {field_name} должно быть строкой или null."
+                        )
+                self._json(
+                    self.server.core.add_sayuri_cognitive_external_blocker(
+                        project_key,
+                        blocker_key,
+                        title,
+                        task_id=task_id,
+                        module_key=module_key,
+                        source_project_key=source_project_key,
+                        source_milestone_id=source_milestone_id,
+                    ),
+                    HTTPStatus.CREATED,
+                )
+                return
+
+            if parsed.path.startswith("/api/sayuri/cognition/external-blockers/") and parsed.path.endswith("/resolve"):
+                blocker_id = parsed.path[len("/api/sayuri/cognition/external-blockers/"):-len("/resolve")].strip("/")
+                if not blocker_id:
+                    raise BadRequestError("Не указан external blocker.")
+                payload = self._read_json()
+                resolution = payload.get("resolution")
+                if not isinstance(resolution, str) or not resolution.strip():
+                    raise BadRequestError(
+                        "Поле resolution должно быть непустой строкой."
+                    )
+                self._json(
+                    self.server.core.resolve_sayuri_cognitive_external_blocker(
+                        blocker_id,
+                        resolution,
+                    )
                 )
                 return
 

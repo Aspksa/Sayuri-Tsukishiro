@@ -1033,6 +1033,155 @@ class SayuriAgent:
         except CognitiveBrainError as exc:
             raise AgentRuntimeError(str(exc)) from exc
 
+    def cognitive_milestones(
+        self,
+        *,
+        project_key: str | None = None,
+        module_key: str | None = None,
+    ) -> dict[str, Any]:
+        try:
+            return {
+                "milestones": self.cognition.milestones(
+                    project_key=project_key,
+                    module_key=module_key,
+                    limit=200,
+                )
+            }
+        except CognitiveBrainError as exc:
+            raise AgentRuntimeError(str(exc)) from exc
+
+    def register_cognitive_milestone(
+        self,
+        project_key: str,
+        milestone_key: str,
+        *,
+        title: str = "",
+        module_key: str | None = None,
+        description: str = "",
+        priority: int = 3,
+    ) -> dict[str, Any]:
+        try:
+            return {
+                "status": "сохранено",
+                "milestone": self.cognition.register_milestone(
+                    project_key,
+                    milestone_key,
+                    title=title or None,
+                    module_key=module_key,
+                    description=description,
+                    priority=priority,
+                ),
+            }
+        except CognitiveBrainError as exc:
+            raise AgentRuntimeError(str(exc)) from exc
+
+    def link_cognitive_milestone_task(
+        self,
+        milestone_id: str,
+        task_id: str,
+        *,
+        required: bool = True,
+    ) -> dict[str, Any]:
+        try:
+            return {
+                "status": "сохранено",
+                "link": self.cognition.link_milestone_task(
+                    milestone_id,
+                    task_id,
+                    required=required,
+                ),
+                "assessment": self.cognition.milestone_assessment(milestone_id),
+            }
+        except CognitiveBrainError as exc:
+            raise AgentRuntimeError(str(exc)) from exc
+
+    def complete_cognitive_milestone(
+        self,
+        milestone_id: str,
+        *,
+        confirmation: str,
+    ) -> dict[str, Any]:
+        try:
+            return self.cognition.complete_milestone(
+                milestone_id,
+                confirmation=confirmation,
+            )
+        except CognitiveBrainError as exc:
+            raise AgentRuntimeError(str(exc)) from exc
+
+    def cognitive_external_blockers(
+        self,
+        *,
+        project_key: str | None = None,
+        module_key: str | None = None,
+        task_id: str | None = None,
+    ) -> dict[str, Any]:
+        try:
+            project = (
+                self.cognition.project_by_key(project_key)
+                if project_key
+                else None
+            )
+            module = (
+                self.cognition.module_by_key(project["key"], module_key)
+                if project and module_key
+                else None
+            )
+            return {
+                "external_blockers": self.cognition.external_blockers(
+                    project_id=project["id"] if project else None,
+                    module_id=module["id"] if module else None,
+                    task_id=task_id,
+                    limit=300,
+                )
+            }
+        except CognitiveBrainError as exc:
+            raise AgentRuntimeError(str(exc)) from exc
+
+    def add_cognitive_external_blocker(
+        self,
+        project_key: str,
+        blocker_key: str,
+        title: str,
+        *,
+        task_id: str | None = None,
+        module_key: str | None = None,
+        source_project_key: str | None = None,
+        source_milestone_id: str | None = None,
+    ) -> dict[str, Any]:
+        try:
+            return {
+                "status": "сохранено",
+                "external_blocker": self.cognition.add_external_blocker(
+                    project_key,
+                    blocker_key,
+                    title,
+                    task_id=task_id,
+                    module_key=module_key,
+                    source_project_key=source_project_key,
+                    source_milestone_id=source_milestone_id,
+                    evidence_ref="explicit_local_api",
+                ),
+            }
+        except CognitiveBrainError as exc:
+            raise AgentRuntimeError(str(exc)) from exc
+
+    def resolve_cognitive_external_blocker(
+        self,
+        blocker_id: str,
+        resolution: str,
+    ) -> dict[str, Any]:
+        try:
+            return {
+                "status": "разрешено",
+                "external_blocker": self.cognition.resolve_external_blocker(
+                    blocker_id,
+                    resolution,
+                ),
+            }
+        except CognitiveBrainError as exc:
+            raise AgentRuntimeError(str(exc)) from exc
+
     def add_cognitive_dependency(
         self,
         task_id: str,
@@ -1786,9 +1935,11 @@ class SayuriAgent:
             {
                 "role": "system",
                 "content": (
-                    "Cognitive Project Brain: портфель проектов и модулей, task graph, зависимости, completion criteria, "
-                    "scheduler, uncertainty, strategy memory и metacognition. Это read-only контекст для модели. "
-                    "selected task — рекомендуемый фокус, а не разрешение на mutation. "
+                    "Cognitive Project Brain: портфель проектов и модулей, task graph, milestones, external blockers, "
+                    "completion criteria, scheduler, uncertainty, strategy memory и metacognition. Это read-only контекст "
+                    "для модели. selected task — рекомендуемый фокус, а не разрешение на mutation. External blocker означает, "
+                    "что задачу нельзя считать actionable до явного resolution или подтверждённого завершения source milestone. "
+                    "Milestone ready_for_confirmation не означает done и требует отдельного локального подтверждения. "
                     "ready_for_completion_confirmation требует явного подтверждения завершения человеком: "
                     + cognition_json
                 ),

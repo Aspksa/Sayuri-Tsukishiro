@@ -60,6 +60,9 @@ class ReasoningEngineTests(unittest.TestCase):
         self.assertTrue(engine.public_status()["task_lifecycle_checkpoints"])
         self.assertTrue(engine.public_status()["multi_project_brain"])
         self.assertTrue(engine.public_status()["task_graph_dependencies"])
+        self.assertTrue(engine.public_status()["portfolio_milestones"])
+        self.assertTrue(engine.public_status()["external_blockers"])
+        self.assertTrue(engine.public_status()["cross_project_coordination"])
         self.assertTrue(engine.public_status()["metacognition"])
         self.assertIn("continuity_context", planner_messages[1]["content"])
 

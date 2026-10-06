@@ -556,3 +556,51 @@
 - Версии: Project `0.2.3`, App `0.1.52`, Agent `0.14.2`, Cognitive Brain `1.2`, Tool Planner `0.4.1`.
 - Первый branch candidate `0.2.2` остановлен core test gate: старый reasoning regression ожидал 2 read-only checks, хотя новый narrow-trigger policy корректно дал 1. Runtime не откатывать; исправить тест-контракт в `0.2.3`.
 - Приёмка: полный Python suite, JS syntax, preflight, version each-commit, Windows launcher, PR CI и final green main CI.
+
+## AI-014 — Portfolio Milestones & Cross-Project Coordination
+
+- Статус: `implemented in target 0.2.7`; candidates 0.2.4–0.2.6 не приняты branch CI, приёмка только после branch/PR/main CI.
+- База: `main 0.2.3`, commit `a609762d1f82763110d9b0a6fc88d3c1abbf389a`, Versions #37415897573 success.
+- Цель: безопасно координировать несколько самостоятельных проектов без direct cross-project task edges и без нового автономного cognitive layer.
+- Milestones:
+  - persistent project milestone registry;
+  - optional module scope;
+  - required/optional task links;
+  - cross-project task link запрещён;
+  - required tasks done => `ready_for_confirmation`;
+  - `done` только после `COMPLETE_MILESTONE`.
+- External blockers:
+  - project/module/task scope;
+  - optional source project/source milestone;
+  - source milestone `done` => derived effective resolution;
+  - explicit resolution сохраняется отдельным local mutation.
+- Portfolio safety:
+  - new effective-open project dependency cycle отклоняется;
+  - исторический blocker на уже `done` milestone не создаёт ложный cycle;
+  - legacy portfolio cycle виден в read-only integrity diagnostics;
+  - direct cross-project task graph остаётся запрещён.
+- Scheduler:
+  - milestones/external blockers входят в batch snapshot;
+  - explicit `project_key` является hard boundary;
+  - active milestone priority учитывается в ranking;
+  - task dependency и external blocker считаются раздельно;
+  - blocked target не считается actionable.
+- Cloud:
+  - не отправлять task/milestone/blocker/project DB IDs;
+  - отправлять только bounded semantic summary.
+- Reasoning Planner 1.1:
+  - milestones/external blockers трактуются как read-only constraints;
+  - не закрывать milestone и не снимать blocker по текстовой гипотезе.
+- Evidence Tool Planner 0.4.2:
+  - узкие triggers для milestone/external blocker/cross-project intent;
+  - generic «проект/модуль» не запускает лишний cognition check.
+- API:
+  - read-only milestones/external-blockers endpoints;
+  - explicit local create/link/complete/resolve endpoints;
+  - mutation endpoints не входят в LLM tool catalog.
+- Версии: Project `0.2.7`, App/Core `0.1.55`, Agent `0.15.2`, Cognitive Brain `1.3.2`, Reasoning Planner `1.1`, Tool Planner `0.4.2`.
+- Candidate `0.2.4` commit `5c0532f1c92c56d921ce49eba327b39277eb9747` остановлен workflow #37417246205: duplicate `def self_evaluation(` вызвал SyntaxError.
+- Candidate `0.2.5` commit `c1816efdade9d44ff98bb925bb565319eb8f068b` остановлен workflow #37417544393: `graph_integrity()` не загрузил milestone/portfolio rows, а один scale regression ожидал scheduler v1.2.
+- Candidate `0.2.6` commit `09ce260e6849587473ea3f7fd5e1ea61767ebcde` остановлен workflow #37417751833 только из-за stale runtime assertion Cognitive Brain `1.2`; 168/169 app tests прошли. Assertion исправляется в отдельном `0.2.7`.
+- Приёмка: portfolio regressions, полный Python suite, JS syntax, preflight, version each-commit, Windows launcher, PR CI, squash merge и final green main CI.
+

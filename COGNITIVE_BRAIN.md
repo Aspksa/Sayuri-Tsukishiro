@@ -1,6 +1,6 @@
 # Cognitive Project Brain
 
-Версия контракта: **1.2**  
+Версия контракта: **1.3.2**  
 Проект: **Sayuri-Tsukishiro**
 
 ## Назначение
@@ -153,3 +153,111 @@ Cloud-safe cognition не включает:
 ### Tool trigger
 
 Read-only `cognition.next` не запускается от общего упоминания проекта/модуля. Нужен конкретный запрос о следующей задаче, dependencies/blockers, criteria/readiness, replanning, uncertainty, strategy, queue или priority.
+
+## Portfolio Coordination 1.3
+
+### Milestones
+
+Milestone — портфельная контрольная точка проекта поверх task lifecycle. Она хранится отдельно от task status и не становится новым источником истины для задач.
+
+Инварианты:
+- milestone принадлежит ровно одному project scope;
+- optional `module_id` задаёт локальную область внутри проекта;
+- task link может быть required или optional;
+- задача другого проекта не может быть включена в milestone;
+- выполненные required tasks дают только `ready_for_confirmation`;
+- `done` требует explicit local confirmation `COMPLETE_MILESTONE`.
+
+### External blockers
+
+Direct task edge между разными проектами остаётся запрещённым. Межпроектная зависимость моделируется external blocker:
+
+```text
+Target Project / Module / Task
+        │
+        └── external blocker
+                │
+                ├── source project (optional)
+                └── source milestone (optional)
+```
+
+Blocker имеет два статуса:
+- persisted `status`: `open/resolved`;
+- derived `effective_status`: source milestone `done` может сделать blocker эффективно resolved без скрытого изменения записи.
+
+Это позволяет сохранить provenance: видно, что blocker был создан и каким milestone он был разблокирован.
+
+### Portfolio cycle guard
+
+Если target project зависит от source project через open external blocker, Cognitive Brain строит directed project graph. Новый edge отклоняется, если он создаёт цикл.
+
+`graph_integrity()` отдельно проверяет legacy state:
+- task dependency cycles;
+- cross-project direct task edges;
+- missing milestone/task links;
+- cross-project milestone-task links;
+- portfolio dependency cycles.
+
+Integrity scan остаётся read-only.
+
+### Scheduler 1.3
+
+Один snapshot теперь содержит:
+- tasks;
+- task scopes;
+- projects/modules;
+- confirmed task dependencies;
+- uncertainties;
+- applied checkpoint counters;
+- milestones и milestone-task links;
+- open external blockers с source milestone status.
+
+Scheduler:
+- жёстко ограничивает выбор указанным `project_key`;
+- сохраняет module affinity внутри проекта;
+- исключает task с task dependency или effective external blocker;
+- учитывает priority активного milestone;
+- отдельно считает `blocked_by_dependencies` и `blocked_by_external`;
+- при high uncertainty сохраняет evidence-first recommendation.
+
+### Cloud boundary 1.3
+
+DeepSeek-V4-Flash не получает:
+- local task IDs;
+- project/module DB IDs;
+- milestone IDs;
+- source project/source milestone IDs;
+- blocker IDs/evidence_ref;
+- module path/metadata.
+
+Cloud получает только bounded semantic projection: project/module key/title, task text/status, blocker type/title/relation/key, milestone key/title/status/priority, uncertainty summary и completion summary.
+
+### Explicit local API
+
+Read-only:
+- `GET /api/sayuri/cognition/milestones?project_key=...&module_key=...`;
+- `GET /api/sayuri/cognition/external-blockers?project_key=...&module_key=...&task_id=...`.
+
+Explicit local mutations:
+- `POST /api/sayuri/cognition/milestones`;
+- `POST /api/sayuri/cognition/milestones/{id}/tasks`;
+- `POST /api/sayuri/cognition/milestones/{id}/complete` with `confirmation=COMPLETE_MILESTONE`;
+- `POST /api/sayuri/cognition/external-blockers`;
+- `POST /api/sayuri/cognition/external-blockers/{id}/resolve`.
+
+Эти endpoints не входят в Evidence Tool Planner catalog и не являются direct tools модели.
+
+### Rule for future projects
+
+Новый проект регистрирует собственные modules/tasks/milestones. Если он зависит от результата другого проекта, он создаёт external blocker на подтверждённый source milestone вместо прямого cross-project task edge. Так каждый project task graph остаётся локальным DAG, а портфель координируется отдельным ограниченным слоем.
+
+
+
+### Acceptance patch 1.3.1
+
+Контракт 1.3.1 не меняет semantics Portfolio Coordination 1.3. Он исправляет только import-time syntax defect candidate 0.2.4. Milestone, external blocker, scheduler, privacy и mutation boundaries остаются теми же.
+
+
+### Regression patch 1.3.2
+
+Контракт 1.3.2 сохраняет semantics 1.3. Исправлен diagnostic implementation `graph_integrity()`: milestone links и effective-open portfolio dependencies читаются в том же read-only diagnostic pass. Scheduler contract остаётся `v1.3`.
