@@ -4,7 +4,7 @@
     {
       "id": "sayuri-core",
       "display_name": "Ядро Саюри",
-      "description": "Системное ядро 0.1.54: API, диагностика, Memory 4.x, Cognitive Project Brain 1.3 portfolio coordination API, explicit local cognition mutations, Action Broker, evidence automation и Spatial Evidence bridge.",
+      "description": "Системное ядро 0.1.55: API, диагностика, Memory 4.x, Cognitive Project Brain 1.3 portfolio coordination API, explicit local cognition mutations, Action Broker, evidence automation и Spatial Evidence bridge.",
       "path": "app",
       "project_key": "sayuri-tsukishiro",
       "depends_on": [],

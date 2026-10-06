@@ -2,6 +2,15 @@
 
 ## Невыпущенные изменения
 
+### 0.2.7 — 2026-10-06 — Portfolio Coordination Acceptance Contract
+
+- Candidate `0.2.6` устранил все runtime/graph regressions: app suite дошёл до результата 168/169 success.
+- Последний failure оказался устаревшим test contract: `test_agent_runtime.py` ожидал Cognitive Brain `1.2`, хотя новый публичный context contract корректно имеет версию `1.3.2`.
+- Assertion обновлён на `1.3.2`; production code и semantics Portfolio Coordination не меняются.
+- Поскольку изменяется `app/tests`, App/Core повышен до `0.1.55`; Project — до `0.2.7`. Agent остаётся `0.15.2`, Cognitive Brain — `1.3.2`.
+- Candidate `0.2.6` commit `09ce260e6849587473ea3f7fd5e1ea61767ebcde`, workflow #37417751833, не принят только из-за stale version assertion.
+
+
 ### 0.2.6 — 2026-10-06 — Portfolio Coordination Regression Fix
 
 - Второй branch candidate `0.2.5` прошёл import stage и запустил 169 app tests, что подтвердило исправление SyntaxError из `0.2.4`.

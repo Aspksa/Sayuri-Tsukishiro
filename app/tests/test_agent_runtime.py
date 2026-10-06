@@ -50,7 +50,7 @@ class AgentRuntimeTests(unittest.TestCase):
             )
 
             self.assertEqual(payload["graph_integrity"]["status"], "healthy")
-            self.assertEqual(payload["context"]["version"], "1.2")
+            self.assertEqual(payload["context"]["version"], "1.3.2")
             self.assertTrue(
                 payload["status"]["capabilities"]["portfolio_snapshot"]
             )

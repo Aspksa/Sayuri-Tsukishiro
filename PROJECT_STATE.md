@@ -7,13 +7,13 @@
 - Проверенная исходная ревизия: `a609762d1f82763110d9b0a6fc88d3c1abbf389a` — опубликованный `main 0.2.3`, Versions #37415897573 success.
 - Рабочая ветка этапа: `portfolio-coordination-v0204`.
 - Старый PR #27 (`0.2.2`) закрыт как superseded и не должен сливаться поверх `main 0.2.3+`.
-- Текущий целевой результат: **0.2.6 — Portfolio Milestones & Cross-Project Coordination (Regression Fix)**.
+- Текущий целевой результат: **0.2.7 — Portfolio Milestones & Cross-Project Coordination (Acceptance Contract)**.
 - Задача: **AI-014**.
 
 ## Версии результата
 
-- Project: `0.2.6`.
-- App/Core: `0.1.54`.
+- Project: `0.2.7`.
+- App/Core: `0.1.55`.
 - Agent Core: `0.15.2`.
 - Cognitive Project Brain: `1.3.2`.
 - Reasoning Planner: `1.1`.
@@ -91,7 +91,10 @@
 - Исправление SyntaxError оформлено отдельным `0.2.5`, историю `0.2.4` не переписывать.
 - Candidate `0.2.5`: commit `c1816efdade9d44ff98bb925bb565319eb8f068b`, workflow #37417544393.
 - Python suite запустил 169 tests; остались stale scheduler-version assertion и `NameError` в `graph_integrity()` из-за отсутствующих локальных milestone/portfolio queries.
-- Оба дефекта исправляются новым versioned candidate `0.2.6`; App bump обязателен, потому что меняется regression test.
+- Оба дефекта исправлены candidate `0.2.6`; App bump был обязателен, потому что менялся regression test.
+- Candidate `0.2.6`: commit `09ce260e6849587473ea3f7fd5e1ea61767ebcde`, workflow #37417751833.
+- Результат core suite: 168/169 success; единственный failure — stale assertion Cognitive Brain `1.2` вместо фактического публичного contract `1.3.2`.
+- Последний test-contract fix оформляется отдельным versioned candidate `0.2.7`.
 
 ## Приёмка
 
@@ -110,6 +113,6 @@
 - squash merge;
 - финального зелёного workflow на `main`.
 
-## Следующий этап после 0.2.6
+## Следующий этап после 0.2.7
 
 После стабилизации portfolio coordination не добавлять ещё один абстрактный cognitive layer. Подключить первый реальный крупный прикладной модуль к canonical contract и измерить качество scheduler, milestones, blockers, completion criteria и strategy transfer на настоящем workflow.
