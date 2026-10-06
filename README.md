@@ -11,6 +11,30 @@
 На Windows откройте `Sayuri Tsukishiro.bat`.
 
 
+## Cognitive Project Brain 1.0
+
+`0.2.0` переводит Sayuri от «умной памяти с Planner» к проектному когнитивному ядру, рассчитанному на большое число модулей и отдельных проектов.
+
+Новая иерархия:
+
+`Portfolio → Project → Module → Goal/Task → Dependency Graph → Completion Criteria → Scheduler → Checkpoint/Evidence → Evaluation`
+
+Основные правила:
+
+- любой модуль из `MODULES.json` автоматически попадает в Cognitive Brain;
+- будущий модуль может передать `project_key` / `module_key` в task context и получить отдельный scope без изменения кода мозга;
+- task graph поддерживает `requires`, `blocks`, `unlocks`, `follows`;
+- scheduler выбирает только разблокированную задачу;
+- completion criteria оцениваются детерминированно и не закрывают задачу автоматически;
+- failure создаёт replan proposal и uncertainty вместо самовольного переписывания плана;
+- подтверждённые Action Broker исходы обучают Strategy Memory статистически;
+- metacognition явно различает известное, неопределённое, заблокированное и требующее replanning;
+- состояние долгих проектов сохраняется между перезапусками;
+- модель видит этот слой только как read-only контекст.
+
+Для диагностики доступен локальный read-only endpoint `GET /api/sayuri/cognition?q=...`.
+
+
 ## Task Lifecycle & Checkpoints
 
 С `0.1.56` Goal Continuity получила устойчивый жизненный цикл многошаговых задач:

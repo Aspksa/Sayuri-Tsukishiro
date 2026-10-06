@@ -718,3 +718,20 @@ Workspace quality в том же релизе ограничена accessibility
 - stale, blocked и closed task state имеет приоритет над старым action snapshot;
 - Planner читает lifecycle как evidence, но не является владельцем lifecycle mutations;
 - restart restoration выполняется из persistent SQLite, без отдельного фонового worker.
+
+
+## 2026-10-06 — Cognitive Project Brain is a deterministic orchestration layer, not an autonomous agent
+
+**Decision:** consolidate Task Graph, completion criteria, scheduler, uncertainty, strategy memory, replanning, self-evaluation and metacognition into one persistent `CognitiveProjectBrain` above Memory 4.x.
+
+Reasons:
+- many future modules need one shared project/module/task model rather than bespoke planners;
+- Memory 4.x remains the source of truth for goal/task status and checkpoints;
+- Action Broker remains the only path for confirmation-gated real-world/project mutations;
+- LLM receives cognitive state only as bounded read-only evidence;
+- completion criteria may recommend human confirmation but cannot set `done`;
+- failed actions can create uncertainty/replan proposals but cannot silently rewrite `next_action`;
+- task dependencies are evaluated from confirmed task state, not model claims;
+- project/module portfolio state persists in the same SQLite database for restart recovery.
+
+**Module contract:** `MODULES.json` is upgraded to schema 1-compatible metadata. Future modules can declare `project_key` and capabilities without changing Cognitive Brain code. Task-producing modules should include `project_key/module_key` in task context when they need non-default scope.

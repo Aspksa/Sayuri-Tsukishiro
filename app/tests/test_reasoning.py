@@ -58,6 +58,9 @@ class ReasoningEngineTests(unittest.TestCase):
         self.assertIn("Добавить восстановление", fallback["steps"][1])
         self.assertTrue(engine.public_status()["goal_continuity_planner"])
         self.assertTrue(engine.public_status()["task_lifecycle_checkpoints"])
+        self.assertTrue(engine.public_status()["multi_project_brain"])
+        self.assertTrue(engine.public_status()["task_graph_dependencies"])
+        self.assertTrue(engine.public_status()["metacognition"])
         self.assertIn("continuity_context", planner_messages[1]["content"])
 
     def test_plan_and_verifier_json_are_normalized_without_hidden_reasoning(self):
@@ -140,8 +143,8 @@ class ReasoningEngineTests(unittest.TestCase):
             self.assertEqual(result["reasoning"]["model_calls"], 3)
             automation = result["reasoning"]["automation"]
             self.assertEqual(automation["status"], "completed")
-            self.assertEqual(automation["read_only_checks"], 1)
-            self.assertEqual(automation["evidence_receipts"], 1)
+            self.assertEqual(automation["read_only_checks"], 2)
+            self.assertEqual(automation["evidence_receipts"], 2)
             self.assertEqual(automation["blocked_mutations"], 0)
             self.assertNotIn("tool_execution", result["reasoning"])
             self.assertTrue(

@@ -50,6 +50,18 @@ READ_ONLY_TOOLS: dict[str, dict[str, Any]] = {
         "mode": "read_only",
         "args": {},
     },
+    "cognition.status": {
+        "label": "Состояние Cognitive Project Brain",
+        "mode": "read_only",
+        "args": {},
+    },
+    "cognition.next": {
+        "label": "Следующая разблокированная проектная задача",
+        "mode": "read_only",
+        "args": {
+            "query": "string",
+        },
+    },
     "context.current_document": {
         "label": "Текущий документ",
         "mode": "read_only",
@@ -82,7 +94,7 @@ def _utcnow() -> str:
 class EvidenceToolPlanner:
     """Deterministic tool policy + execution receipts for structured plans."""
 
-    VERSION = "0.3"
+    VERSION = "0.4"
 
     def __init__(self, path: Path):
         self.path = path
@@ -210,7 +222,14 @@ class EvidenceToolPlanner:
     @staticmethod
     def _normalize_args(tool: str, args: Any) -> dict[str, Any]:
         raw = args if isinstance(args, dict) else {}
-        if tool in {"system.status", "memory.stats", "memory.integrity", "experience.stats", "context.current_document"}:
+        if tool in {
+            "system.status",
+            "memory.stats",
+            "memory.integrity",
+            "experience.stats",
+            "cognition.status",
+            "context.current_document",
+        }:
             return {}
         if tool == "memory.search":
             query = " ".join(str(raw.get("query") or "").strip().split())[:1200]
@@ -240,6 +259,9 @@ class EvidenceToolPlanner:
                 "query": query,
                 "limit": min(max(limit, 1), 6),
             }
+        if tool == "cognition.next":
+            query = " ".join(str(raw.get("query") or "").strip().split())[:1200]
+            return {"query": query or "следующая проектная задача"}
         if tool == "document.evidence_search":
             query = " ".join(str(raw.get("query") or "").strip().split())[:1600]
             if not query:
@@ -371,6 +393,21 @@ class EvidenceToolPlanner:
                 "purpose": purpose,
             })
 
+        if (
+            "cognition.next" not in explicit
+            and any(
+                marker in text
+                for marker in (
+                    "следующ", "зависим", "блокир", "разблок", "критер", "готовност",
+                    "модул", "проект", "replan", "переплан", "неопредел", "стратег",
+                )
+            )
+        ):
+            add(
+                "cognition.next",
+                args={"query": " ".join(goal.strip().split())[:1200] or "следующая проектная задача"},
+                purpose="Сверить task graph, blockers, completion criteria и следующий допустимый фокус.",
+            )
         if (
             "memory.continuity" not in explicit
             and any(

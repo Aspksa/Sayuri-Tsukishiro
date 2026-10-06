@@ -464,6 +464,12 @@ class SayuriCore:
     def sayuri_tool_receipts(self, limit: int = 30) -> dict[str, Any]:
         return self.agent.tool_receipts(limit)
 
+    def sayuri_cognition(self, *, query: str = "", context: Any = None) -> dict[str, Any]:
+        try:
+            return self.agent.cognition_payload(query=query, context=context)
+        except AgentRuntimeError as exc:
+            raise BadRequestError(str(exc)) from exc
+
     def _resolve_action_destination(self, destination: str) -> str | None:
         name = (destination or "").strip()
         if name.casefold() in {"", "/", "корень", "диск sayuri", "диск сayuри", "диск саюри"}:

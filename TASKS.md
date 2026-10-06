@@ -424,3 +424,58 @@
 - Reasoning Planner 0.5 трактует checkpoint как доказательство конкретного шага, не как завершение всей задачи.
 - Версии: проект `0.1.56`, App `0.1.48`, Agent `0.13.0`.
 - Приёмка: Python tests, JS syntax, preflight, version each-commit, Windows launcher, PR merge и финальный зелёный `main` workflow.
+
+
+## AI-011 — Cognitive Project Brain / Global Multi-Module Architecture
+
+- Статус: `implemented in target 0.2.0`; релиз считается принятым только после зелёного branch/PR/main CI.
+- База: `main 0.1.56`, commit `35bb9e6d5ab9e5b51075c28461b8e862f70a74e7`.
+- Создать единый Cognitive Project Brain поверх Memory 4.x, без второго независимого источника истины для task status.
+- Multi-project / multi-module:
+  - persistent project/module registry;
+  - bootstrap из `MODULES.json`; schema 1-compatible metadata поддерживает `project_key`, capabilities и depends_on metadata;
+  - task scope через `project_key/module_key` context;
+  - неизвестный будущий проект/модуль может регистрироваться локальным кодом без изменения Planner.
+- Task Graph:
+  - `requires / blocks / unlocks / follows`;
+  - scheduler исключает dependency-blocked task;
+  - graph сохраняется после restart.
+- Completion Criteria:
+  - checkpoint_count;
+  - confirmed tool_completed;
+  - dependency_done;
+  - manual_confirmation;
+  - только assessment; `done` автоматически не выставляется.
+- Cognitive Scheduler:
+  - priority/status/query overlap;
+  - project/module affinity;
+  - dependency blockers;
+  - uncertainty penalty;
+  - attention state;
+  - bounded top candidates.
+- Uncertainty & confidence:
+  - persistent uncertainty ledger;
+  - severity + evidence_needed;
+  - explicit metacognitive `uncertain`.
+- Strategy Memory:
+  - Action Broker completed/failed outcomes;
+  - success/failure counters;
+  - Bayesian-smoothed confidence;
+  - project/module scope.
+- Replanning:
+  - failed confirmed action → proposed plan revision;
+  - proposal не меняет `next_action` автоматически;
+  - Planner получает `replan_required` как read-only signal.
+- Self-Evaluation / Metacognition:
+  - project/module progress metrics;
+  - blockers, completion-ready, uncertainties;
+  - states actionable/blocked/uncertain/replan_required/criteria_missing/ready_for_completion_confirmation.
+- Long Horizon:
+  - portfolio/graph/criteria/strategy/replan persistence в `sayuri-memory.db`;
+  - restart restoration без background mutation worker.
+- Security:
+  - Cognitive tools только read-only для LLM;
+  - real mutations только Action Broker или explicit trusted local code;
+  - blocked task не получает lifecycle linkage;
+  - completion confirmation остаётся человеческой.
+- Версии: Project `0.2.0`, App `0.1.49`, Agent `0.14.0`, Reasoning `1.0`, Cognitive Brain `1.0`, Tool Planner `0.4`.
