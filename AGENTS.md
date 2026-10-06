@@ -99,3 +99,16 @@
 - Не называй задачу выполненной без файлов или другого проверяемого результата. Не называй тесты пройденными, если они не запускались.
 - После записи проверь целевую ветку и содержимое сохранённых файлов. Если публикация недоступна, честно передай несохранённые изменения и блокер.
 - Итог пользователю: что изменено, что проверено, где сохранено (ветка/коммит/PR), что осталось. Отделяй завершённое от предложений.
+
+
+## Cognitive Project Brain contract (0.2.0+)
+
+- Do not create a second per-module planner/task database when adding a new module.
+- Register modules through `MODULES.json`; use `project_key` when a module belongs to another project.
+- Tasks that need module/project isolation should carry `project_key` and `module_key` in task context.
+- Goal/Task status remains owned by Memory 4.x; cognitive tables add scope, graph, criteria, uncertainty, strategy and evaluations.
+- LLM-facing cognition is read-only. Do not expose a direct cognitive mutation tool.
+- Real mutations remain behind `SayuriActionBroker` and explicit user confirmation.
+- Never auto-mark a task done from a model answer, checkpoint, verifier score, or completion criteria alone.
+- Dependency blockers and stale task state must win over old plans.
+- Keep cognition persistence in local SQLite unless a future explicit migration decision changes this.

@@ -4,67 +4,76 @@
 
 - Дата: 2026-10-06.
 - Репозиторий: https://github.com/Aspksa/Sayuri-Tsukishiro
-- Проверенная исходная ревизия: `dc1ca53926d32498da084ce34757eec8c8ee21f5` — опубликованный `main 0.1.55`, Versions #37407648237 success.
-- Рабочая ветка этапа: `task-lifecycle-v0156`.
-- Текущий результат: **0.1.56 — Task Lifecycle & Checkpoints**.
-- Задача: **AI-010**.
+- Проверенная исходная ревизия: `35bb9e6d5ab9e5b51075c28461b8e862f70a74e7` — опубликованный `main 0.1.56`.
+- Рабочая ветка этапа: `cognitive-project-brain-v020`.
+- Текущий целевой результат: **0.2.0 — Cognitive Project Brain**.
+- Задача: **AI-011 — Global Multi-Module Cognitive Architecture**.
 
 ## Версии результата
 
-- Проект: `0.1.56`.
-- Ядро/App contract: `0.1.48`.
-- Agent Core: `0.13.0`.
+- Project: `0.2.0`.
+- App/Core: `0.1.49`.
+- Agent Core: `0.14.0`.
+- Reasoning Planner: `1.0`.
+- Cognitive Project Brain: `1.0`.
+- Evidence Tool Planner: `0.4`.
 - Web UI: `0.31.0` — без изменений.
-- Диск Sayuri: `0.8.0` — без изменений.
+- Disk: `0.8.0` — без изменений.
 - dev-tools: `0.1.6` — без изменений.
-- DB schema приложения и DNA schema: без изменений; Memory 4.x получает новую внутреннюю checkpoint table через idempotent CREATE TABLE.
 
-## Что реализовано
+## Мозг
 
-### Task Lifecycle
+Sayuri теперь использует единый стек:
 
-- Persistent `memory_task_checkpoints` хранится в `sayuri-memory.db`.
-- Action связывается с незавершённой task только локально и только при deterministic query overlap.
-- Пользовательский `_task_lifecycle` игнорируется и пересоздаётся runtime.
-- Checkpoint создаётся только после Action Broker `completed`.
-- Повтор одного action id идемпотентен.
-- Checkpoint хранит sequence, before/after task state и SHA-256 подтверждённого результата.
+`Memory 4.x → Goal/Task Lifecycle → Cognitive Project Brain → Reasoning Planner → Evidence Tools → Result Verifier → Action Broker → Checkpoint/Strategy feedback`
 
-### Evidence-based next_action
+Cognitive Project Brain включает:
+- multi-project portfolio;
+- multi-module registry;
+- task graph `requires / blocks / unlocks / follows`;
+- explicit completion criteria;
+- dependency-aware cognitive scheduler;
+- confidence + uncertainty ledger;
+- existing causal/failure reasoning from Memory 4.x;
+- strategy memory from confirmed action outcomes;
+- persistent replan proposals;
+- deterministic self-evaluation;
+- metacognitive states;
+- long-horizon restart restoration.
 
-- `planned / in_progress` task может получить deterministic follow-up только при совпадении сохранённого task snapshot с текущим.
-- Stale snapshot не перезаписывает новый `next_action`.
-- `blocked`, `done`, `cancelled` автоматически не меняются.
-- Lifecycle никогда автоматически не выставляет `done`.
+## Контракт будущих модулей
 
-### Restart restoration
+1. Новый модуль добавляется в `MODULES.json` и имеет собственный каталог/`VERSION` согласно общему versioning contract.
+2. `project_key` определяет проект портфеля; без него используется `sayuri-tsukishiro`.
+3. Task-producing module передаёт `project_key/module_key` в task context.
+4. Cognitive Brain автоматически scope-ит задачу при trusted synchronization.
+5. Модулю не нужно реализовывать отдельный Planner, scheduler, uncertainty или strategy memory.
+6. Модуль может использовать общий read-only `/api/sayuri/cognition` для диагностики.
 
-- Goal Continuity возвращает `resume.latest_checkpoint` выбранной задачи.
-- После повторной инициализации Sayuri continuation восстанавливается из SQLite.
-- Reasoning Planner 0.5 получает checkpoint как evidence конкретного шага, но не право менять lifecycle.
+## Жёсткие инварианты
 
-## Инварианты
+1. Единственная внешняя LLM — `deepseek-ai/DeepSeek-V4-Flash` через Cloud.ru.
+2. LLM не меняет cognitive/task state напрямую.
+3. Real mutations остаются confirmation-gated через Action Broker.
+4. Read-only cognition tools не имеют скрытых write side-effects.
+5. Dependency-blocked task не выбирается scheduler как actionable.
+6. Completion criteria никогда автоматически не выставляют `done`.
+7. Failure создаёт replan proposal/uncertainty, а не самовольную mutation.
+8. Sensitive/local-only memory продолжает фильтроваться перед Cloud.
+9. Chain-of-thought не сохраняется.
 
-1. Только `deepseek-ai/DeepSeek-V4-Flash` через Cloud.ru.
-2. LLM не создаёт и не применяет task checkpoint.
-3. Все реальные mutations остаются confirmation-gated через Action Broker.
-4. Action context lifecycle остаётся внутренним.
-5. Checkpoint не означает завершение всей задачи.
-6. Stale/blocked/closed task state нельзя перезаписать старым action result.
-7. Goal/Task restore не требует фонового worker.
-8. Chain-of-thought не сохраняется.
+## Приёмка
 
-## Проверка релиза
-
-Для принятия `0.1.56` обязательны:
-- Python unit tests;
+Для публикации `0.2.0` обязательны:
+- новый cognitive regression suite;
+- весь существующий Python core suite;
 - JavaScript syntax;
 - app preflight;
 - version check `--each-commit`;
 - Windows launcher checks;
-- PR merge;
-- зелёный финальный workflow на `main`.
+- PR CI;
+- merge и зелёный final workflow на `main`.
 
-## Следующий рациональный этап
+## Следующая точка после 0.2.0
 
-После `0.1.56` развивать Task Graph: зависимости между несколькими задачами, explicit completion criteria и автоматический выбор следующей разблокированной task только из подтверждённого lifecycle state — без автономных mutations.
+Не расширять мозг количеством новых концепций. Следующий этап — подключать реальные новые проектные модули к общему Cognitive Brain и измерять качество scheduler/criteria/strategy на настоящих многошаговых workflow.
