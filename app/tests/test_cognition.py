@@ -642,6 +642,281 @@ class CognitiveProjectBrainTests(unittest.TestCase):
             self.assertEqual(set(project), {"key", "title"})
 
 
+    def test_explicit_project_context_is_a_hard_scheduler_boundary(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _, _, _, v4, brain = self._build(root)
+            target = v4.create_task(
+                "Задача проекта Alpha",
+                priority=1,
+                next_action="Продолжить Alpha.",
+                context={"project_key": "alpha", "module_key": "alpha-core"},
+            )
+            v4.create_task(
+                "Очень приоритетная задача Beta",
+                priority=5,
+                next_action="Продолжить Beta.",
+                context={"project_key": "beta", "module_key": "beta-core"},
+            )
+            brain.sync_tasks()
+
+            scheduled = brain.scheduler(
+                "что дальше",
+                context={"project_key": "alpha"},
+            )
+
+            self.assertEqual(scheduled["selected"]["id"], target["id"])
+            self.assertTrue(
+                all(
+                    item["project"]["key"] == "alpha"
+                    for item in scheduled["candidates"]
+                )
+            )
+
+    def test_milestone_requires_done_tasks_and_explicit_completion(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _, _, _, v4, brain = self._build(root)
+            task = v4.create_task(
+                "Подготовить релиз Alpha",
+                context={"project_key": "alpha", "module_key": "alpha-core"},
+            )
+            brain.sync_tasks()
+            milestone = brain.register_milestone(
+                "alpha",
+                "alpha-release",
+                title="Alpha Release",
+                module_key="alpha-core",
+                priority=5,
+            )
+            brain.link_milestone_task(milestone["id"], task["id"], required=True)
+
+            before = brain.milestone_assessment(milestone["id"])
+            self.assertEqual(before["status"], "incomplete")
+            with self.assertRaises(CognitiveBrainError):
+                brain.complete_milestone(
+                    milestone["id"],
+                    confirmation="COMPLETE_MILESTONE",
+                )
+
+            v4.update_task(task["id"], status="done")
+            ready = brain.milestone_assessment(milestone["id"])
+            self.assertEqual(ready["status"], "ready_for_confirmation")
+            self.assertFalse(ready["automatic_completion"])
+            self.assertEqual(
+                brain.milestones(project_key="alpha")[0]["status"],
+                "planned",
+            )
+
+            completed = brain.complete_milestone(
+                milestone["id"],
+                confirmation="COMPLETE_MILESTONE",
+            )
+            self.assertEqual(completed["milestone"]["status"], "done")
+
+    def test_cross_project_external_blocker_unlocks_only_after_source_milestone_done(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _, _, _, v4, brain = self._build(root)
+            source_task = v4.create_task(
+                "Подготовить платформенный API",
+                priority=5,
+                context={"project_key": "platform", "module_key": "platform-core"},
+            )
+            target_task = v4.create_task(
+                "Подключить потребителя API",
+                priority=5,
+                next_action="Подключить API.",
+                context={"project_key": "consumer", "module_key": "consumer-core"},
+            )
+            brain.sync_tasks()
+            milestone = brain.register_milestone(
+                "platform",
+                "api-ready",
+                title="API Ready",
+                priority=5,
+            )
+            brain.link_milestone_task(
+                milestone["id"],
+                source_task["id"],
+                required=True,
+            )
+            blocker = brain.add_external_blocker(
+                "consumer",
+                "platform-api",
+                "Ожидается milestone API Ready",
+                task_id=target_task["id"],
+                source_project_key="platform",
+                source_milestone_id=milestone["id"],
+            )
+
+            before = brain.scheduler(
+                "Подключить потребителя API",
+                context={"project_key": "consumer"},
+            )
+            self.assertIsNone(before["selected"])
+            self.assertEqual(before["blocked_by_external"], 1)
+            self.assertEqual(blocker["effective_status"], "open")
+
+            v4.update_task(source_task["id"], status="done")
+            self.assertEqual(
+                brain.milestone_assessment(milestone["id"])["status"],
+                "ready_for_confirmation",
+            )
+            still_blocked = brain.scheduler(
+                "Подключить потребителя API",
+                context={"project_key": "consumer"},
+            )
+            self.assertIsNone(still_blocked["selected"])
+
+            brain.complete_milestone(
+                milestone["id"],
+                confirmation="COMPLETE_MILESTONE",
+            )
+            after = brain.scheduler(
+                "Подключить потребителя API",
+                context={"project_key": "consumer"},
+            )
+            self.assertEqual(after["selected"]["id"], target_task["id"])
+            refreshed = brain.external_blockers(
+                task_id=target_task["id"],
+                effective_open_only=False,
+            )
+            self.assertEqual(refreshed[0]["effective_status"], "resolved")
+            self.assertTrue(refreshed[0]["derived_resolution"])
+
+    def test_portfolio_dependency_cycle_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _, _, _, _, brain = self._build(root)
+            brain.register_project("alpha", title="Alpha")
+            brain.register_project("beta", title="Beta")
+            brain.add_external_blocker(
+                "beta",
+                "wait-alpha",
+                "Beta ожидает Alpha",
+                source_project_key="alpha",
+            )
+
+            with self.assertRaises(CognitiveBrainError):
+                brain.add_external_blocker(
+                    "alpha",
+                    "wait-beta",
+                    "Alpha ожидает Beta",
+                    source_project_key="beta",
+                )
+
+    def test_cloud_portfolio_projection_hides_local_ids(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _, _, _, v4, brain = self._build(root)
+            source_task = v4.create_task(
+                "Источник milestone",
+                context={"project_key": "source-project"},
+            )
+            target_task = v4.create_task(
+                "Целевая задача",
+                priority=5,
+                next_action="Продолжить после source milestone.",
+                context={"project_key": "target-project"},
+            )
+            brain.sync_tasks()
+            milestone = brain.register_milestone(
+                "source-project",
+                "source-ready",
+                title="Source Ready",
+            )
+            brain.link_milestone_task(milestone["id"], source_task["id"])
+            brain.add_external_blocker(
+                "target-project",
+                "source-wait",
+                "Ожидается Source Ready",
+                task_id=target_task["id"],
+                source_project_key="source-project",
+                source_milestone_id=milestone["id"],
+            )
+
+            cloud = brain.context(
+                "Целевая задача",
+                ui_context={"project_key": "target-project"},
+                for_cloud=True,
+            )
+
+            candidates = cloud["scheduler"]["candidates"]
+            self.assertTrue(candidates)
+            candidate = candidates[0]
+            self.assertNotIn("id", candidate)
+            self.assertNotIn("project_id", candidate["project"])
+            self.assertNotIn("module_id", candidate.get("module") or {})
+            blocker = candidate["blockers"][0]
+            self.assertNotIn("source_project_id", blocker)
+            self.assertNotIn("source_milestone_id", blocker)
+            self.assertNotIn("task_id", blocker)
+            for item in cloud["portfolio"]["active_milestones"]:
+                self.assertNotIn("id", item)
+
+    def test_graph_integrity_reports_legacy_portfolio_cycle_without_repair(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _, _, _, _, brain = self._build(root)
+            alpha = brain.register_project("alpha", title="Alpha")
+            beta = brain.register_project("beta", title="Beta")
+            now = brain._now()
+            with sqlite3.connect(root / "data" / "sayuri-memory.db") as db:
+                db.execute(
+                    """
+                    INSERT INTO cognitive_external_blockers(
+                        id, project_id, module_id, task_id, blocker_key,
+                        title, status, source_project_id, source_milestone_id,
+                        evidence_ref, created_at
+                    ) VALUES(?, ?, NULL, NULL, ?, ?, 'open', ?, NULL, ?, ?)
+                    """,
+                    (
+                        "legacy-blocker-a",
+                        alpha["id"],
+                        "wait-beta",
+                        "Alpha waits Beta",
+                        beta["id"],
+                        "legacy:test",
+                        now,
+                    ),
+                )
+                db.execute(
+                    """
+                    INSERT INTO cognitive_external_blockers(
+                        id, project_id, module_id, task_id, blocker_key,
+                        title, status, source_project_id, source_milestone_id,
+                        evidence_ref, created_at
+                    ) VALUES(?, ?, NULL, NULL, ?, ?, 'open', ?, NULL, ?, ?)
+                    """,
+                    (
+                        "legacy-blocker-b",
+                        beta["id"],
+                        "wait-alpha",
+                        "Beta waits Alpha",
+                        alpha["id"],
+                        "legacy:test",
+                        now,
+                    ),
+                )
+
+            integrity = brain.graph_integrity()
+            self.assertEqual(integrity["status"], "issues")
+            portfolio_cycle = next(
+                item
+                for item in integrity["issues"]
+                if item["type"] == "portfolio_cycle"
+            )
+            self.assertEqual(
+                set(portfolio_cycle["project_ids"]),
+                {alpha["id"], beta["id"]},
+            )
+            self.assertEqual(
+                len(brain.external_blockers(effective_open_only=True)),
+                2,
+            )
+
+
 
 if __name__ == "__main__":
     unittest.main()

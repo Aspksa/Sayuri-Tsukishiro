@@ -1867,3 +1867,67 @@ Cloud output по-прежнему ограничен top-8 candidates.
 ### Branch acceptance correction
 
 Первый candidate `0.2.2` корректно сократил generic cognition auto-trigger, но существующий reasoning regression всё ещё ожидал два read-only receipt. В `0.2.3` test contract синхронизирован с policy: сложный запрос о проектировании модуля без dependency/scheduler intent использует только явный `memory.stats` check; `cognition.next` не добавляется автоматически.
+
+## Cognitive Portfolio 0.2.4 — Milestones & Cross-Project Coordination
+
+### Storage
+
+```text
+cognitive_milestones
+  id
+  project_id
+  module_id
+  milestone_key
+  title
+  description
+  status
+  priority
+  created_at
+  updated_at
+
+cognitive_milestone_tasks
+  milestone_id
+  task_id
+  required
+  created_at
+
+cognitive_external_blockers
+  id
+  project_id
+  module_id
+  task_id
+  blocker_key
+  title
+  status
+  source_project_id
+  source_milestone_id
+  evidence_ref
+  created_at
+  resolved_at
+  resolution
+```
+
+### Coordination rules
+
+- Task edges remain intra-project only.
+- Milestone task links remain intra-project only.
+- Cross-project coordination uses external blockers.
+- A source milestone resolves a linked blocker effectively only after explicit milestone completion.
+- New portfolio dependency cycles are rejected before write.
+- Integrity diagnostics report legacy cycles without repair.
+- Explicit project context is a hard scheduler boundary; module context remains affinity so prerequisites in sibling modules can still be selected.
+- Scheduler, completion assessment and metacognition consume the same bounded portfolio snapshot where possible.
+- Cloud projection never includes local portfolio database IDs.
+
+### Local API
+
+- `GET /api/sayuri/cognition/milestones`
+- `GET /api/sayuri/cognition/external-blockers`
+- `POST /api/sayuri/cognition/milestones`
+- `POST /api/sayuri/cognition/milestones/{id}/tasks`
+- `POST /api/sayuri/cognition/milestones/{id}/complete`
+- `POST /api/sayuri/cognition/external-blockers`
+- `POST /api/sayuri/cognition/external-blockers/{id}/resolve`
+
+Milestone completion requires `confirmation=COMPLETE_MILESTONE`. These mutations are not LLM tools.
+

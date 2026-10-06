@@ -777,3 +777,36 @@ LLM не получает mutation tool для replan. Старый proposal н�
 - Cloud cognition передаёт только минимальный scope и summary, без внутренних DB/action/replan/causal идентификаторов;
 - generic слова «проект/модуль» не являются достаточным основанием для фонового cognition tool call;
 - Action Broker и permission model не меняются.
+
+## 2026-10-06 — Межпроектная координация не расширяет Task Graph
+
+**Решение:** direct `requires/blocks/unlocks/follows` остаются только внутри одного project scope. Между проектами используется отдельный `external blocker`, который при необходимости ссылается на source project/milestone.
+
+Причины:
+- project task graph остаётся локальным DAG;
+- один новый модуль или проект не может случайно создать глобальный task cycle;
+- provenance межпроектной зависимости виден отдельно от task lifecycle;
+- разрешение зависимости можно доказать milestone-ом, а не текстом модели.
+
+## 2026-10-06 — Milestone требует явного завершения
+
+**Решение:** выполнение всех required tasks переводит milestone только в `ready_for_confirmation`. Статус `done` требует `COMPLETE_MILESTONE`.
+
+Причины:
+- task completion и business/project milestone — разные факты;
+- старые/stale задачи не должны автоматически закрывать фазу проекта;
+- DeepSeek/Planner/Verifier не получают право завершать milestone;
+- source milestone становится безопасным доказательством для derived cross-project unlock только после local confirmation.
+
+## 2026-10-06 — Explicit project_key является scheduler boundary
+
+**Решение:** если trusted UI/API context передал `project_key`, scheduler рассматривает только задачи этого проекта. Module context остаётся affinity, а не жёсткой границей, чтобы scheduler мог выбрать prerequisite соседнего модуля того же проекта.
+
+Это предотвращает выбор задачи другого проекта по более высокому priority и одновременно сохраняет координацию между модулями внутри одного проекта.
+
+## 2026-10-06 — Portfolio cycle отклоняется при записи, legacy cycle только диагностируется
+
+**Решение:** новый external blocker с source project проверяется на directed cycle до сохранения. Persisted legacy cycle обнаруживается `graph_integrity()`, но не ремонтируется автоматически.
+
+Silent repair запрещён, потому что удаление межпроектной зависимости является business/project mutation и требует явного решения.
+

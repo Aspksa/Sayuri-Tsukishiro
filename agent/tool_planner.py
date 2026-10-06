@@ -94,7 +94,7 @@ def _utcnow() -> str:
 class EvidenceToolPlanner:
     """Deterministic tool policy + execution receipts for structured plans."""
 
-    VERSION = "0.4.1"
+    VERSION = "0.4.2"
 
     def __init__(self, path: Path):
         self.path = path
@@ -399,6 +399,7 @@ class EvidenceToolPlanner:
                 marker in text
                 for marker in (
                     "следующ", "зависим", "блокир", "разблок", "критер", "готовност",
+                    "milestone", "майлстоун", "внешн блок", "межпроект",
                     "replan", "переплан", "неопредел", "стратег", "очеред", "приоритет",
                 )
             )
@@ -406,7 +407,7 @@ class EvidenceToolPlanner:
             add(
                 "cognition.next",
                 args={"query": " ".join(goal.strip().split())[:1200] or "следующая проектная задача"},
-                purpose="Сверить task graph, blockers, completion criteria и следующий допустимый фокус.",
+                purpose="Сверить task graph, milestones/external blockers, completion criteria и следующий допустимый фокус.",
             )
         if (
             "memory.continuity" not in explicit

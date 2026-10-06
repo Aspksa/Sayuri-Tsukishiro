@@ -2,6 +2,25 @@
 
 ## Невыпущенные изменения
 
+### 0.2.4 — 2026-10-06 — Portfolio Milestones & Cross-Project Coordination
+
+- Cognitive Project Brain обновлён до `1.3`: над существующим task graph добавлен портфельный уровень milestones и explicit external blockers без создания нового Planner или второй памяти.
+- Milestone принадлежит одному проекту, может быть привязан к модулю и содержит required/optional task links; обязательные задачи другого проекта привязать нельзя.
+- Milestone никогда не закрывается автоматически. Даже после выполнения всех required tasks он получает только `ready_for_confirmation`; переход в `done` требует явного `COMPLETE_MILESTONE`.
+- Межпроектные зависимости больше не моделируются запрещёнными direct task edges: target project/module/task получает persistent external blocker, который может ссылаться на source project и source milestone.
+- External blocker автоматически считается эффективно разрешённым только после подтверждённого `done` связанного source milestone либо после отдельного explicit local resolution.
+- Добавлен portfolio-cycle guard: цепочки project A → B → … → A отклоняются при создании; legacy цикл выявляется read-only integrity diagnostics и не ремонтируется молча.
+- Scheduler использует milestones/external blockers внутри существующего snapshot, учитывает milestone priority и различает `blocked_by_dependencies` и `blocked_by_external`.
+- Явный `project_key` стал жёсткой границей scheduler: контекст одного проекта больше не может выбрать task другого проекта только из-за более высокого priority.
+- Context path переиспользует один portfolio snapshot для scheduler + metacognition; при отсутствии actionable task metacognition анализирует лучший blocked candidate текущего project scope вместо ухода в другой проект.
+- Cloud cognition projection скрывает task/milestone/blocker/project database IDs и оставляет только bounded key/title/status/relation/summary, необходимые DeepSeek-V4-Flash для рассуждения.
+- Reasoning Planner обновлён до `1.1`: milestones и external blockers являются обязательными read-only ограничениями; модель не может объявить blocker снятым или milestone завершённым.
+- Evidence Tool Planner обновлён до `0.4.2`: добавлены узкие read-only triggers для milestone/external-blocker/cross-project intent без возврата generic trigger от слов «проект/модуль».
+- Добавлены explicit local API для milestones, task links, milestone completion, external blockers и resolution; эти mutation endpoints не включены в Evidence Tool Planner catalog.
+- Добавлены regressions на strict project boundary, milestone confirmation, derived cross-project unlock, portfolio-cycle guard, Cloud ID privacy, integrity diagnostics, narrow tool trigger и local API boundary.
+- Старый PR #27 закрыт как superseded после публикации `main 0.2.3`; `0.2.4` строится от проверенного commit `a609762d1f82763110d9b0a6fc88d3c1abbf389a`.
+- Project: `0.2.4`; App/Core: `0.1.53`; Agent Core: `0.15.0`; Cognitive Brain: `1.3`; Reasoning Planner: `1.1`; Evidence Tool Planner: `0.4.2`. Web UI, Disk и dev-tools без изменений.
+
 ### 0.2.3 — 2026-10-06 — Portfolio Scale & Integrity
 
 - Cognitive Project Brain обновлён до `1.2`: scheduler и self-evaluation используют пакетный portfolio snapshot вместо повторных per-task SQLite/Memory запросов.

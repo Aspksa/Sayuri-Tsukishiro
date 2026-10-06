@@ -4,75 +4,93 @@
 
 - Дата: 2026-10-06.
 - Репозиторий: https://github.com/Aspksa/Sayuri-Tsukishiro
-- Проверенная исходная ревизия: `bf9ffc499fbfa5b472c526f79f0e18166d6c7ce5` — опубликованный `main 0.2.1`, Versions #37412163229 success.
-- Рабочая ветка этапа: `portfolio-scale-v0202`.
-- Текущий целевой результат: **0.2.3 — Portfolio Scale & Integrity**.
-- Задача: **AI-013**.
+- Проверенная исходная ревизия: `a609762d1f82763110d9b0a6fc88d3c1abbf389a` — опубликованный `main 0.2.3`, Versions #37415897573 success.
+- Рабочая ветка этапа: `portfolio-coordination-v0204`.
+- Старый PR #27 (`0.2.2`) закрыт как superseded и не должен сливаться поверх `main 0.2.3+`.
+- Текущий целевой результат: **0.2.4 — Portfolio Milestones & Cross-Project Coordination**.
+- Задача: **AI-014**.
 
 ## Версии результата
 
-- Project: `0.2.3`.
-- App/Core: `0.1.52`.
-- Agent Core: `0.14.2`.
-- Cognitive Project Brain: `1.2`.
-- Reasoning Planner: `1.0` — без изменений.
-- Evidence Tool Planner: `0.4.1`.
+- Project: `0.2.4`.
+- App/Core: `0.1.53`.
+- Agent Core: `0.15.0`.
+- Cognitive Project Brain: `1.3`.
+- Reasoning Planner: `1.1`.
+- Evidence Tool Planner: `0.4.2`.
 - Web UI: `0.31.0` — без изменений.
 - Disk: `0.8.0` — без изменений.
 - dev-tools: `0.1.6` — без изменений.
 
 ## Цель этапа
 
-Не добавлять новый cognitive layer. Подготовить существующий Brain к десяткам модулей и сотням задач за счёт scale/integrity/privacy hardening.
+Сделать Cognitive Brain пригодным не только для десятков модулей одного проекта, но и для портфеля самостоятельных проектов, которые могут зависеть друг от друга без превращения task graph в один глобальный цикл.
 
-## Реализовано в target snapshot
+## Реализуется
 
-### Portfolio scale
-- scheduler использует единый `_scheduler_snapshot()` вместо per-task N+1 чтений;
-- self-evaluation переиспользует snapshot для task/dependency/completion;
-- top Cloud candidates остаются bounded до 8;
-- sync получает known task scopes пакетно.
+### Portfolio milestones
+- persistent `cognitive_milestones`;
+- optional module scope;
+- required/optional task links;
+- milestone может включать только tasks своего project scope;
+- completed required tasks дают только `ready_for_confirmation`;
+- переход milestone в `done` требует explicit `COMPLETE_MILESTONE`.
 
-### Registry / modules
-- repeat module registration сохраняет существующий title;
-- metadata merge-ятся, а не заменяются целиком;
-- существующий project priority не меняется без explicit priority.
+### Cross-project coordination
+- direct cross-project task edges по-прежнему запрещены;
+- межпроектная зависимость моделируется `cognitive_external_blockers`;
+- blocker может быть project/module/task scoped;
+- blocker может ссылаться на source project и source milestone;
+- source milestone `done` даёт derived effective resolution;
+- explicit resolution остаётся отдельным local mutation.
 
-### Integrity
-- explicit read-only `graph_integrity()` обнаруживает missing-task/cross-project/cycle legacy state;
-- integrity diagnostics не выполняет автоматический repair.
+### Portfolio integrity
+- при создании external dependency проверяется project-level cycle;
+- проверка учитывает только effective-open dependencies: историческая blocker-запись на уже завершённый source milestone не создаёт ложный цикл;
+- legacy portfolio cycle диагностируется read-only `graph_integrity()`;
+- milestone-task link проверяется на project ownership;
+- никакого автоматического repair persisted state.
 
-### Uncertainty
-- high-severity uncertainty переводит recommendation в evidence-first режим.
+### Scheduler
+- milestones/external blockers входят в существующий batch snapshot;
+- явный `project_key` — жёсткий scheduler boundary;
+- milestone priority может повышать релевантность task;
+- task dependency и external blocker считаются раздельно;
+- blocked task не получает actionable status;
+- context/metacognition переиспользуют текущий snapshot и не перескакивают на другой project при отсутствии actionable task.
 
-### Cloud / tool policy
-- project/module Cloud scope: только key/title;
-- strategy/causal/replan/metacognition лишены ненужных внутренних IDs;
-- generic «проект/модуль» не запускает `cognition.next` без специфического cognitive intent;
-- explicit `/api/sayuri/cognition` diagnostics включает graph integrity, лёгкий status остаётся дешёвым.
+### Cloud privacy
+- Cloud projection не получает local task IDs, source project DB IDs, source milestone IDs, module paths или manifest metadata;
+- model видит только bounded project/module keys/titles, blocker type/title/relation/key, milestone key/title/status/priority и completion summary;
+- persistent mutations остаются локальными.
+
+### Reasoning / tools
+- Reasoning Planner 1.1 понимает milestones и external blockers как read-only constraints;
+- модель не может объявить milestone завершённым;
+- модель не может снять external blocker по предположению;
+- Evidence Tool Planner 0.4.2 запускает cognition read-only check по milestone/external-blocker intent, но не по общим словам «проект/модуль»;
+- Action Broker и explicit local cognition API остаются единственными mutation boundaries.
 
 ## Инварианты
 
 1. Единственная внешняя LLM — `deepseek-ai/DeepSeek-V4-Flash` через Cloud.ru.
 2. LLM cognition tools только read-only.
-3. Explicit local cognition mutation API из 0.2.1 не включён в LLM tool catalog.
-4. Real project actions остаются confirmation-gated через Action Broker.
-5. Completion criteria не выставляют `done` автоматически.
-6. Graph integrity не ремонтирует state молча.
-7. High uncertainty требует evidence-first recommendation, но не меняет task автоматически.
-8. Sensitive/local metadata и внутренние causal/replan identifiers не отправляются в Cloud.
+3. Milestone/external blocker mutation API не входит в LLM tool catalog.
+4. Direct cross-project task dependency запрещена.
+5. Межпроектные effective-open связи не должны образовывать portfolio cycle.
+6. Milestone и task никогда не получают `done` автоматически от модели, Planner, Verifier или criteria.
+7. Source milestone разблокирует target только после подтверждённого local `done`.
+8. Graph/portfolio integrity диагностика ничего не исправляет автоматически.
 9. Chain-of-thought не сохраняется.
-
-## Последняя неуспешная проверка
-
-- Branch run `37413209059`, candidate `0.2.2`: version tooling прошёл, Python suite остановился на `test_complex_chat_runs_planner_answer_verifier_and_uses_revision` — ожидалось `read_only_checks=2`, фактически `1`.
-- Причина: тест всё ещё учитывал старый generic `cognition.next` trigger от слова «модуль». В новом policy этот лишний вызов намеренно удалён.
-- Решение в `0.2.3`: обновить только regression expectation на `1` read-only/evidence receipt; runtime policy не откатывать.
 
 ## Приёмка
 
 Релиз считается принятым только после:
-- cognitive scale/integrity regressions;
+- portfolio milestone/cross-project regressions;
+- strict project scheduler regression;
+- Cloud privacy regression;
+- local API / LLM mutation-boundary regression;
+- narrow cognition tool-trigger regression;
 - полного Python test suite;
 - JavaScript syntax;
 - app preflight;
@@ -82,10 +100,6 @@
 - squash merge;
 - финального зелёного workflow на `main`.
 
-## Ограничение проверки до публикации
+## Следующий этап после 0.2.4
 
-Локальная загрузка непривязанной GitHub archive ревизии была заблокирована средой, поэтому локальный suite не заявляется как выполненный. Источником исполняемой проверки является GitHub Actions после атомарного branch commit.
-
-## Следующий этап после 0.2.3
-
-Не наращивать абстрактный мозг дальше без реального workflow. Подключить первый крупный прикладной модуль к canonical contract и измерять scheduler accuracy, graph blockers, criteria quality, uncertainty handling и strategy transfer на реальной работе.
+После стабилизации portfolio coordination не добавлять ещё один абстрактный cognitive layer. Подключить первый реальный крупный прикладной модуль к canonical contract и измерить качество scheduler, milestones, blockers, completion criteria и strategy transfer на настоящем workflow.

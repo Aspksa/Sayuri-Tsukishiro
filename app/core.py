@@ -518,6 +518,170 @@ class SayuriCore:
         )
         return result
 
+    def sayuri_cognitive_milestones(
+        self,
+        *,
+        project_key: str | None = None,
+        module_key: str | None = None,
+    ) -> dict[str, Any]:
+        try:
+            return self.agent.cognitive_milestones(
+                project_key=project_key,
+                module_key=module_key,
+            )
+        except AgentRuntimeError as exc:
+            raise BadRequestError(str(exc)) from exc
+
+    def register_sayuri_cognitive_milestone(
+        self,
+        project_key: str,
+        milestone_key: str,
+        *,
+        title: str = "",
+        module_key: str | None = None,
+        description: str = "",
+        priority: int = 3,
+    ) -> dict[str, Any]:
+        try:
+            result = self.agent.register_cognitive_milestone(
+                project_key,
+                milestone_key,
+                title=title,
+                module_key=module_key,
+                description=description,
+                priority=priority,
+            )
+        except AgentRuntimeError as exc:
+            raise BadRequestError(str(exc)) from exc
+        self.database.record_event(
+            "Sayuri",
+            "Portfolio milestone зарегистрирован",
+            details={
+                "project_key": project_key,
+                "milestone_key": result["milestone"]["key"],
+            },
+        )
+        return result
+
+    def link_sayuri_cognitive_milestone_task(
+        self,
+        milestone_id: str,
+        task_id: str,
+        *,
+        required: bool = True,
+    ) -> dict[str, Any]:
+        try:
+            result = self.agent.link_cognitive_milestone_task(
+                milestone_id,
+                task_id,
+                required=required,
+            )
+        except AgentRuntimeError as exc:
+            raise BadRequestError(str(exc)) from exc
+        self.database.record_event(
+            "Sayuri",
+            "Задача привязана к portfolio milestone",
+            details={
+                "milestone_id": milestone_id,
+                "task_id": task_id,
+                "required": required,
+            },
+        )
+        return result
+
+    def complete_sayuri_cognitive_milestone(
+        self,
+        milestone_id: str,
+        *,
+        confirmation: str,
+    ) -> dict[str, Any]:
+        if confirmation != "COMPLETE_MILESTONE":
+            raise BadRequestError(
+                "Для завершения milestone требуется confirmation=COMPLETE_MILESTONE."
+            )
+        try:
+            result = self.agent.complete_cognitive_milestone(
+                milestone_id,
+                confirmation=confirmation,
+            )
+        except AgentRuntimeError as exc:
+            raise BadRequestError(str(exc)) from exc
+        self.database.record_event(
+            "Sayuri",
+            "Portfolio milestone завершён",
+            details={"milestone_id": milestone_id},
+        )
+        return result
+
+    def sayuri_cognitive_external_blockers(
+        self,
+        *,
+        project_key: str | None = None,
+        module_key: str | None = None,
+        task_id: str | None = None,
+    ) -> dict[str, Any]:
+        try:
+            return self.agent.cognitive_external_blockers(
+                project_key=project_key,
+                module_key=module_key,
+                task_id=task_id,
+            )
+        except AgentRuntimeError as exc:
+            raise BadRequestError(str(exc)) from exc
+
+    def add_sayuri_cognitive_external_blocker(
+        self,
+        project_key: str,
+        blocker_key: str,
+        title: str,
+        *,
+        task_id: str | None = None,
+        module_key: str | None = None,
+        source_project_key: str | None = None,
+        source_milestone_id: str | None = None,
+    ) -> dict[str, Any]:
+        try:
+            result = self.agent.add_cognitive_external_blocker(
+                project_key,
+                blocker_key,
+                title,
+                task_id=task_id,
+                module_key=module_key,
+                source_project_key=source_project_key,
+                source_milestone_id=source_milestone_id,
+            )
+        except AgentRuntimeError as exc:
+            raise BadRequestError(str(exc)) from exc
+        self.database.record_event(
+            "Sayuri",
+            "Portfolio external blocker добавлен",
+            details={
+                "project_key": project_key,
+                "blocker_key": blocker_key,
+                "task_id": task_id,
+            },
+        )
+        return result
+
+    def resolve_sayuri_cognitive_external_blocker(
+        self,
+        blocker_id: str,
+        resolution: str,
+    ) -> dict[str, Any]:
+        try:
+            result = self.agent.resolve_cognitive_external_blocker(
+                blocker_id,
+                resolution,
+            )
+        except AgentRuntimeError as exc:
+            raise BadRequestError(str(exc)) from exc
+        self.database.record_event(
+            "Sayuri",
+            "Portfolio external blocker разрешён",
+            details={"blocker_id": blocker_id},
+        )
+        return result
+
     def add_sayuri_cognitive_dependency(
         self,
         task_id: str,
