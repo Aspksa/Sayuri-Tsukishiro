@@ -4,74 +4,92 @@
 
 - Дата: 2026-10-06.
 - Репозиторий: https://github.com/Aspksa/Sayuri-Tsukishiro
-- Проверенная исходная ревизия: `87b4cc452665ca98df417effc882c06add2435f9` — проект `0.1.50`, Sayuri Presence UX Cleanup.
-- Исходный финальный workflow: Versions #485 — success.
-- Целевая версия: `0.1.51`.
-- Текущая задача: **UI-005 — UI System & Chat Polish**.
+- Проверенная исходная ревизия: `9387f351e951804e207f9e6451dc96ecb6fca535` — проект `0.1.51`, UI System & Chat Polish.
+- Исходный финальный workflow: Versions #489 — success.
+- Целевая версия: `0.1.52`.
+- Текущая задача: **UI-006 — Rich Answer UX & Lazy Diagnostics**.
 
 ## Версии целевого дерева
 
-- Проект: `0.1.51`.
-- Ядро Саюри: `0.1.43`.
-- Agent Core: `0.10.1` — не изменяется.
-- Web UI: `0.27.0`.
+- Проект: `0.1.52`.
+- Ядро Саюри: `0.1.44`.
+- Agent Core: `0.10.2`.
+- Web UI: `0.28.0`.
 - Диск Sayuri: `0.7.1` — не изменяется.
 - Dev tools: `0.1.6` — не изменяются.
 
-## Основные UX-инварианты
+## Safe Rich Answer pipeline
 
-### Навигация
+```text
+DeepSeek answer string
+→ deterministic block parser
+→ DOM createElement/textContent
+→ headings/lists/quotes/code/tables/links
+→ chat message
+```
 
-- Структура левого меню не меняется.
-- Личный кабинет по-прежнему открывается через аватар Sayuri.
-- Ctrl/⌘+K открывает transient command palette поверх текущего экрана.
-- Palette не создаёт новый модуль и не меняет route самостоятельно вне выбранной команды.
+Инварианты:
 
-### Chat
+- `innerHTML` не используется в rich renderer;
+- HTML из ответа не исполняется;
+- link node создаётся только для http/https Markdown links;
+- fenced code всегда остаётся textContent;
+- code copy — локальное clipboard-действие.
 
-- Сохраняются drag/resize v0.1.50.
-- Добавляется fullscreen/maximize существующего окна.
-- Esc сначала закрывает command palette, затем возвращает maximized chat в floating mode, затем может закрыть обычный chat.
-- В обычной status line нет токенов, внутренних счётчиков Memory или model-call telemetry.
-- Copy action сообщения появляется ненавязчиво и использует clipboard API с toast-feedback.
+## User-facing evidence
 
-### Design system
+Agent Core формирует `evidence` отдельно от execution receipts.
 
-UI 0.27 задаёт единые:
+Допустимый UI:
 
-- spacing tokens;
-- radius tokens;
-- shadow tokens;
-- surface/text/line tokens;
-- focus-visible states;
-- control heights;
-- responsive constraints;
-- reduced-motion behavior.
+- текущий документ, если Planner действительно выполнил read-only `context.current_document`;
+- агрегированная проектная/личная память.
 
-Новых CSS/JS зависимостей не добавляется.
+Недопустимо показывать в обычном UI:
+
+- receipt ID;
+- tool name;
+- output SHA-256;
+- raw args;
+- internal memory IDs.
+
+Клик по document evidence использует существующий `openViewer()`.
+
+## Lazy diagnostics
+
+Первое открытие вкладок:
+
+- `Обзор` → base memory + candidates;
+- `Архитектура` → Memory 3.0;
+- `Quality Gate` → Memory 4.1;
+- `Опыт` → Experience Learning.
+
+Открытие Личного кабинета само по себе загружает только профиль и данные реально выбранной вкладки. Загруженные секции отмечаются локально в `sayuriState.loadedSections`.
+
+Во время запроса panel получает `.sayuri-lazy-loading` + `aria-busy=true`.
 
 ## Неудачная проверка, которую не повторять
 
-- Ветка: `ui-system-v0151`.
-- Commit: `18703f5fcff4891535e8d27cdd561b68248f87f8`.
-- Workflow: Versions #486 — failure.
+- Ветка: `rich-answer-v0152`.
+- Commit: `d6f38bbf587872db83362801db531ee88b4022e5`.
+- Workflow: Versions #490 — failure.
 - Windows launcher: success.
-- Единственное падение: старый `test_web_chat_exposes_structured_reasoning_summary` ожидал буквальную строку `план+проверка`.
-- Причина: v0.1.51 намеренно заменяет техническую status-line на `Готова · результат проверен`; structured reasoning summary при этом сохранён.
-- Исправление r2: обновить Web contract под новый UX, не возвращать техническую строку в интерфейс.
-- Release r2 строится новым чистым одним commit от подтверждённого `main 0.1.50`; failed-ветка не переписывается и не merge-ится.
+- Единственное падение: новый security Web contract искал `textContent` только внутри `renderSayuriRichText()`.
+- Фактическая безопасная запись текста находится в общем helper `appendSayuriInline()` через `document.createTextNode` / `textContent`; rich renderer сам делегирует туда все inline-значения.
+- Исправление r2: security contract проверяет весь helper pipeline от `appendSayuriInline` до `renderSayuriMessages`, сохраняя обязательный запрет `innerHTML`.
+- Failed-ветка не переписывается и не merge-ится; r2 строится одним чистым commit от `main 0.1.51`.
 
-## Релизный критерий 0.1.51
+## Релизный критерий 0.1.52
 
-1. Один атомарный commit от `main 0.1.50`.
-2. App/Web contract tests — success.
-3. JavaScript syntax — success.
-4. Preflight — success.
-5. Version tooling и each-commit check — success.
+1. Один атомарный commit от `main 0.1.51`.
+2. Agent/Core tests — success.
+3. Web contracts — success.
+4. JavaScript syntax — success.
+5. Preflight и versioning each-commit — success.
 6. Windows launcher checks — success.
 7. PR merge.
 8. Финальный `main` workflow — success.
 
 ## Следующий рациональный этап
 
-После стабилизации UI 0.27 — улучшать контентные поверхности: безопасное форматирование ответов, document citations/evidence и lazy-loading тяжёлых диагностических вкладок, не возвращая технический шум в основной UI.
+После стабилизации 0.1.52 — улучшить работу непосредственно с содержимым документов: page/line/bbox citations из DNA/Spatial Evidence и контекстное открытие конкретного места документа, не превращая chat в техническую консоль.
