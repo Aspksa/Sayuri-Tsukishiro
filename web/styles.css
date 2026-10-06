@@ -6933,3 +6933,509 @@ button.sayuri-evidence-item.spatial_document:hover {
     min-height: 260px;
   }
 }
+
+
+/* ==========================================================================
+   SAYURI UI 0.30 — Visual Refinement & Workspace UX
+   ========================================================================== */
+
+:root {
+  --ui-accent: #546b8c;
+  --ui-accent-soft: #eef3f9;
+  --ui-accent-line: #d7e0eb;
+  --ui-panel: #ffffff;
+  --ui-panel-soft: #f7f8fa;
+  --ui-panel-muted: #f1f3f6;
+  --ui-elevated-border: rgba(210, 215, 223, .88);
+  --ui-workspace-shadow: 0 34px 110px rgba(15, 23, 42, .24);
+}
+
+/* One state component across Disk, viewer, palette and future surfaces. */
+.ui-state {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 11px;
+  align-items: center;
+  width: min(100%, 560px);
+  margin: auto;
+  padding: 16px;
+  border: 1px solid var(--ui-line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, .92);
+  color: var(--ui-text-2);
+  box-shadow: var(--ui-shadow-xs);
+}
+.ui-state-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid #dde2e8;
+  border-radius: 11px;
+  background: #f7f8fa;
+  color: #7c8694;
+  font-size: 16px;
+  font-weight: 800;
+}
+.ui-state > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+.ui-state strong {
+  color: var(--ui-text);
+  font-size: 12.5px;
+  font-weight: 700;
+}
+.ui-state small {
+  color: var(--ui-muted);
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+.ui-state.error {
+  border-color: #ebd2d2;
+  background: #fffafa;
+}
+.ui-state.error .ui-state-icon {
+  border-color: #eccdcd;
+  background: #fff1f1;
+  color: #aa4e4e;
+}
+.ui-state.loading {
+  position: relative;
+  overflow: hidden;
+}
+.ui-state.loading::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-110%);
+  background: linear-gradient(100deg, transparent 25%, rgba(255,255,255,.72) 48%, transparent 72%);
+  animation: sayuriUiStateSweep 1.35s ease-in-out infinite;
+}
+.ui-state.loading .ui-state-icon {
+  color: var(--ui-accent);
+}
+
+/* Disk becomes a stable workspace instead of a collection of independent boxes. */
+.disk-panel {
+  position: relative;
+  border-color: var(--ui-elevated-border);
+  background: var(--ui-panel);
+  box-shadow: 0 12px 38px rgba(20, 28, 42, .055);
+}
+.disk-panel::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  z-index: 5;
+  height: 2px;
+  transform: scaleX(0);
+  transform-origin: left center;
+  background: linear-gradient(90deg, transparent, #7d91ac, transparent);
+  opacity: 0;
+  transition: opacity 120ms ease, transform 280ms ease;
+  pointer-events: none;
+}
+.disk-panel.is-loading::before {
+  transform: scaleX(1);
+  opacity: .9;
+}
+.disk-panel.is-loading .disk-list {
+  opacity: .58;
+  pointer-events: none;
+}
+.disk-list {
+  transition: opacity 140ms ease;
+}
+.disk-empty.ui-state {
+  min-height: 160px;
+  margin: 24px auto;
+  border-style: dashed;
+  box-shadow: none;
+}
+
+/* Viewer follows the same surface hierarchy as chat and Disk. */
+.file-viewer-dialog {
+  overflow: hidden;
+  border: 1px solid var(--ui-elevated-border);
+  border-radius: 20px;
+  background: var(--ui-panel);
+  box-shadow: 0 30px 100px rgba(15, 23, 42, .22);
+}
+.file-viewer-head {
+  min-height: 64px;
+  border-bottom: 1px solid var(--ui-line);
+  background: rgba(255, 255, 255, .97);
+  backdrop-filter: blur(12px);
+}
+.file-viewer-heading h3 {
+  max-width: min(60vw, 760px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.viewer-tabs {
+  position: sticky;
+  top: 0;
+  z-index: 7;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--ui-line);
+  background: rgba(250, 251, 252, .96);
+  backdrop-filter: blur(10px);
+}
+.viewer-tabs button {
+  min-height: 36px;
+  padding-inline: 13px;
+  border-radius: 9px;
+}
+.viewer-content {
+  background: #f7f8fa;
+}
+.viewer-tab.active {
+  animation: sayuriSurfaceIn 130ms ease-out;
+}
+.preview-stage {
+  min-height: 420px;
+  padding: 14px;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(255,255,255,.98), rgba(247,248,250,.96) 60%);
+}
+.preview-stage[aria-busy="true"] {
+  display: grid;
+  place-items: center;
+}
+.preview-stage .ui-state {
+  min-height: 88px;
+}
+.preview-frame,
+.preview-image,
+.preview-media,
+.preview-table-wrap,
+.preview-text {
+  border-radius: 12px;
+}
+.preview-frame {
+  border: 1px solid #dce1e7;
+  background: #fff;
+  box-shadow: 0 8px 30px rgba(16, 24, 40, .08);
+}
+.preview-image {
+  border: 1px solid #dce1e7;
+  box-shadow: 0 12px 38px rgba(16, 24, 40, .10);
+}
+.dna-shell,
+.property-grid,
+.property-editor {
+  --dna-surface: #fff;
+}
+
+/* Fullscreen chat is a real AI workspace, not just a stretched floating card. */
+.sayuri-workspace-badge {
+  display: none;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--ui-accent-line);
+  border-radius: 999px;
+  background: var(--ui-accent-soft);
+  color: #506783;
+  font-size: 9.5px;
+  font-weight: 750;
+  letter-spacing: .02em;
+  white-space: nowrap;
+}
+body.sayuri-workspace-open {
+  overflow: hidden;
+}
+body.sayuri-workspace-open .sayuri-orb {
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(.94);
+}
+body.sayuri-workspace-open .sayuri-context-menu {
+  display: none !important;
+}
+.sayuri-chat-window.is-maximized {
+  inset: 10px !important;
+  border: 1px solid rgba(211, 216, 224, .9);
+  border-radius: 20px;
+  background: #fbfbfc;
+  box-shadow: var(--ui-workspace-shadow);
+}
+.sayuri-chat-window.is-maximized .sayuri-workspace-badge {
+  display: inline-flex;
+}
+.sayuri-chat-window.is-maximized .sayuri-chat-head {
+  min-height: 60px;
+  padding-inline: max(14px, calc((100% - 980px) / 2));
+  border-bottom-color: #e7e9ed;
+  background: rgba(255,255,255,.97);
+  backdrop-filter: blur(14px);
+}
+.sayuri-chat-window.is-maximized .sayuri-chat-messages {
+  padding-top: 34px;
+  padding-bottom: 28px;
+  background: #fbfbfc;
+}
+.sayuri-chat-window.is-maximized .sayuri-chat-footer {
+  position: sticky;
+  bottom: 0;
+  padding-top: 8px;
+  padding-bottom: 14px;
+  background: linear-gradient(180deg, rgba(251,251,252,0), rgba(251,251,252,.96) 18%, #fbfbfc 38%);
+}
+.sayuri-chat-window.is-maximized .sayuri-chat-form {
+  border-color: #d7dbe1;
+  box-shadow: 0 8px 32px rgba(16, 24, 40, .09);
+}
+.sayuri-chat-window.is-maximized .sayuri-chat-status {
+  padding-bottom: 7px;
+  text-align: left;
+}
+.sayuri-chat-window.is-maximized .sayuri-chat-hint {
+  color: #9aa1ab;
+}
+
+/* Calm first-run state instead of a fake assistant message. */
+.sayuri-chat-welcome {
+  display: grid;
+  justify-items: center;
+  width: min(560px, 100%);
+  margin: clamp(42px, 12vh, 120px) auto 0;
+  padding: 10px 22px;
+  text-align: center;
+}
+.sayuri-chat-welcome img {
+  width: 62px;
+  height: 62px;
+  margin-bottom: 15px;
+  border: 1px solid #e1e5ea;
+  border-radius: 50%;
+  object-fit: cover;
+  background: #fff;
+  box-shadow: 0 9px 28px rgba(16, 24, 40, .10);
+}
+.sayuri-chat-welcome h3 {
+  margin: 0 0 7px;
+  color: #20242a;
+  font-size: clamp(19px, 2vw, 24px);
+  font-weight: 720;
+  letter-spacing: -.025em;
+}
+.sayuri-chat-welcome p {
+  max-width: 520px;
+  margin: 0;
+  color: #606a78;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.sayuri-chat-welcome small {
+  margin-top: 10px;
+  color: #929aa6;
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
+/* Avatar presence and magnet zones: movement is quiet unless state changes. */
+.sayuri-orb {
+  transition:
+    opacity 150ms ease,
+    box-shadow 150ms ease,
+    border-color 150ms ease,
+    transform 150ms ease;
+}
+.sayuri-orb.is-snapping {
+  transition:
+    left 180ms cubic-bezier(.2,.8,.2,1),
+    top 180ms cubic-bezier(.2,.8,.2,1),
+    box-shadow 160ms ease !important;
+}
+.sayuri-orb[data-snap-edge="left"],
+.sayuri-orb[data-snap-edge="right"],
+.sayuri-orb[data-snap-edge="top"],
+.sayuri-orb[data-snap-edge="bottom"] {
+  box-shadow: 0 16px 42px rgba(27, 36, 52, .16);
+}
+.sayuri-orb-status {
+  transition: background 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+}
+.sayuri-orb[data-presence="ready"] .sayuri-orb-status {
+  background: #4f9b72;
+  box-shadow: 0 0 0 3px rgba(79, 155, 114, .12);
+}
+.sayuri-orb[data-presence="thinking"] .sayuri-orb-status {
+  background: #6f82a2;
+  box-shadow: 0 0 0 3px rgba(111, 130, 162, .14);
+  animation: sayuriThinkingState 1.2s ease-in-out infinite alternate;
+}
+.sayuri-orb[data-presence="attention"] .sayuri-orb-status {
+  background: #d39a35;
+  box-shadow: 0 0 0 3px rgba(211, 154, 53, .15);
+}
+.sayuri-orb[data-presence="error"] .sayuri-orb-status {
+  background: #c25b5b;
+  box-shadow: 0 0 0 3px rgba(194, 91, 91, .14);
+}
+.sayuri-orb[data-presence="offline"] .sayuri-orb-status {
+  background: #9ca3ad;
+  box-shadow: none;
+}
+
+/* Personal cabinet: profile stays quiet; advanced areas do not compete visually. */
+.sayuri-profile-hero,
+.sayuri-account-card {
+  border-color: var(--ui-elevated-border);
+}
+.sayuri-profile-hero {
+  background:
+    radial-gradient(circle at 10% 0%, rgba(244,247,251,.98), transparent 42%),
+    #fff;
+  box-shadow: 0 12px 34px rgba(16,24,40,.055);
+}
+.sayuri-profile-copy > p:not(.eyebrow) {
+  max-width: 720px;
+  color: #626d7b;
+  line-height: 1.65;
+}
+.sayuri-account-tabs {
+  border-color: var(--ui-elevated-border);
+}
+.sayuri-account-tabs button[data-sayuri-tab="diagnostics"] {
+  color: #7e8794;
+}
+.sayuri-profile-overview-grid button {
+  min-height: 78px;
+}
+.sayuri-profile-overview-grid button strong {
+  line-height: 1.45;
+}
+
+/* Optional compact density for 1366x768-class laptops. Text size stays unchanged. */
+body.ui-compact .sayuri-account-grid {
+  gap: 10px;
+}
+body.ui-compact .sayuri-account-card {
+  padding: 14px;
+}
+body.ui-compact .sayuri-profile-hero {
+  padding-block: 16px;
+}
+body.ui-compact .sayuri-profile-overview-grid {
+  gap: 7px;
+}
+body.ui-compact .sayuri-profile-overview-grid button {
+  min-height: 64px;
+  padding: 9px 11px;
+}
+body.ui-compact .disk-panel {
+  padding: 12px;
+}
+body.ui-compact .disk-toolbar {
+  gap: 7px;
+}
+body.ui-compact .disk-list-head,
+body.ui-compact .disk-row {
+  min-height: 42px;
+}
+body.ui-compact .settings-section,
+body.ui-compact .summary-card {
+  padding: 14px;
+}
+
+/* Spatial citations follow the same restrained source language. */
+.sayuri-inline-citation {
+  box-shadow: none;
+  transition: background 120ms ease, border-color 120ms ease, transform 120ms ease;
+}
+.sayuri-inline-citation:hover {
+  transform: translateY(-1px);
+}
+.sayuri-evidence-summary {
+  border-color: #e2e6eb;
+  background: #fafbfc;
+}
+.sayuri-evidence-item.spatial_document {
+  box-shadow: none;
+}
+.evidence-focus-toolbar {
+  border-color: var(--ui-elevated-border);
+  box-shadow: var(--ui-shadow-sm);
+}
+
+/* Accessible responsive refinements. */
+@media (max-height: 760px) and (min-width: 641px) {
+  .sayuri-chat-welcome {
+    margin-top: 28px;
+  }
+  .sayuri-chat-window.is-maximized .sayuri-chat-messages {
+    padding-top: 20px;
+  }
+}
+@media (max-width: 760px) {
+  .file-viewer-dialog {
+    border-radius: 16px;
+  }
+  .file-viewer-head {
+    min-height: 56px;
+  }
+  .viewer-tabs {
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .viewer-tabs::-webkit-scrollbar {
+    display: none;
+  }
+  .preview-stage {
+    min-height: 300px;
+    padding: 8px;
+  }
+}
+@media (max-width: 640px) {
+  .sayuri-workspace-badge {
+    display: none !important;
+  }
+  .sayuri-chat-welcome {
+    margin-top: 34px;
+    padding-inline: 12px;
+  }
+  .sayuri-chat-welcome img {
+    width: 54px;
+    height: 54px;
+  }
+  .ui-state {
+    grid-template-columns: 30px minmax(0, 1fr);
+    padding: 13px;
+  }
+  .ui-state-icon {
+    width: 30px;
+    height: 30px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sayuri-orb.is-snapping,
+  .sayuri-orb[data-presence="thinking"] .sayuri-orb-status {
+    animation: none !important;
+    transition: none !important;
+  }
+  .ui-state.loading::after {
+    animation: none !important;
+    display: none;
+  }
+}
+
+@keyframes sayuriUiStateSweep {
+  from { transform: translateX(-110%); }
+  to { transform: translateX(110%); }
+}
+@keyframes sayuriSurfaceIn {
+  from { opacity: .65; transform: translateY(2px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes sayuriThinkingState {
+  from { transform: scale(.92); opacity: .72; }
+  to { transform: scale(1.04); opacity: 1; }
+}

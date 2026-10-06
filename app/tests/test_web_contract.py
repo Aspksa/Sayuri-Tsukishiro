@@ -250,6 +250,41 @@ class WebContractTests(unittest.TestCase):
         self.assertIn("search_cached_evidence", core)
         self.assertNotIn('"bbox": locator.get("bbox")', core)
 
+    def test_visual_refinement_workspace_snap_density_and_states(self):
+        html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+        css = (ROOT / "web" / "styles.css").read_text(encoding="utf-8")
+
+        self.assertNotIn('id="sayuri-account-nav"', html)
+        self.assertIn('data-view="home"', html)
+        self.assertIn('data-view="disk"', html)
+        self.assertIn('data-view="settings"', html)
+        self.assertIn('id="sayuri-density-toggle"', html)
+        self.assertIn('id="sayuri-workspace-badge"', html)
+        self.assertIn('class="disk-panel is-loading"', html)
+        self.assertIn('ui-state loading', html)
+
+        self.assertIn("createUiState", script)
+        self.assertIn("setSayuriPresenceState", script)
+        self.assertIn("magnetizeSayuriOrb", script)
+        self.assertIn("sayuri-compact-ui", script)
+        self.assertIn("sayuri-command-recent", script)
+        self.assertIn("sayuri-workspace-open", script)
+        self.assertIn("setDiskLoading", script)
+        self.assertIn("Готовлю предпросмотр", script)
+        self.assertIn("if (sayuriState.chatMaximized) toggleSayuriChatMaximize(false);", script)
+
+        self.assertIn("SAYURI UI 0.30 — Visual Refinement & Workspace UX", css)
+        self.assertIn(".ui-state", css)
+        self.assertIn(".sayuri-chat-welcome", css)
+        self.assertIn(".sayuri-workspace-badge", css)
+        self.assertIn(".sayuri-orb.is-snapping", css)
+        self.assertIn('[data-presence="thinking"]', css)
+        self.assertIn("body.ui-compact", css)
+        self.assertIn(".disk-panel.is-loading", css)
+        self.assertIn(".file-viewer-dialog", css)
+        self.assertIn("@keyframes sayuriUiStateSweep", css)
+
     def test_personal_cabinet_has_memory_and_avatar_studio(self):
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")

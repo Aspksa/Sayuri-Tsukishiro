@@ -4,7 +4,7 @@
     {
       "id": "sayuri-core",
       "display_name": "Ядро Саюри",
-      "description": "Системное ядро 0.1.45: API, диагностика, Memory 4.1, Reasoning/Verifier, evidence automation, spatial evidence bridge, Action Broker и security contracts.",
+      "description": "Системное ядро 0.1.46: API, диагностика, Memory 4.1, Reasoning/Verifier, evidence automation, spatial evidence bridge, Action Broker и Web UX regression contracts.",
       "path": "app"
     },
     {
@@ -22,7 +22,7 @@
     {
       "id": "web-ui",
       "display_name": "Веб-интерфейс",
-      "description": "Единая оболочка Sayuri 0.29: safe rich answers, inline Spatial citations, Evidence Focus, lazy diagnostics, fullscreen ChatGPT-like chat и command palette.",
+      "description": "Единая оболочка Sayuri 0.30: refined AI workspace, avatar magnet/presence, compact density, unified UI states, recent command palette, Spatial Evidence UX и lazy diagnostics.",
       "path": "web"
     },
     {

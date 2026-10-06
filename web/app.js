@@ -44,12 +44,54 @@ const sayuriState = {
   activeMemoryTab: localStorage.getItem('sayuri-memory-tab') || 'overview',
   chatMaximized: false,
   commandPaletteIndex: 0,
+  recentCommands: readLocalJson('sayuri-command-recent', []),
+  compactUi: localStorage.getItem('sayuri-compact-ui') === '1',
   loadedSections: new Set(),
   loadingSections: new Map(),
   visible: localStorage.getItem('sayuri-visible') !== '0',
   rememberPosition: localStorage.getItem('sayuri-remember-position') !== '0',
   rememberHistory: localStorage.getItem('sayuri-remember-history') !== '0'
 };
+
+function createUiState(kind, title, detail = '') {
+  const state = document.createElement('div');
+  state.className = `ui-state ${kind}`;
+  const icon = document.createElement('span');
+  icon.className = 'ui-state-icon';
+  icon.setAttribute('aria-hidden', 'true');
+  icon.textContent = kind === 'error' ? '!' : (kind === 'loading' ? '·' : '◇');
+  const copy = document.createElement('div');
+  const heading = document.createElement('strong');
+  heading.textContent = title;
+  copy.append(heading);
+  if (detail) {
+    const text = document.createElement('small');
+    text.textContent = detail;
+    copy.append(text);
+  }
+  state.append(icon, copy);
+  return state;
+}
+
+function setSayuriPresenceState(state, label = '') {
+  const orb = byId('sayuri-orb');
+  if (!orb) return;
+  const safe = ['ready', 'thinking', 'attention', 'error', 'offline'].includes(state) ? state : 'ready';
+  orb.dataset.presence = safe;
+  const status = byId('sayuri-orb-status');
+  if (status) status.dataset.presence = safe;
+  orb.setAttribute(
+    'aria-label',
+    label ? `Sayuri · ${label} · открыть чат` : 'Открыть чат Sayuri'
+  );
+}
+
+function setDiskLoading(active) {
+  const panel = byId('disk-panel');
+  if (!panel) return;
+  panel.classList.toggle('is-loading', Boolean(active));
+  panel.setAttribute('aria-busy', active ? 'true' : 'false');
+}
 
 function showUiToast(message, kind = 'info') {
   const region = byId('ui-toast-region');
@@ -93,10 +135,17 @@ const commandPaletteCommands = [
 
 function commandPaletteMatches() {
   const query = (byId('command-palette-input')?.value || '').trim().toLocaleLowerCase('ru-RU');
-  if (!query) return commandPaletteCommands;
-  return commandPaletteCommands.filter((command) =>
-    `${command.label} ${command.hint}`.toLocaleLowerCase('ru-RU').includes(query)
-  );
+  if (query) {
+    return commandPaletteCommands.filter((command) =>
+      `${command.label} ${command.hint}`.toLocaleLowerCase('ru-RU').includes(query)
+    );
+  }
+  const recentIdsStored = Array.isArray(sayuriState.recentCommands) ? sayuriState.recentCommands : [];
+  const recent = recentIdsStored
+    .map((id) => commandPaletteCommands.find((command) => command.id === id))
+    .filter(Boolean);
+  const recentIds = new Set(recent.map((command) => command.id));
+  return [...recent, ...commandPaletteCommands.filter((command) => !recentIds.has(command.id))];
 }
 
 function renderCommandPalette() {
@@ -106,9 +155,8 @@ function renderCommandPalette() {
   if (sayuriState.commandPaletteIndex >= commands.length) sayuriState.commandPaletteIndex = 0;
   list.replaceChildren();
   if (!commands.length) {
-    const empty = document.createElement('div');
-    empty.className = 'command-palette-empty';
-    empty.textContent = 'Команды не найдены';
+    const empty = createUiState('empty', 'Команды не найдены', 'Попробуйте другое слово или название раздела.');
+    empty.classList.add('command-palette-empty');
     list.append(empty);
     return;
   }
@@ -122,7 +170,9 @@ function renderCommandPalette() {
     const label = document.createElement('span');
     label.textContent = command.label;
     const hint = document.createElement('small');
-    hint.textContent = command.hint;
+    hint.textContent = Array.isArray(sayuriState.recentCommands) && sayuriState.recentCommands.includes(command.id)
+      ? `Недавнее · ${command.hint}`
+      : command.hint;
     button.append(label, hint);
     button.addEventListener('mouseenter', () => {
       sayuriState.commandPaletteIndex = index;
@@ -156,6 +206,12 @@ function closeCommandPalette() {
 
 function executeCommandPalette(command) {
   if (!command) return;
+  const current = Array.isArray(sayuriState.recentCommands) ? sayuriState.recentCommands : [];
+  sayuriState.recentCommands = [
+    command.id,
+    ...current.filter((id) => id !== command.id)
+  ].slice(0, 3);
+  localStorage.setItem('sayuri-command-recent', JSON.stringify(sayuriState.recentCommands));
   closeCommandPalette();
   command.run();
 }
@@ -809,17 +865,14 @@ function renderDisk(data) {
   ];
 
   if (!entries.length) {
-    const empty = document.createElement('div');
-    empty.className = 'disk-empty';
-    const title = document.createElement('strong');
-    title.textContent = byId('disk-search-input').value
+    const title = byId('disk-search-input').value
       ? 'Ничего не найдено'
       : (diskState.scope === 'trash' ? 'Корзина пуста' : 'Здесь пока пусто');
-    const copy = document.createElement('span');
-    copy.textContent = diskState.scope === 'all'
-      ? 'Перетащите файлы наверх или создайте папку.'
+    const detail = diskState.scope === 'all'
+      ? 'Перетащите файлы сюда или создайте первую папку.'
       : 'В этом разделе пока нет объектов.';
-    empty.append(title, copy);
+    const empty = createUiState('empty', title, detail);
+    empty.classList.add('disk-empty');
     container.append(empty);
     return;
   }
@@ -829,6 +882,7 @@ function renderDisk(data) {
 }
 
 async function loadDisk() {
+  setDiskLoading(true);
   const params = new URLSearchParams();
   if (diskState.scope === 'all' && diskState.folderId) params.set('folder_id', diskState.folderId);
   const query = byId('disk-search-input').value.trim();
@@ -838,10 +892,26 @@ async function loadDisk() {
   params.set('direction', diskState.direction);
   params.set('category', diskState.category);
 
-  const response = await fetch(`/api/disk?${params.toString()}`, {cache: 'no-store'});
-  const data = await response.json();
-  if (!response.ok) throw new Error(data?.error?.message || `HTTP ${response.status}`);
-  renderDisk(data);
+  try {
+    const response = await fetch(`/api/disk?${params.toString()}`, {cache: 'no-store'});
+    const data = await response.json();
+    if (!response.ok) throw new Error(data?.error?.message || `HTTP ${response.status}`);
+    renderDisk(data);
+  } catch (error) {
+    const container = byId('disk-list');
+    if (container) {
+      container.replaceChildren(
+        createUiState(
+          'error',
+          'Не удалось загрузить Диск Sayuri',
+          error instanceof Error ? error.message : String(error)
+        )
+      );
+    }
+    throw error;
+  } finally {
+    setDiskLoading(false);
+  }
 }
 
 function showDiskMessage(text) {
@@ -874,6 +944,11 @@ async function runDiskMutation(url, body, message) {
     closeViewer();
     await Promise.all([loadDisk(), loadSystem()]);
   } catch (error) {
+    const stage = byId('file-preview-stage');
+    if (stage && !byId('file-viewer-modal').classList.contains('hidden')) {
+      stage.replaceChildren(createUiState('error', 'Не удалось открыть предпросмотр', error instanceof Error ? error.message : String(error)));
+      stage.setAttribute('aria-busy', 'false');
+    }
     showDiskError(error);
   }
 }
@@ -1430,10 +1505,7 @@ function renderPreview(preview) {
       table.append(tr);
     }
     if (!table.children.length) {
-      const empty = document.createElement('p');
-      empty.className = 'muted';
-      empty.textContent = 'В таблице не найдено отображаемых значений.';
-      stage.append(empty);
+      stage.append(createUiState('empty', 'Таблица пуста', 'В файле не найдено отображаемых значений.'));
       return;
     }
     tableWrap.append(table);
@@ -1455,15 +1527,12 @@ function renderPreview(preview) {
     return;
   }
 
-  const unsupported = document.createElement('div');
-  unsupported.className = 'preview-unsupported';
-  const icon = document.createElement('span');
-  icon.textContent = '◇';
-  const title = document.createElement('strong');
-  title.textContent = 'Встроенный просмотр недоступен';
-  const text = document.createElement('p');
-  text.textContent = preview.message || 'Файл можно скачать и открыть внешним приложением.';
-  unsupported.append(icon, title, text);
+  const unsupported = createUiState(
+    'empty',
+    'Встроенный просмотр недоступен',
+    preview.message || 'Файл можно скачать и открыть внешним приложением.'
+  );
+  unsupported.classList.add('preview-unsupported');
   stage.append(unsupported);
 }
 
@@ -1509,18 +1578,29 @@ async function openViewer(kind, id, tab = 'preview') {
     if (kind === 'file') {
       const stage = byId('file-preview-stage');
       stage.replaceChildren();
-      const loading = document.createElement('p');
-      loading.className = 'muted';
-      loading.textContent = 'Загрузка предпросмотра…';
-      stage.append(loading);
+      stage.setAttribute('aria-busy', 'true');
+      stage.append(createUiState('loading', 'Готовлю предпросмотр', 'Файл откроется здесь, как только локальный preview будет готов.'));
       const previewResponse = await fetch(`/api/disk/files/${encodeURIComponent(id)}/preview`, {cache: 'no-store'});
       const preview = await previewResponse.json();
       if (!previewResponse.ok) throw new Error(preview?.error?.message || `HTTP ${previewResponse.status}`);
       renderPreview(preview);
+      stage.setAttribute('aria-busy', 'false');
     } else {
       byId('file-preview-stage').replaceChildren();
+      byId('file-preview-stage').setAttribute('aria-busy', 'false');
     }
   } catch (error) {
+    const stage = byId('file-preview-stage');
+    if (stage && !byId('file-viewer-modal').classList.contains('hidden')) {
+      stage.replaceChildren(
+        createUiState(
+          'error',
+          'Не удалось открыть предпросмотр',
+          error instanceof Error ? error.message : String(error)
+        )
+      );
+      stage.setAttribute('aria-busy', 'false');
+    }
     showDiskError(error);
   }
 }
@@ -1626,6 +1706,7 @@ async function renderSayuriEvidenceFocus(source) {
 async function openSayuriSpatialEvidence(source) {
   const target = source?.target;
   if (!target?.file_id || !target?.fact_id) return;
+  if (sayuriState.chatMaximized) toggleSayuriChatMaximize(false);
   showView('disk');
   await openViewer('file', String(target.file_id), 'preview');
   if (viewerItem?.id !== String(target.file_id)) return;
@@ -1879,6 +1960,12 @@ function updateSayuriContextUI() {
       ? `${context.title} · ${context.current_document.name}`
       : context.title;
   }
+  const workspaceBadge = byId('sayuri-workspace-badge');
+  if (workspaceBadge) {
+    workspaceBadge.title = context.current_document?.name
+      ? `Рабочее пространство · ${context.current_document.name}`
+      : `Рабочее пространство · ${context.title}`;
+  }
 }
 
 function setSayuriProviderMessage(text, kind = '') {
@@ -1901,8 +1988,12 @@ function renderSayuriProfile(profile) {
     : 'Ключ ещё не сохранён';
   byId('sayuri-orb-status').classList.toggle('ready', configured);
   byId('sayuri-chat-status').textContent = configured
-    ? 'DeepSeek-V4-Flash · Cloud.ru · готово'
-    : 'Откройте Личный кабинет Sayuri и добавьте ключ Cloud.ru';
+    ? 'Готова'
+    : 'Нужно настроить Cloud.ru';
+  setSayuriPresenceState(
+    configured ? 'ready' : 'offline',
+    configured ? 'готова помочь' : 'нужно настроить Cloud.ru'
+  );
   renderSayuriMemoryStats(profile.memory || {});
   renderSayuriExperience(profile.experience || {});
   renderSayuriAvatarManager(profile.avatars || {});
@@ -4196,14 +4287,21 @@ function renderSayuriMessages() {
   container.replaceChildren();
 
   if (!sayuriState.messages.length) {
-    const welcome = document.createElement('article');
-    welcome.className = 'sayuri-message assistant';
+    const context = currentSayuriContext();
+    const welcome = document.createElement('section');
+    welcome.className = 'sayuri-chat-welcome';
     const avatar = document.createElement('img');
     avatar.src = avatarUrl('chat');
     avatar.alt = '';
-    const bubble = document.createElement('div');
-    bubble.textContent = 'Я рядом, Господин. Откройте любой раздел проекта — я буду учитывать текущий экран в разговоре.';
-    welcome.append(avatar, bubble);
+    const title = document.createElement('h3');
+    title.textContent = 'Чем могу помочь, Господин?';
+    const copy = document.createElement('p');
+    copy.textContent = context.current_document?.name
+      ? `Сейчас я вижу документ «${context.current_document.name}» и могу учитывать его контекст.`
+      : `Сейчас открыт раздел «${context.title}». Я буду учитывать его в разговоре.`;
+    const hint = document.createElement('small');
+    hint.textContent = 'Можно задать вопрос, попросить анализ или продолжить работу с текущим разделом.';
+    welcome.append(avatar, title, copy, hint);
     container.append(welcome);
     return;
   }
@@ -4321,6 +4419,7 @@ function openSayuriChat() {
 }
 
 function closeSayuriChat() {
+  if (sayuriState.chatMaximized) toggleSayuriChatMaximize(false);
   byId('sayuri-chat-window').classList.add('hidden');
 }
 
@@ -4330,11 +4429,14 @@ function toggleSayuriChatMaximize(force) {
   const next = typeof force === 'boolean' ? force : !sayuriState.chatMaximized;
   sayuriState.chatMaximized = next;
   chat.classList.toggle('is-maximized', next);
+  document.body.classList.toggle('sayuri-workspace-open', next);
   byId('sayuri-chat-maximize').textContent = next ? '↙' : '↗';
   byId('sayuri-chat-maximize').title = next ? 'Вернуть плавающее окно' : 'Развернуть чат';
   byId('sayuri-chat-maximize').setAttribute('aria-label', next ? 'Вернуть плавающее окно' : 'Развернуть чат');
   if (!next) keepFloatingInViewport(chat);
-  window.setTimeout(() => byId('sayuri-chat-input')?.focus(), 0);
+  window.setTimeout(() => {
+    if (!chat.classList.contains('hidden')) byId('sayuri-chat-input')?.focus();
+  }, 0);
 }
 
 async function sendSayuriMessage(text) {
@@ -4351,6 +4453,7 @@ async function sendSayuriMessage(text) {
   autoSizeSayuriComposer();
   byId('sayuri-chat-send').disabled = true;
   byId('sayuri-chat-status').textContent = 'Размышляет…';
+  setSayuriPresenceState('thinking', 'размышляет');
 
   try {
     const context = currentSayuriContext();
@@ -4365,6 +4468,7 @@ async function sendSayuriMessage(text) {
         {action: planned.action}
       );
       byId('sayuri-chat-status').textContent = 'Нужно подтверждение';
+      setSayuriPresenceState('attention', 'нужно подтверждение');
       loadSayuriActions().catch(() => {});
       return;
     }
@@ -4406,10 +4510,12 @@ async function sendSayuriMessage(text) {
     byId('sayuri-chat-status').textContent = result.model === 'local-memory'
       ? 'Запомнила локально'
       : `Готова${result.reasoning?.mode === 'planned' ? ' · результат проверен' : ''}${checked ? ` · автопроверка ${checked}` : ''}`;
+    setSayuriPresenceState('ready', 'готова помочь');
   } catch (error) {
     const text = error instanceof Error ? error.message : String(error);
     addSayuriMessage('assistant', `Не удалось получить ответ: ${text}`);
     byId('sayuri-chat-status').textContent = 'Ошибка';
+    setSayuriPresenceState('error', 'ошибка подключения');
     showUiToast('Не удалось получить ответ Sayuri', 'error');
   } finally {
     byId('sayuri-chat-send').disabled = false;
@@ -4568,6 +4674,8 @@ function applySayuriPreferences() {
   byId('sayuri-visible-toggle').checked = sayuriState.visible;
   byId('sayuri-position-toggle').checked = sayuriState.rememberPosition;
   byId('sayuri-history-toggle').checked = sayuriState.rememberHistory;
+  byId('sayuri-density-toggle').checked = sayuriState.compactUi;
+  document.body.classList.toggle('ui-compact', sayuriState.compactUi);
 
   const orbPosition = readLocalJson('sayuri-orb-position', null);
   if (sayuriState.rememberPosition && orbPosition) {
@@ -4630,6 +4738,7 @@ function scheduleMotion(callback) {
 function startSmoothDrag(event, element, type) {
   if (event.button !== 0) return null;
   event.preventDefault();
+  if (type === 'orb') element.dataset.snapEdge = '';
   const rect = element.getBoundingClientRect();
   const drag = {
     pointerId: event.pointerId,
@@ -4662,7 +4771,7 @@ function updateSmoothDrag(event, element, drag) {
   });
 }
 
-function finishSmoothDrag(event, element, drag, storageKey) {
+function finishSmoothDrag(event, element, drag, storageKey, {persist = true} = {}) {
   if (!drag || drag.pointerId !== event.pointerId) return false;
   if (sayuriState.motionFrame) {
     cancelAnimationFrame(sayuriState.motionFrame);
@@ -4672,10 +4781,45 @@ function finishSmoothDrag(event, element, drag, storageKey) {
   element.classList.remove('is-dragging');
   element.style.transform = '';
   const pos = setFloatingPosition(element, rect.left, rect.top);
-  if (drag.moved && sayuriState.rememberPosition) {
+  if (drag.moved && persist && sayuriState.rememberPosition) {
     localStorage.setItem(storageKey, JSON.stringify(pos));
   }
   return drag.moved;
+}
+
+function magnetizeSayuriOrb(element) {
+  if (!element || window.innerWidth <= 640) {
+    const rect = element?.getBoundingClientRect();
+    return rect ? setFloatingPosition(element, rect.left, rect.top) : null;
+  }
+  const rect = element.getBoundingClientRect();
+  const margin = 12;
+  const threshold = Math.min(84, Math.max(52, window.innerWidth * 0.055));
+  const distances = {
+    left: rect.left - margin,
+    right: window.innerWidth - margin - rect.right,
+    top: rect.top - margin,
+    bottom: window.innerHeight - margin - rect.bottom
+  };
+  const [edge, distance] = Object.entries(distances)
+    .sort((a, b) => a[1] - b[1])[0];
+  if (!Number.isFinite(distance) || distance > threshold) {
+    element.dataset.snapEdge = '';
+    return setFloatingPosition(element, rect.left, rect.top);
+  }
+
+  let left = rect.left;
+  let top = rect.top;
+  if (edge === 'left') left = margin;
+  else if (edge === 'right') left = window.innerWidth - rect.width - margin;
+  else if (edge === 'top') top = margin;
+  else if (edge === 'bottom') top = window.innerHeight - rect.height - margin;
+
+  element.dataset.snapEdge = edge;
+  element.classList.add('is-snapping');
+  const pos = setFloatingPosition(element, left, top);
+  window.setTimeout(() => element.classList.remove('is-snapping'), 190);
+  return pos;
 }
 
 function beginOrbDrag(event) {
@@ -4689,12 +4833,21 @@ function moveOrbDrag(event) {
 function endOrbDrag(event) {
   const drag = sayuriState.orbDrag;
   if (!drag) return;
-  sayuriState.suppressOrbClick = finishSmoothDrag(
+  const orb = byId('sayuri-orb');
+  const moved = finishSmoothDrag(
     event,
-    byId('sayuri-orb'),
+    orb,
     drag,
-    'sayuri-orb-position'
+    'sayuri-orb-position',
+    {persist: false}
   );
+  sayuriState.suppressOrbClick = moved;
+  if (moved) {
+    const pos = magnetizeSayuriOrb(orb);
+    if (pos && sayuriState.rememberPosition) {
+      localStorage.setItem('sayuri-orb-position', JSON.stringify(pos));
+    }
+  }
   sayuriState.orbDrag = null;
 }
 
@@ -4792,6 +4945,7 @@ function resetSayuriLayout() {
   localStorage.removeItem('sayuri-chat-size');
   const orb = byId('sayuri-orb');
   const chat = byId('sayuri-chat-window');
+  orb.dataset.snapEdge = '';
   for (const element of [orb, chat]) {
     element.style.transform = '';
     element.style.left = '';
@@ -4919,6 +5073,12 @@ function initializeSayuri() {
     sayuriState.rememberHistory = event.target.checked;
     localStorage.setItem('sayuri-remember-history', sayuriState.rememberHistory ? '1' : '0');
     persistSayuriHistory();
+  });
+  byId('sayuri-density-toggle').addEventListener('change', (event) => {
+    sayuriState.compactUi = event.target.checked;
+    localStorage.setItem('sayuri-compact-ui', sayuriState.compactUi ? '1' : '0');
+    document.body.classList.toggle('ui-compact', sayuriState.compactUi);
+    showUiToast(sayuriState.compactUi ? 'Компактный интерфейс включён' : 'Комфортный интерфейс включён');
   });
   byId('sayuri-reset-layout').addEventListener('click', resetSayuriLayout);
 

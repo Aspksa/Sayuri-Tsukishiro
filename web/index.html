@@ -83,7 +83,7 @@
           <article><span>Корзина</span><strong id="disk-trash-count">0</strong></article>
         </section>
 
-        <section class="disk-panel" id="disk-panel">
+        <section class="disk-panel is-loading" id="disk-panel" aria-busy="true">
           <div class="disk-commandbar">
             <div class="disk-scope-tabs" aria-label="Разделы Диск Sayuri">
               <button class="disk-scope active" type="button" data-disk-scope="all"><span>▦</span><strong>Все файлы</strong></button>
@@ -125,7 +125,7 @@
           <div class="disk-list-head">
             <label class="disk-check"><input id="disk-select-all" type="checkbox"><span></span></label><span>Имя</span><span>Размер</span><span>Тип</span><span>Изменён</span><span></span>
           </div>
-          <div class="disk-list tiles" id="disk-list"><p class="muted">Загрузка содержимого…</p></div>
+          <div class="disk-list tiles" id="disk-list"><div class="ui-state loading"><span class="ui-state-icon" aria-hidden="true">·</span><div><strong>Загружаю Диск Sayuri</strong><small>Собираю папки, файлы и состояние хранилища.</small></div></div></div>
         </section>
 
         <div class="modal-backdrop hidden" id="file-viewer-modal">
@@ -152,7 +152,7 @@
 
             <div class="viewer-content">
               <section class="viewer-tab active" id="viewer-tab-preview">
-                <div class="preview-stage" id="file-preview-stage"><p class="muted">Загрузка предпросмотра…</p></div>
+                <div class="preview-stage" id="file-preview-stage" aria-busy="false"></div>
               </section>
 
               <section class="viewer-tab" id="viewer-tab-dna">
@@ -359,6 +359,7 @@
               <label><span><strong>Sayuri всегда рядом</strong><small>Показывать плавающий аватар во всех разделах.</small></span><input id="sayuri-visible-toggle" type="checkbox" checked></label>
               <label><span><strong>Запоминать положение</strong><small>Сохранять место аватара и окна чата в этом браузере.</small></span><input id="sayuri-position-toggle" type="checkbox" checked></label>
               <label><span><strong>История чата локально</strong><small>Хранить последние сообщения только в локальном браузере.</small></span><input id="sayuri-history-toggle" type="checkbox" checked></label>
+              <label><span><strong>Компактный интерфейс</strong><small>Уменьшить отступы и плотнее использовать экран ноутбука, не уменьшая читаемость текста.</small></span><input id="sayuri-density-toggle" type="checkbox"></label>
             </div>
             <button class="secondary-button" id="sayuri-reset-layout" type="button">Вернуть Sayuri на место</button>
           </article>
@@ -784,6 +785,7 @@
       <div class="sayuri-chat-identity">
         <img src="/assets/sayuri-avatar.svg" alt="">
         <div><strong>Sayuri</strong><small id="sayuri-chat-context">Рядом с вами</small></div>
+        <span class="sayuri-workspace-badge" id="sayuri-workspace-badge">Рабочее пространство</span>
       </div>
       <div class="sayuri-chat-head-actions">
         <button class="icon-button" id="sayuri-chat-maximize" type="button" title="Развернуть чат" aria-label="Развернуть чат">↗</button>
