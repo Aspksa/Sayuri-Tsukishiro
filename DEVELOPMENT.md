@@ -1657,3 +1657,76 @@ Reasoning Planner 0.5 использует checkpoint только как под
 - Reasoning public capability flag.
 
 Новых внешних зависимостей нет.
+
+
+## Sayuri 0.2.0 — Cognitive Project Brain
+
+### Architecture
+
+`CognitiveProjectBrain` is a deterministic orchestration layer above `MemorySystemV4`; it does not replace Goal/Task Memory and it does not own direct tool execution.
+
+Data flow:
+
+`MODULES.json / task context → project+module scope → task graph → scheduler → Planner read-only context → Action Broker → checkpoint → strategy/evaluation state`
+
+### Multi-project and multi-module contract
+
+- `MODULES.json` schema 2 accepts `project_key`, `capabilities`, and `depends_on` metadata.
+- Existing modules without an explicit project remain under `sayuri-tsukishiro`.
+- A task may carry `context.project_key` and `context.module_key`.
+- New project/module keys are registered by trusted local code during task synchronization; the LLM cannot register them through a tool intent.
+- Cognitive tables live in the same WAL-enabled `sayuri-memory.db` so restart recovery is atomic with Memory 4.x state.
+
+### Task Graph
+
+`cognitive_task_edges` stores explicit relations:
+- `requires`: source waits for target;
+- `follows`: source may run only after target;
+- `blocks`: source blocks target until source is done;
+- `unlocks`: source must be done before target becomes actionable.
+
+`scheduler()` excludes tasks with unresolved blockers. Dependency state is derived from Memory 4 task status and is never inferred from model prose.
+
+### Completion Criteria
+
+`cognitive_task_scope.completion_criteria_json` supports bounded criteria:
+- `checkpoint_count`;
+- `tool_completed` based on applied Memory 4 task checkpoints;
+- `dependency_done`;
+- `manual_confirmation`.
+
+A full match produces `ready_for_completion_confirmation`. It never writes `status=done`.
+
+### Scheduler and attention
+
+Ranking uses task priority, planned/in_progress status, token overlap, project/module affinity, dependency blockers, open uncertainty severity, completion readiness and attention state. Output is bounded to eight candidates for cloud context.
+
+### Uncertainty, replanning and strategy memory
+
+- confirmed Action Broker failure increments strategy failure statistics;
+- the same failure creates an uncertainty record with evidence needed;
+- a plan revision is stored as `proposed` only;
+- no failure path silently rewrites Memory 4 `next_action`;
+- completed/failed actions update Bayesian-smoothed strategy confidence.
+
+### Self-evaluation and metacognition
+
+Self-evaluation is deterministic and read-only by default. It reports task totals, open/done counts, dependency blockers, completion-ready tasks and uncertainties.
+
+Metacognitive states are: `idle`, `actionable`, `blocked`, `uncertain`, `replan_required`, `criteria_missing`, `ready_for_completion_confirmation`, `missing_task`.
+
+### LLM boundary
+
+- `cognition.status` and `cognition.next` are read-only Evidence Tool Planner tools.
+- read-only tool calls do not synchronize or mutate cognitive tables.
+- synchronization occurs at initialization, trusted task creation/update, chat ingestion, or action planning before policy selection.
+- Planner/Verifier receive a cloud-safe bounded cognition projection.
+- no cognitive signal grants direct mutation execution.
+
+### Public diagnostics
+
+`GET /api/sayuri/cognition?q=<query>` returns local status, scheduler/metacognition context and project self-evaluation. No mutating cognition endpoint is exposed.
+
+### Regression coverage
+
+`app/tests/test_cognition.py` covers manifest scoping, multiple projects/modules, dependencies, completion criteria, failure replanning, strategy memory, restart persistence and read-only status behavior.
