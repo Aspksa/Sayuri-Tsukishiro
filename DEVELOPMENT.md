@@ -1139,3 +1139,46 @@ Tool evidence перед Cloud.ru ограничивается budget 9000 chars
 - Result Verifier получает execution evidence;
 - API/Web contract.
 
+
+
+## Background Evidence Automation 0.2
+
+Начиная с проекта `0.1.49`, Evidence-aware Tool Planner остаётся внутренним execution/evidence слоем и не визуализируется как каталог инструментов.
+
+### Automatic evidence selection
+
+После Planner локальная deterministic policy анализирует `goal` и `evidence_needed`. Если модель не указала явный read-only intent, policy может добавить безопасную проверку из существующего allowlist:
+
+- memory/project/history semantics -> `memory.search`;
+- system/version/provider semantics -> `system.status`;
+- integrity/SQLite semantics -> `memory.integrity`;
+- current/open document semantics -> `context.current_document`;
+- experience/previous failure semantics -> `experience.stats`.
+
+Модель не получает право добавить новый tool ID. Этот слой не выводит mutation intent из текста автоматически.
+
+### API response boundary
+
+Для planned chat наружу возвращается только:
+
+```text
+reasoning.automation
+  status
+  read_only_checks
+  evidence_receipts
+  blocked_mutations
+```
+
+Полные receipts остаются в локальном `data/sayuri-tool-receipts.db` и в диагностическом API, а Result Verifier получает bounded evidence internally.
+
+### UI policy
+
+- нет tool catalog в Личном кабинете;
+- нет receipt rows в chat reasoning summary;
+- при фактической фоновой проверке показывается только `автопроверка N`;
+- подтверждаемые mutation actions и их история сохраняются;
+- меню не меняется.
+
+### Evidence budget
+
+Перед Cloud.ru каждый output ограничивается отдельно. Oversized output заменяется объектом `{truncated:true, excerpt_json:...}`, затем весь evidence-list укладывается в общий 9000-char budget. Локальный SHA-256 считается по sanitized полному output до Cloud truncation.

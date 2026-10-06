@@ -1601,7 +1601,7 @@ async function loadSystem() {
   byId('agent-message').textContent = data.agent.message;
   byId('agent-provider').textContent = `ИИ-провайдер: ${data.agent.provider_connected ? 'подключён' : 'не подключён'}`;
   byId('agent-memory').textContent = `Память: ${data.agent.memory_connected ? 'подключена' : 'не подключена'}`;
-  byId('agent-tools').textContent = `Инструменты: ${data.agent.tools_connected ? 'подключены' : 'не подключены'}`;
+  byId('agent-tools').textContent = `Автопроверка: ${data.agent.automation?.evidence_aware ? 'включена' : 'не активна'}`;
   renderArchitecture(data.architecture);
   byId('updated-at').textContent = `Обновлено ${formatTime(data.time_utc)}`;
 }
@@ -3473,25 +3473,6 @@ function actionRiskLabel(risk) {
 }
 
 function renderSayuriActionCenter(actions) {
-  const toolsContainer = byId('sayuri-tool-list');
-  if (toolsContainer) {
-    toolsContainer.replaceChildren();
-    for (const tool of actions.available_tools || []) {
-      const item = document.createElement('article');
-      item.className = 'sayuri-tool-chip';
-      const text = document.createElement('div');
-      const title = document.createElement('strong');
-      title.textContent = tool.label;
-      const meta = document.createElement('small');
-      meta.textContent = `${actionRiskLabel(tool.risk)} · подтверждение обязательно`;
-      text.append(title, meta);
-      const state = document.createElement('span');
-      state.textContent = 'разрешено';
-      item.append(text, state);
-      toolsContainer.append(item);
-    }
-  }
-
   const history = byId('sayuri-actions-history');
   if (!history) return;
   history.replaceChildren();
@@ -3749,38 +3730,6 @@ function createSayuriReasoningSummary(metadata) {
     });
     details.append(list);
   }
-  const receipts = reasoning.tool_execution?.receipts;
-  if (Array.isArray(receipts) && receipts.length) {
-    const tools = document.createElement('div');
-    tools.className = 'sayuri-tool-receipts';
-    const title = document.createElement('strong');
-    title.textContent = `Инструменты · ${receipts.length}`;
-    tools.append(title);
-    receipts.slice(0, 8).forEach((receipt) => {
-      const row = document.createElement('div');
-      row.className = `sayuri-tool-receipt ${receipt.status || ''}`;
-      const status = document.createElement('span');
-      if (receipt.status === 'completed') status.textContent = '✓';
-      else if (receipt.status === 'requires_action_broker') status.textContent = '!';
-      else if (receipt.status === 'failed' || receipt.status === 'rejected') status.textContent = '×';
-      else status.textContent = '•';
-      const body = document.createElement('div');
-      const name = document.createElement('b');
-      name.textContent = receipt.tool || 'tool';
-      const note = document.createElement('small');
-      if (receipt.status === 'completed') {
-        note.textContent = `шаг ${receipt.step_index || 1} · выполнено · ${receipt.duration_ms || 0} мс`;
-      } else if (receipt.status === 'requires_action_broker') {
-        note.textContent = 'изменение не выполнено · требуется подтверждение';
-      } else {
-        note.textContent = receipt.error || receipt.status || 'нет результата';
-      }
-      body.append(name, note);
-      row.append(status, body);
-      tools.append(row);
-    });
-    details.append(tools);
-  }
   if (Array.isArray(verification.issues) && verification.issues.length) {
     const note = document.createElement('p');
     note.className = 'sayuri-reasoning-issues';
@@ -3791,7 +3740,9 @@ function createSayuriReasoningSummary(metadata) {
   const score = Number.isFinite(Number(verification.score))
     ? ` · качество ${Math.round(Number(verification.score) * 100)}%`
     : '';
-  meta.textContent = `Reasoning Planner + Result Verifier · вызовов модели ${reasoning.model_calls || 0}${score}`;
+  const checked = Number(reasoning.automation?.evidence_receipts || 0);
+  const automation = checked > 0 ? ` · автопроверка ${checked}` : '';
+  meta.textContent = `Reasoning Planner + Result Verifier · вызовов модели ${reasoning.model_calls || 0}${score}${automation}`;
   details.append(meta);
   return details;
 }

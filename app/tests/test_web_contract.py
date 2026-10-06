@@ -259,9 +259,10 @@ class WebContractTests(unittest.TestCase):
         script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
         css = (ROOT / "web" / "styles.css").read_text(encoding="utf-8")
 
-        self.assertIn('id="sayuri-tool-list"', html)
+        self.assertNotIn('id="sayuri-tool-list"', html)
         self.assertIn('id="sayuri-actions-history"', html)
         self.assertIn('Только после подтверждения', html)
+        self.assertIn('Автопроверка', html)
         self.assertIn('/api/sayuri/actions/plan', script)
         self.assertIn('/confirm', script)
         self.assertIn('/cancel', script)
