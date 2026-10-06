@@ -4,15 +4,15 @@
 
 - Дата: 2026-10-06.
 - Репозиторий: https://github.com/Aspksa/Sayuri-Tsukishiro
-- Проверенная исходная ревизия: `a609762d1f82763110d9b0a6fc88d3c1abbf389a` — опубликованный `main 0.2.3`, Versions #37415897573 success.
-- Рабочая ветка этапа: `portfolio-coordination-v0204`.
+- Проверенная функциональная ревизия: `bb7151baf72d7d681e84cd124f52e623bb3588c1` — опубликованный `main 0.2.7`, Versions #37418057599 success.
+- Рабочая ветка публикационной синхронизации: `publish-sync-v0208`.
 - Старый PR #27 (`0.2.2`) закрыт как superseded и не должен сливаться поверх `main 0.2.3+`.
-- Текущий целевой результат: **0.2.7 — Portfolio Milestones & Cross-Project Coordination (Acceptance Contract)**.
+- Текущий результат: **0.2.8 — GitHub Publication Sync**.
 - Задача: **AI-014**.
 
 ## Версии результата
 
-- Project: `0.2.7`.
+- Project: `0.2.8`.
 - App/Core: `0.1.55`.
 - Agent Core: `0.15.2`.
 - Cognitive Project Brain: `1.3.2`.
@@ -21,6 +21,17 @@
 - Web UI: `0.31.0` — без изменений.
 - Disk: `0.8.0` — без изменений.
 - dev-tools: `0.1.6` — без изменений.
+
+## Фактическая публикация на GitHub
+
+- Default branch: `main`.
+- Main commit до publication-sync: `bb7151baf72d7d681e84cd124f52e623bb3588c1`.
+- Main tree: `7b963ed5c12b89c2a3b347fd5fbd5984ba277cec`.
+- В дереве: 81 файл и 10 каталогов; tree response не truncated.
+- Рабочая ветка `portfolio-coordination-v0204` и `main` имеют идентичный tree SHA, поэтому функциональных файлов вне `main` не осталось.
+- PR #28 merged.
+- Финальный workflow #37418057599 — `success`.
+- Причина визуальной путаницы: README оставался с верхним разделом `0.2.3`, хотя код и VERSION уже были `0.2.7`. В `0.2.8` это синхронизировано.
 
 ## Цель этапа
 
@@ -113,6 +124,6 @@
 - squash merge;
 - финального зелёного workflow на `main`.
 
-## Следующий этап после 0.2.7
+## Следующий этап после 0.2.8
 
 После стабилизации portfolio coordination не добавлять ещё один абстрактный cognitive layer. Подключить первый реальный крупный прикладной модуль к canonical contract и измерить качество scheduler, milestones, blockers, completion criteria и strategy transfer на настоящем workflow.
