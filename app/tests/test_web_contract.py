@@ -160,6 +160,33 @@ class WebContractTests(unittest.TestCase):
         self.assertIn('[data-sayuri-panel][hidden]', css)
         self.assertIn('[data-sayuri-memory-panel][hidden]', css)
 
+    def test_global_product_polish_has_command_palette_fullscreen_and_accessibility(self):
+        html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+        css = (ROOT / "web" / "styles.css").read_text(encoding="utf-8")
+
+        self.assertIn('id="sayuri-chat-maximize"', html)
+        self.assertIn('id="command-palette-backdrop"', html)
+        self.assertIn('id="command-palette-input"', html)
+        self.assertIn('id="ui-toast-region"', html)
+
+        self.assertIn('openCommandPalette', script)
+        self.assertIn('toggleSayuriChatMaximize', script)
+        self.assertIn("event.key.toLowerCase() === 'k'", script)
+        self.assertIn('showUiToast', script)
+        self.assertIn('navigator.clipboard.writeText', script)
+        self.assertIn("result.reasoning?.automation?.evidence_receipts", script)
+        self.assertIn('Готова', script)
+
+        self.assertIn('SAYURI UI 0.27 — Global Product Polish', css)
+        self.assertIn('.command-palette', css)
+        self.assertIn('.sayuri-chat-window.is-maximized', css)
+        self.assertIn('.sayuri-message-actions', css)
+        self.assertIn('.ui-toast-region', css)
+        self.assertIn('@media (prefers-reduced-motion: reduce)', css)
+        self.assertIn('--ui-space-4: 16px', css)
+        self.assertIn('--ui-shadow-md:', css)
+
     def test_personal_cabinet_has_memory_and_avatar_studio(self):
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")

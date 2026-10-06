@@ -147,7 +147,7 @@ class ReasoningEngineTests(unittest.TestCase):
         css = (ROOT / "web" / "styles.css").read_text(encoding="utf-8")
         self.assertIn("createSayuriReasoningSummary", script)
         self.assertIn("result.reasoning", script)
-        self.assertIn("план+проверка", script)
+        self.assertIn("результат проверен", script)
         self.assertIn("автопроверка", script)
         self.assertIn("SAYURI UI 0.25 — Background Evidence Automation", css)
         self.assertIn(".sayuri-reasoning-summary", css)
