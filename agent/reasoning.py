@@ -27,7 +27,7 @@ class ReasoningDecision:
 class ReasoningEngine:
     """Adaptive task planner and result verifier without chain-of-thought storage."""
 
-    VERSION = "1.0"
+    VERSION = "1.1"
     MAX_CONTEXT_CHARS = 14000
     MAX_TASK_CHARS = 12000
 
@@ -77,6 +77,8 @@ class ReasoningEngine:
             "replanning": True,
             "self_evaluation": True,
             "metacognition": True,
+            "portfolio_milestones": True,
+            "external_blocker_awareness": True,
             "evidence_aware_tool_planner": True,
             "structured_tool_intents": True,
             "execution_receipts": True,
@@ -254,8 +256,10 @@ class ReasoningEngine:
                     "только то, что Action Broker подтвердил конкретный прошлый результат и локальный lifecycle сохранил "
                     "контрольную точку; это не доказывает завершение всей задачи. Не меняй статусы задач из Planner. "
                     "Текущий явный запрос пользователя всегда важнее старой задачи. "
-                    "cognitive_context содержит project/module scope, scheduler, dependencies, completion criteria, "
-                    "uncertainty, strategy memory и metacognition. Не предлагай выполнять task, пока её blockers не пусты. "
+                    "cognitive_context содержит project/module scope, scheduler, task dependencies, portfolio milestones, "
+                    "external blockers, completion criteria, uncertainty, strategy memory и metacognition. "
+                    "Не предлагай выполнять task, пока её blockers не пусты. External blocker может ссылаться на milestone "
+                    "другого проекта: это зависимость портфолио, а не разрешение обходить project isolation. "
                     "Если completion.status=ready_for_confirmation, можно предложить проверить критерии, но нельзя "
                     "самостоятельно объявлять task done. replan_required означает предложить новый проверяемый маршрут, "
                     "а не переписать lifecycle. uncertainty означает явно отделить известное от недоказанного и назвать "
@@ -440,9 +444,10 @@ class ReasoningEngine:
                     "Spatial citation вида [D1] допустима только если этот citation_id реально присутствует в "
                     "completed document.evidence_search evidence; не придумывай D-ID. При revised_answer сохрани "
                     "поддержанные citations рядом с теми утверждениями, которые они доказывают. "
-                    "Cognitive Project Brain является read-only evidence: blockers запрещают считать зависимую задачу "
-                    "готовой, uncertainty требует отметить недостаток доказательств, а ready_for_completion_confirmation "
-                    "не означает done без явного подтверждения. Не считай уверенный тон доказательством факта. Если ответ требует исправления, "
+                    "Cognitive Project Brain является read-only evidence: task/external blockers запрещают считать "
+                    "зависимую задачу готовой; milestone со status!=done не считается завершённым; uncertainty требует "
+                    "отметить недостаток доказательств, а ready_for_completion_confirmation не означает done без явного "
+                    "подтверждения. Не считай уверенный тон доказательством факта. Если ответ требует исправления, "
                     "верни полную исправленную версию в revised_answer, чтобы не делать четвёртый вызов модели. "
                     "Верни только JSON без Markdown: "
                     '{"status":"pass|revise","score":0.0,'

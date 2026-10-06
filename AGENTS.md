@@ -112,3 +112,13 @@
 - Never auto-mark a task done from a model answer, checkpoint, verifier score, or completion criteria alone.
 - Dependency blockers and stale task state must win over old plans.
 - Keep cognition persistence in local SQLite unless a future explicit migration decision changes this.
+
+
+## Portfolio coordination contract (0.2.2+)
+
+- Keep direct task dependencies inside one project DAG.
+- Coordinate different projects through `cognitive_milestones` and `cognitive_external_blockers`, not cross-project task edges.
+- A milestone may become ready from required tasks but must not become `done` without explicit local confirmation.
+- Do not erase blocker history when a source milestone resolves it; use effective read state.
+- New task-producing modules must reuse the shared portfolio scheduler; do not add per-module milestone/blocker schedulers.
+- Keep high-uncertainty tasks out of automatic lifecycle linkage until evidence reduces the uncertainty.

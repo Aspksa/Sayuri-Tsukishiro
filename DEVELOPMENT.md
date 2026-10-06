@@ -1818,3 +1818,51 @@ Explicit local mutations:
 - module-scoped evaluation;
 - Cloud metadata boundary;
 - runtime/API contract.
+
+
+## Sayuri 0.2.2 — Portfolio Milestones & Scalable Scheduler
+
+### Portfolio coordination
+
+`CognitiveProjectBrain 1.2` сохраняет project-local task DAG и добавляет отдельный межпроектный контур:
+
+`source project milestone → external blocker → dependent project/module/task`.
+
+Прямой cross-project task edge остаётся запрещён. Это не даёт одному глобальному графу случайно связать и заблокировать все проекты.
+
+### Milestones
+
+- milestone имеет stable key внутри проекта;
+- membership хранит required/optional task links;
+- readiness вычисляется из Memory 4 task status;
+- `done` требует `COMPLETE_MILESTONE`;
+- никакой LLM output, checkpoint или score не завершает milestone автоматически.
+
+### External blockers
+
+- blocker может быть project-, module- или task-scoped;
+- source milestone другого проекта разрешён как доказуемое внешнее условие;
+- source milestone `done` меняет только effective state blocker при чтении;
+- persistent blocker record остаётся в истории;
+- manual blocker закрывается explicit resolution.
+
+### Batched scheduler
+
+Planning cycle читает task scopes, projects, modules, confirmed edges, open uncertainties, applied checkpoints, milestones и external blockers одним cognitive SQLite snapshot. Per-task N+1 SQL path устранён из scheduler/self-evaluation/metacognition.
+
+Scheduler учитывает project priority и active milestone priority. Explicit project context является hard scope; module context — affinity, чтобы разрешать prerequisites соседнего модуля.
+
+### Safety gates
+
+- high uncertainty запрещает автоматическую Action Broker lifecycle-привязку к task;
+- task/external blockers имеют приоритет над completion readiness;
+- deep graph integrity запускается явно и не утяжеляет обычный health-status;
+- Cloud projection остаётся bounded и не содержит module path/metadata.
+
+### Capacity
+
+`MAX_TASKS` повышен до 5000; `sync_tasks()` сначала пакетно получает уже зарегистрированные task scopes и добавляет только отсутствующие.
+
+### API
+
+Добавлены local-only endpoints milestones/external blockers. Они не входят в Evidence Tool Planner catalog и не доступны DeepSeek как mutation tools.

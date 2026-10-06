@@ -61,6 +61,8 @@ class ReasoningEngineTests(unittest.TestCase):
         self.assertTrue(engine.public_status()["multi_project_brain"])
         self.assertTrue(engine.public_status()["task_graph_dependencies"])
         self.assertTrue(engine.public_status()["metacognition"])
+        self.assertTrue(engine.public_status()["portfolio_milestones"])
+        self.assertTrue(engine.public_status()["external_blocker_awareness"])
         self.assertIn("continuity_context", planner_messages[1]["content"])
 
     def test_plan_and_verifier_json_are_normalized_without_hidden_reasoning(self):

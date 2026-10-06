@@ -4,79 +4,66 @@
 
 - Дата: 2026-10-06.
 - Репозиторий: https://github.com/Aspksa/Sayuri-Tsukishiro
-- Проверенная исходная ревизия: `8cc0df75a01924cbaf91001387cdadfee817774f` — опубликованный `main 0.2.0`, Versions #37410683454 success.
-- Рабочая ветка этапа: `cognitive-brain-hardening-v0201`.
-- Текущий целевой результат: **0.2.1 — Cognitive Brain Hardening 1.1**.
-- Задача: **AI-012**.
+- Проверенная исходная ревизия: `bf9ffc499fbfa5b472c526f79f0e18166d6c7ce5` — опубликованный `main 0.2.1`, Versions #37412163229 success.
+- Рабочая ветка этапа: `portfolio-milestones-v0202`.
+- Текущий целевой результат: **0.2.2 — Portfolio Milestones & Scalable Scheduler**.
+- Задача: **AI-013**.
 
 ## Версии результата
 
-- Project: `0.2.1`.
-- App/Core: `0.1.50`.
-- Agent Core: `0.14.1`.
-- Cognitive Project Brain: `1.1`.
-- Reasoning Planner: `1.0` — без изменений.
+- Project: `0.2.2`.
+- App/Core: `0.1.51`.
+- Agent Core: `0.15.0`.
+- Cognitive Project Brain: `1.2`.
+- Reasoning Planner: `1.1`.
 - Evidence Tool Planner: `0.4` — без изменений.
 - Web UI: `0.31.0` — без изменений.
 - Disk: `0.8.0` — без изменений.
 - dev-tools: `0.1.6` — без изменений.
 
-## Что усиливается
+## Новая архитектура портфолио
 
-### State ownership
-- repeat sync не перезаписывает managed cognitive task scope;
-- explicit task creation сразу нормализует project/module context и bind-ит scope.
+`Portfolio → Project → Milestone/Module → Goal/Task → Dependencies + External Blockers → Scheduler → Evidence/Checkpoint → Evaluation`
 
-### Graph safety
-- confirmed cycles запрещены;
-- direct cross-project task edges запрещены;
-- unconfirmed edges не блокируют scheduler;
-- unresolved dependency имеет приоритет над completion readiness.
+### Milestones
+- persistent project/module milestones;
+- required/optional task membership;
+- readiness только по фактическим task status;
+- `done` только после `COMPLETE_MILESTONE`.
 
-### Evidence-based completion
-- criteria учитывают только applied checkpoints;
-- configured criteria guard запрещает преждевременный `done`;
-- automatic completion отсутствует.
+### Cross-project coordination
+- direct cross-project task edges по-прежнему запрещены;
+- зависимость между проектами: source milestone → external blocker;
+- source milestone снимает blocker только в effective read state;
+- blocker history не стирается.
 
-### Replanning / uncertainty
-- failure создаёт proposal/uncertainty, но не применяет их;
-- apply требует `APPLY_REPLAN` и актуального `next_action`;
-- uncertainty закрывается только explicit resolution.
+### Scale
+- scheduler/metacognition/self-evaluation используют batched portfolio snapshot;
+- task capacity: 5000;
+- sync известных task scope пакетный;
+- обычный status остаётся lightweight;
+- deep graph integrity вызывается отдельно.
 
-### Causal evidence
-- observed completed action -> checkpoint;
-- observed failed action -> replan/uncertainty;
-- causal trace является provenance lineage, не свободной гипотезой LLM.
-
-### Multi-module scaling
-- scheduler понимает stable UI/module aliases;
-- strategy/uncertainty/self-evaluation изолируются по module scope;
-- cloud context не содержит module path/metadata;
-- explicit local cognition API позволяет будущим модулям регистрироваться и строить dependencies без собственного Planner.
-
-## Инварианты
-
-1. Единственная внешняя LLM — `deepseek-ai/DeepSeek-V4-Flash` через Cloud.ru.
-2. LLM имеет только read-only cognition tools.
-3. Реальные project mutations остаются за Action Broker; cognitive mutation API является explicit local API.
-4. Replan application требует отдельного подтверждения.
-5. Completion criteria не выставляют `done` автоматически.
-6. Старый checkpoint/replan не может перезаписать более новое task state.
-7. Sensitive/local module metadata не отправляется в Cloud projection.
-8. Chain-of-thought не сохраняется.
+### Safety
+- high uncertainty блокирует автоматическую lifecycle-привязку mutation к task;
+- task/external blockers сильнее completion readiness;
+- DeepSeek получает только bounded read-only portfolio context;
+- milestone/blocker mutation API не входит в LLM tools;
+- реальные действия проекта остаются за Action Broker.
 
 ## Приёмка
 
-Для публикации `0.2.1` обязательны:
+Для публикации `0.2.2` обязательны:
 - полный Python regression suite;
 - JavaScript syntax;
 - app preflight;
 - version check `--each-commit`;
 - Windows launcher checks;
+- branch CI;
 - PR CI;
 - squash merge;
 - зелёный финальный workflow на `main`.
 
-## Следующий этап после 0.2.1
+## Следующий этап после 0.2.2
 
-Подключать реальные новые прикладные модули к общему Cognitive Brain через `project_key/module_key`, а не добавлять новый тип памяти/Planner. Первые хорошие кандидаты: Лаборатория Sayuri и VK-модуль. На их реальных workflow измерять scheduler accuracy, blocker handling, criteria quality и strategy transfer.
+Следующий мозговой слой — explicit Hypothesis & Evidence Ledger: отделить факт, гипотезу, предположение и неизвестность; уметь накапливать support/refute evidence и повышать/понижать confidence без превращения модели в источник истины.

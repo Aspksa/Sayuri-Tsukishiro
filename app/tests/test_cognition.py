@@ -14,7 +14,7 @@ from agent.semantic_memory import SemanticMemoryIndex
 
 class CognitiveProjectBrainTests(unittest.TestCase):
     def _build(self, root: Path):
-        (root / "VERSION").write_text("0.2.1\n", encoding="utf-8")
+        (root / "VERSION").write_text("0.2.2\n", encoding="utf-8")
         (root / "MODULES.json").write_text(
             json.dumps(
                 {
@@ -447,6 +447,282 @@ class CognitiveProjectBrainTests(unittest.TestCase):
                 {"actionable", "criteria_missing", "ready_for_completion_confirmation"},
             )
             self.assertLessEqual(len(context["scheduler"]["candidates"]), 8)
+
+
+    def test_cross_project_milestone_external_blocker_unlocks_only_after_confirmed_milestone(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _, _, _, v4, brain = self._build(root)
+            source_task = v4.create_task(
+                "Подготовить клипы Madclips",
+                priority=5,
+                context={"project_key": "madclips", "module_key": "posting"},
+            )
+            target_task = v4.create_task(
+                "Опубликовать VK после Madclips",
+                priority=5,
+                next_action="Запустить публикацию VK.",
+                context={
+                    "project_key": "sayuri-tsukishiro",
+                    "module_key": "vk-automation",
+                },
+            )
+            brain.sync_tasks()
+            milestone = brain.register_milestone(
+                "madclips",
+                "clips-ready",
+                title="Клипы готовы",
+                module_key="posting",
+                priority=5,
+            )
+            brain.link_milestone_task(
+                milestone["id"],
+                source_task["id"],
+                required=True,
+            )
+            blocker = brain.add_external_blocker(
+                "sayuri-tsukishiro",
+                "wait-madclips",
+                "Ожидать готовности клипов Madclips",
+                task_id=target_task["id"],
+                source_project_key="madclips",
+                source_milestone_id=milestone["id"],
+            )
+
+            before = brain.scheduler(
+                "Опубликовать VK после Madclips",
+                context={"project_key": "sayuri-tsukishiro"},
+            )
+            target_candidate = next(
+                item
+                for item in before["candidates"]
+                if item["id"] == target_task["id"]
+            )
+            self.assertIsNone(before["selected"])
+            self.assertEqual(before["blocked_by_external"], 1)
+            self.assertEqual(
+                target_candidate["blockers"][0]["type"],
+                "external_blocker",
+            )
+
+            v4.update_task(source_task["id"], status="done")
+            self.assertEqual(
+                brain.milestone_assessment(milestone["id"])["status"],
+                "ready_for_confirmation",
+            )
+            still_blocked = brain.scheduler(
+                "Опубликовать VK после Madclips",
+                context={"project_key": "sayuri-tsukishiro"},
+            )
+            self.assertIsNone(still_blocked["selected"])
+
+            completed = brain.complete_milestone(
+                milestone["id"],
+                confirmation="COMPLETE_MILESTONE",
+            )
+            after = brain.scheduler(
+                "Опубликовать VK после Madclips",
+                context={"project_key": "sayuri-tsukishiro"},
+            )
+            effective = brain.external_blockers(
+                task_id=target_task["id"],
+                effective_open_only=True,
+            )
+
+            self.assertEqual(completed["status"], "done")
+            self.assertEqual(after["selected"]["id"], target_task["id"])
+            self.assertEqual(effective, [])
+            self.assertEqual(blocker["status"], "open")
+
+    def test_milestone_cannot_complete_before_required_tasks(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _, _, _, v4, brain = self._build(root)
+            task = v4.create_task(
+                "Подготовить релиз",
+                context={"project_key": "sayuri-tsukishiro"},
+            )
+            brain.sync_tasks()
+            milestone = brain.register_milestone(
+                "sayuri-tsukishiro",
+                "release-ready",
+                title="Релиз готов",
+            )
+            brain.link_milestone_task(milestone["id"], task["id"])
+
+            with self.assertRaises(CognitiveBrainError):
+                brain.complete_milestone(
+                    milestone["id"],
+                    confirmation="COMPLETE_MILESTONE",
+                )
+
+            current = next(
+                item
+                for item in brain.milestones(project_key="sayuri-tsukishiro")
+                if item["id"] == milestone["id"]
+            )
+            self.assertNotEqual(current["status"], "done")
+
+    def test_scheduler_uses_single_cognitive_db_snapshot_for_many_tasks(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _, _, _, v4, brain = self._build(root)
+            for index in range(60):
+                v4.create_task(
+                    f"Масштабная задача {index}",
+                    priority=(index % 5) + 1,
+                    next_action=f"Проверить шаг {index}.",
+                    context={"module_key": "vk-automation"},
+                )
+            brain.sync_tasks()
+
+            original_connect = brain._connect
+            calls = 0
+
+            def counted_connect():
+                nonlocal calls
+                calls += 1
+                return original_connect()
+
+            brain._connect = counted_connect
+            result = brain.scheduler("Масштабная задача 59")
+            brain._connect = original_connect
+
+            self.assertEqual(calls, 1)
+            self.assertIsNotNone(result["selected"])
+            self.assertEqual(result["engine"], "cognitive-scheduler-v1.2")
+            self.assertLessEqual(len(result["candidates"]), 8)
+
+    def test_status_is_lightweight_and_deep_integrity_is_explicit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _, _, _, _, brain = self._build(root)
+
+            original_snapshot = brain._portfolio_snapshot
+
+            def forbidden_snapshot():
+                raise AssertionError("status() must remain lightweight")
+
+            brain._portfolio_snapshot = forbidden_snapshot
+            status = brain.status()
+            brain._portfolio_snapshot = original_snapshot
+            integrity = brain.graph_integrity()
+
+            self.assertEqual(
+                status["graph_integrity"],
+                "available_on_cognition_context",
+            )
+            self.assertEqual(integrity["status"], "healthy")
+            self.assertTrue(
+                status["capabilities"]["batched_scheduler_snapshot"]
+            )
+
+    def test_module_reregistration_preserves_title_and_merges_metadata(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _, _, _, _, brain = self._build(root)
+            first = brain.register_module(
+                "sayuri-tsukishiro",
+                "future-module",
+                title="Будущий модуль",
+                metadata={"alpha": 1},
+            )
+            second = brain.register_module(
+                "sayuri-tsukishiro",
+                "future-module",
+                metadata={"beta": 2},
+            )
+
+            self.assertEqual(first["title"], "Будущий модуль")
+            self.assertEqual(second["title"], "Будущий модуль")
+            self.assertEqual(second["metadata"]["alpha"], 1)
+            self.assertEqual(second["metadata"]["beta"], 2)
+
+
+
+    def test_external_blocker_lookup_is_scoped_to_task_project_and_module(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _, _, _, v4, brain = self._build(root)
+            target = v4.create_task(
+                "Целевая задача",
+                context={
+                    "project_key": "sayuri-tsukishiro",
+                    "module_key": "vk-automation",
+                },
+            )
+            unrelated = v4.create_task(
+                "Чужая задача",
+                context={
+                    "project_key": "other-project",
+                    "module_key": "other-module",
+                },
+            )
+            brain.sync_tasks()
+            target_scope = brain.task_scope(target["id"])
+            unrelated_scope = brain.task_scope(unrelated["id"])
+            target_project = next(
+                item for item in brain.projects()
+                if item["id"] == target_scope["project_id"]
+            )
+            unrelated_project = next(
+                item for item in brain.projects()
+                if item["id"] == unrelated_scope["project_id"]
+            )
+
+            brain.add_external_blocker(
+                target_project["key"],
+                "target-project-block",
+                "Блокер целевого проекта",
+            )
+            brain.add_external_blocker(
+                unrelated_project["key"],
+                "other-project-block",
+                "Блокер чужого проекта",
+            )
+
+            found = brain.external_blockers(
+                task_id=target["id"],
+                effective_open_only=True,
+            )
+
+            self.assertEqual(
+                {item["key"] for item in found},
+                {"target-project-block"},
+            )
+
+    def test_external_blocker_scope_key_is_idempotent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _, _, _, _, brain = self._build(root)
+            first = brain.add_external_blocker(
+                "sayuri-tsukishiro",
+                "release-window",
+                "Ожидать окно релиза",
+                module_key="vk-automation",
+            )
+            second = brain.add_external_blocker(
+                "sayuri-tsukishiro",
+                "release-window",
+                "Ожидать подтверждённое окно релиза",
+                module_key="vk-automation",
+            )
+
+            self.assertEqual(first["id"], second["id"])
+            matches = [
+                item
+                for item in brain.external_blockers(
+                    project_id=first["project_id"],
+                    module_id=first["module_id"],
+                )
+                if item["key"] == "release-window"
+            ]
+            self.assertEqual(len(matches), 1)
+            self.assertEqual(
+                matches[0]["title"],
+                "Ожидать подтверждённое окно релиза",
+            )
+
 
 
 if __name__ == "__main__":

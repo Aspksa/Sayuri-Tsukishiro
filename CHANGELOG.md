@@ -2,6 +2,25 @@
 
 ## Невыпущенные изменения
 
+### 0.2.2 — 2026-10-06 — Portfolio Milestones & Scalable Scheduler
+
+- Cognitive Project Brain обновлён до `1.2`, Reasoning Planner — до `1.1`.
+- Реализованы persistent portfolio milestones: milestone принадлежит project/module scope, связывается с required/optional tasks и становится `ready_for_confirmation` только после выполнения обязательных задач.
+- Milestone никогда не закрывается автоматически; `done` требует явного `COMPLETE_MILESTONE`.
+- Реализованы external blockers для безопасной межпроектной координации без прямых cross-project task edges.
+- External blocker может ссылаться на milestone другого проекта; его effective state считается resolved только после явного завершения source milestone либо explicit local resolution.
+- External blocker lookup изолирован по project/module/task scope; одинаковый `blocker_key` идемпотентен только внутри точного scope и не протекает между проектами.
+- Scheduler теперь учитывает task dependencies, external blockers, project priority, module affinity, active milestones, uncertainty и completion state.
+- Для explicit `project_key` scheduler изолирует выбор внутри проекта; module context остаётся affinity, чтобы разрешать prerequisites соседнего модуля того же проекта.
+- Добавлен batched portfolio snapshot: scopes/projects/modules/edges/uncertainties/applied checkpoints/milestones/blockers читаются одним когнитивным DB-снимком на planning cycle вместо N+1 чтений на каждую задачу.
+- Лимит рабочего task portfolio увеличен до 5000 задач; `sync_tasks()` читает known task scopes пакетно и не затирает managed cognitive state.
+- Добавлен deep `graph_integrity()` для циклов, cross-project edges и milestone/task scope; обычный `status()` остаётся лёгким.
+- High uncertainty теперь запрещает автоматическую lifecycle-привязку mutation к task: сначала нужно evidence/replan.
+- Cloud projection по-прежнему не содержит локальные module paths/metadata; milestone/blocker context передаётся только в bounded безопасной форме.
+- Добавлены explicit local GET/POST API для milestones и external blockers; в LLM tool catalog mutation endpoints не добавлены.
+- Добавлены regressions для cross-project milestone unlock, explicit milestone completion, scheduler snapshot scaling, lightweight status, metadata preservation и uncertainty lifecycle gate.
+- Проект: `0.2.2`; App/Core: `0.1.51`; Agent Core: `0.15.0`; Cognitive Project Brain: `1.2`; Reasoning Planner: `1.1`. Web UI, Disk и dev-tools без изменений.
+
 ### 0.2.1 — 2026-10-06 — Cognitive Brain Hardening
 
 - Cognitive Project Brain обновлён до `1.1`: hardening существующей multi-project/multi-module архитектуры без добавления второй LLM или автономного mutation loop.

@@ -519,3 +519,18 @@
   - mutation API не добавляется в LLM tool catalog.
 - Versions: project `0.2.1`, App/Core `0.1.50`, Agent Core `0.14.1`, Cognitive Brain `1.1`.
 - Acceptance: full Python suite, JS syntax, app preflight, version each-commit, Windows launcher, PR CI, squash merge и зелёный final `main` workflow.
+
+
+## AI-013 — Portfolio Milestones & Scalable Scheduler
+
+- Статус: `implemented in target 0.2.2`; релиз считается принятым после зелёного PR/main CI.
+- База: `main 0.2.1`, commit `bf9ffc499fbfa5b472c526f79f0e18166d6c7ce5`, Versions #37412163229 success.
+- Добавить portfolio milestones с required/optional task membership и explicit completion.
+- Реализовать cross-project coordination только через external blocker, без прямого task edge между проектами.
+- Source milestone может влиять только на effective blocker state; persistent blocker history не стирается.
+- Перевести scheduler/self-evaluation/metacognition на batched portfolio snapshot для масштабирования до тысяч задач.
+- Учитывать project priority, module affinity и milestone priority при ранжировании.
+- High uncertainty должна останавливать lifecycle auto-link mutation до получения evidence.
+- Deep graph integrity вынести из частого health status.
+- Добавить local API и regressions; не добавлять mutation tools для LLM.
+- Версии: project `0.2.2`, App `0.1.51`, Agent `0.15.0`, Cognitive Brain `1.2`, Reasoning `1.1`.

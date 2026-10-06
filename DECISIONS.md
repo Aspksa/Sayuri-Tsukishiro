@@ -764,3 +764,25 @@ LLM не получает mutation tool для replan. Старый proposal н�
 **Решение:** Cognitive Brain записывает только подтверждённую lineage между observed Action Broker outcome и созданным checkpoint/replan/uncertainty.
 
 Свободная гипотеза модели `A вызвало B` не становится causal edge без отдельного evidence mechanism.
+
+
+## 2026-10-06 — Межпроектная координация идёт через milestone/external blocker
+
+**Решение:** direct task edge между разными project scope остаётся запрещён. Межпроектная зависимость моделируется как завершённый source milestone и external blocker зависимого проекта.
+
+Причины:
+- каждый project сохраняет собственный DAG;
+- project deletion/archive не разрушает чужой task graph;
+- внешний контракт имеет понятный проверяемый объект — milestone;
+- scheduler может показать, какой именно внешний результат ожидается;
+- history blocker сохраняется даже после derived resolution.
+
+## 2026-10-06 — Scheduler использует единый read-only portfolio snapshot
+
+**Решение:** ranking одной задачи не должен открывать отдельные SQL-чтения для scope/project/module/blockers/criteria/uncertainty. Planning cycle строит один snapshot и переиспользует его в scheduler, metacognition и self-evaluation.
+
+Следствия:
+- число когнитивных SQLite-чтений не растёт линейно с количеством candidates;
+- ranking выполняется по консистентному состоянию одного цикла;
+- health-status не запускает deep graph analysis;
+- Cloud projection остаётся bounded независимо от размера локального портфолио.

@@ -1,6 +1,6 @@
 # Cognitive Project Brain
 
-Версия контракта: **1.1**  
+Версия контракта: **1.2**  
 Проект: **Sayuri-Tsukishiro**
 
 ## Назначение
@@ -12,10 +12,13 @@ Cognitive Project Brain — локальный детерминированны�
 ```text
 Portfolio
 └── Project
+    ├── Milestone
+    │   └── required / optional Tasks
     ├── Module
     │   ├── Goal
     │   └── Task
     │       ├── Dependencies
+    │       ├── External Blockers
     │       ├── Completion Criteria
     │       ├── Checkpoints
     │       ├── Uncertainty
@@ -60,7 +63,22 @@ Portfolio
 
 Unconfirmed edge может храниться как черновая гипотеза, но scheduler её игнорирует.
 
-Межпроектная зависимость не создаётся прямым task edge. Для неё используется milestone/external blocker, чтобы портфель не превращался в один глобальный цикл.
+Межпроектная зависимость не создаётся прямым task edge. Для неё используется `milestone → external blocker`, чтобы портфель не превращался в один глобальный цикл.
+
+## Portfolio Milestones
+
+Milestone принадлежит одному project scope и может дополнительно быть связан с module scope. В milestone входят required и optional tasks.
+
+- required tasks определяют readiness;
+- `ready_for_confirmation` ещё не означает `done`;
+- завершение требует explicit local `COMPLETE_MILESTONE`;
+- milestone не закрывается по тексту модели или только по self-evaluation score.
+
+## External Blockers
+
+External blocker связывает зависимый project/module/task с внешним условием. Для межпроектной координации blocker может ссылаться на source milestone другого проекта.
+
+Persistent blocker history не удаляется автоматически. Если source milestone завершён, его `effective_status` становится `resolved` для scheduler, но исходная запись blocker сохраняется. Независимый blocker закрывается explicit local resolution.
 
 ## Completion Criteria
 
@@ -74,7 +92,11 @@ Unconfirmed edge может храниться как черновая гипо�
 
 ## Scheduler
 
-Scheduler учитывает priority, task status, query overlap, project/module affinity, confirmed blockers, uncertainty severity, attention state и completion state. Cloud projection ограничена восемью candidates.
+Scheduler 1.2 строит один batched portfolio snapshot на planning cycle и учитывает task priority/status, project priority, query overlap, module affinity, active milestones, confirmed task dependencies, external blockers, uncertainty severity, attention state и completion state.
+
+`project_key` в явном context ограничивает выбор данным проектом. `module_key` остаётся affinity, чтобы scheduler мог выбрать prerequisite из соседнего модуля того же проекта. Cloud projection ограничена восемью candidates.
+
+Deep `graph_integrity()` проверяет confirmed dependency cycles, cross-project task edges и milestone/task scope. Обычный `status()` не запускает эту тяжёлую проверку при каждом открытии интерфейса.
 
 ## Uncertainty
 
@@ -114,7 +136,16 @@ Explicit local state mutations:
 - `POST /api/sayuri/cognition/dependencies`;
 - `POST /api/sayuri/cognition/tasks/{task_id}/criteria`;
 - `POST /api/sayuri/cognition/uncertainties/{id}/resolve`;
-- `POST /api/sayuri/cognition/replans/{id}/apply` with `confirmation=APPLY_REPLAN`.
+- `POST /api/sayuri/cognition/replans/{id}/apply` with `confirmation=APPLY_REPLAN`;
+- `POST /api/sayuri/cognition/milestones`;
+- `POST /api/sayuri/cognition/milestones/{id}/tasks`;
+- `POST /api/sayuri/cognition/milestones/{id}/complete` with `confirmation=COMPLETE_MILESTONE`;
+- `POST /api/sayuri/cognition/external-blockers`;
+- `POST /api/sayuri/cognition/external-blockers/{id}/resolve`.
+
+Read-only portfolio lists:
+- `GET /api/sayuri/cognition/milestones`;
+- `GET /api/sayuri/cognition/external-blockers`.
 
 Эти mutation endpoints не являются LLM tools.
 

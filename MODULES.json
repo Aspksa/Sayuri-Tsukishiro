@@ -4,7 +4,7 @@
     {
       "id": "sayuri-core",
       "display_name": "Ядро Саюри",
-      "description": "Системное ядро 0.1.50: API, диагностика, Memory 4.x, Cognitive Project Brain 1.1 bridge, explicit local cognition API, Action Broker, evidence automation и Spatial Evidence bridge.",
+      "description": "Системное ядро 0.1.51: API, диагностика, Memory 4.x, Cognitive Project Brain 1.2 bridge, portfolio milestone/external-blocker API, Action Broker, evidence automation и Spatial Evidence bridge.",
       "path": "app",
       "project_key": "sayuri-tsukishiro",
       "depends_on": [],
@@ -13,13 +13,15 @@
         "diagnostics",
         "action-broker-bridge",
         "cognition-api",
-        "cognition-explicit-local-api"
+        "cognition-explicit-local-api",
+        "portfolio-milestones-api",
+        "external-blockers-api"
       ]
     },
     {
       "id": "agent-core",
       "display_name": "Агентное ядро",
-      "description": "Sayuri Agent Core 0.14.1: DeepSeek-V4-Flash, Reasoning Planner 1.0, Memory 4.x, Cognitive Project Brain 1.1, guarded task graph, module-scoped scheduler/uncertainty/strategy memory, conservative causal evidence, replanning, self-evaluation и metacognition.",
+      "description": "Sayuri Agent Core 0.15.0: DeepSeek-V4-Flash, Reasoning Planner 1.1, Memory 4.x, Cognitive Project Brain 1.2, scalable portfolio scheduler, milestones, external blockers, guarded task graph, strategy/uncertainty/replanning и conservative causal evidence.",
       "path": "agent",
       "project_key": "sayuri-tsukishiro",
       "depends_on": [],
@@ -33,7 +35,11 @@
         "strategy-memory",
         "metacognition",
         "cloud-llm",
-        "causal-evidence"
+        "causal-evidence",
+        "portfolio-milestones",
+        "external-blockers",
+        "batched-scheduler",
+        "graph-integrity"
       ]
     },
     {

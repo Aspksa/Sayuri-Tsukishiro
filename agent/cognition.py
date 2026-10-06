@@ -23,13 +23,13 @@ class CognitiveProjectBrain:
     statistics, replan proposals and metacognitive summaries.
     """
 
-    VERSION = "1.1"
+    VERSION = "1.2"
     PROJECT_KEY = "sayuri-tsukishiro"
     DEPENDENCY_RELATIONS = {"requires", "blocks", "unlocks", "follows"}
     OPEN_TASK_STATUSES = {"planned", "in_progress", "blocked"}
     MAX_PROJECTS = 100
     MAX_MODULES = 500
-    MAX_TASKS = 1000
+    MAX_TASKS = 5000
 
     def __init__(self, root: Path, memory_v4: Any):
         self.root = root
@@ -230,6 +230,71 @@ class CognitiveProjectBrain:
             db.execute(
                 "CREATE INDEX IF NOT EXISTS idx_cognitive_causal_task ON cognitive_causal_links(task_id, created_at DESC)"
             )
+            db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS cognitive_milestones (
+                    id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL,
+                    module_id TEXT,
+                    milestone_key TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    description TEXT,
+                    status TEXT NOT NULL,
+                    priority INTEGER NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    UNIQUE(project_id, milestone_key)
+                )
+                """
+            )
+            db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS cognitive_milestone_tasks (
+                    milestone_id TEXT NOT NULL,
+                    task_id TEXT NOT NULL,
+                    required INTEGER NOT NULL,
+                    created_at TEXT NOT NULL,
+                    PRIMARY KEY(milestone_id, task_id)
+                )
+                """
+            )
+            db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_cognitive_milestone_tasks_task ON cognitive_milestone_tasks(task_id)"
+            )
+            db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS cognitive_external_blockers (
+                    id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL,
+                    module_id TEXT,
+                    task_id TEXT,
+                    blocker_key TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    source_project_id TEXT,
+                    source_milestone_id TEXT,
+                    evidence_ref TEXT,
+                    created_at TEXT NOT NULL,
+                    resolved_at TEXT,
+                    resolution TEXT,
+                    UNIQUE(project_id, task_id, blocker_key)
+                )
+                """
+            )
+            db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_cognitive_external_blockers_scope ON cognitive_external_blockers(project_id, module_id, task_id, status)"
+            )
+            db.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS uq_cognitive_external_blockers_scope_key
+                ON cognitive_external_blockers(
+                    project_id,
+                    COALESCE(module_id, ''),
+                    COALESCE(task_id, ''),
+                    blocker_key
+                )
+                """
+            )
 
     def register_project(
         self,
@@ -251,6 +316,11 @@ class CognitiveProjectBrain:
                 (key,),
             ).fetchone()
             if row is None:
+                current_count = int(
+                    db.execute("SELECT COUNT(*) FROM cognitive_projects").fetchone()[0]
+                )
+                if current_count >= self.MAX_PROJECTS:
+                    raise CognitiveBrainError("Достигнут лимит зарегистрированных проектов.")
                 project_id = uuid.uuid4().hex
                 db.execute(
                     """
@@ -338,7 +408,7 @@ class CognitiveProjectBrain:
         path: str = "",
         metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        project = self.register_project(project_key)
+        project = self.project_by_key(project_key) or self.register_project(project_key)
         key = self._key(module_key)
         if not key:
             raise CognitiveBrainError("Ключ модуля не может быть пустым.")
@@ -353,6 +423,11 @@ class CognitiveProjectBrain:
                 (project["id"], key),
             ).fetchone()
             if row is None:
+                current_count = int(
+                    db.execute("SELECT COUNT(*) FROM cognitive_modules").fetchone()[0]
+                )
+                if current_count >= self.MAX_MODULES:
+                    raise CognitiveBrainError("Достигнут лимит зарегистрированных модулей.")
                 module_id = uuid.uuid4().hex
                 db.execute(
                     """
@@ -377,6 +452,13 @@ class CognitiveProjectBrain:
                     (module_id,),
                 ).fetchone()
             else:
+                existing_metadata = self._decode(row["metadata_json"], {})
+                merged_metadata = (
+                    {**existing_metadata, **metadata}
+                    if isinstance(metadata, dict)
+                    else existing_metadata
+                )
+                next_title = display if title is not None else row["title"]
                 db.execute(
                     """
                     UPDATE cognitive_modules
@@ -385,9 +467,9 @@ class CognitiveProjectBrain:
                     WHERE id = ?
                     """,
                     (
-                        display,
+                        next_title,
                         path[:500],
-                        self._json(metadata or self._decode(row["metadata_json"], {})),
+                        self._json(merged_metadata),
                         now,
                         row["id"],
                     ),
@@ -397,6 +479,537 @@ class CognitiveProjectBrain:
                     (row["id"],),
                 ).fetchone()
         return self._module_row(row)
+
+    @staticmethod
+    def _milestone_row(row: sqlite3.Row) -> dict[str, Any]:
+        return {
+            "id": row["id"],
+            "project_id": row["project_id"],
+            "module_id": row["module_id"],
+            "key": row["milestone_key"],
+            "title": row["title"],
+            "description": row["description"],
+            "status": row["status"],
+            "priority": row["priority"],
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+        }
+
+    def register_milestone(
+        self,
+        project_key: str,
+        milestone_key: str,
+        *,
+        title: str | None = None,
+        module_key: str | None = None,
+        description: str = "",
+        priority: int = 3,
+    ) -> dict[str, Any]:
+        project = self.project_by_key(project_key) or self.register_project(project_key)
+        module = (
+            self.module_by_key(project["key"], module_key)
+            if module_key
+            else None
+        )
+        if module_key and module is None:
+            module = self.register_module(project["key"], module_key, title=module_key)
+        key = self._key(milestone_key)
+        if not key:
+            raise CognitiveBrainError("Ключ milestone не может быть пустым.")
+        display = " ".join((title or milestone_key).strip().split())[:300]
+        normalized_priority = min(max(int(priority), 1), 5)
+        now = self._now()
+        with self._connect() as db:
+            row = db.execute(
+                """
+                SELECT * FROM cognitive_milestones
+                WHERE project_id = ? AND milestone_key = ?
+                """,
+                (project["id"], key),
+            ).fetchone()
+            if row is None:
+                milestone_id = uuid.uuid4().hex
+                db.execute(
+                    """
+                    INSERT INTO cognitive_milestones(
+                        id, project_id, module_id, milestone_key, title,
+                        description, status, priority, created_at, updated_at
+                    ) VALUES(?, ?, ?, ?, ?, ?, 'planned', ?, ?, ?)
+                    """,
+                    (
+                        milestone_id,
+                        project["id"],
+                        module["id"] if module else None,
+                        key,
+                        display,
+                        description[:2000] or None,
+                        normalized_priority,
+                        now,
+                        now,
+                    ),
+                )
+                row = db.execute(
+                    "SELECT * FROM cognitive_milestones WHERE id = ?",
+                    (milestone_id,),
+                ).fetchone()
+            else:
+                db.execute(
+                    """
+                    UPDATE cognitive_milestones
+                    SET title = ?, module_id = COALESCE(?, module_id),
+                        description = COALESCE(NULLIF(?, ''), description),
+                        priority = ?, updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        display,
+                        module["id"] if module else None,
+                        description[:2000],
+                        normalized_priority,
+                        now,
+                        row["id"],
+                    ),
+                )
+                row = db.execute(
+                    "SELECT * FROM cognitive_milestones WHERE id = ?",
+                    (row["id"],),
+                ).fetchone()
+        return self._milestone_row(row)
+
+    def milestones(
+        self,
+        *,
+        project_key: str | None = None,
+        module_key: str | None = None,
+        status: str | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        clauses: list[str] = []
+        params: list[Any] = []
+        project = self.project_by_key(project_key) if project_key else None
+        module = (
+            self.module_by_key(project["key"], module_key)
+            if project and module_key
+            else None
+        )
+        if project_key and not project:
+            return []
+        if module_key and project and not module:
+            return []
+        if project:
+            clauses.append("project_id = ?")
+            params.append(project["id"])
+        if module:
+            clauses.append("module_id = ?")
+            params.append(module["id"])
+        if status:
+            clauses.append("status = ?")
+            params.append(status)
+        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+        params.append(min(max(int(limit), 1), 300))
+        with self._connect() as db:
+            rows = db.execute(
+                f"""
+                SELECT * FROM cognitive_milestones
+                {where}
+                ORDER BY priority DESC, updated_at DESC
+                LIMIT ?
+                """,
+                params,
+            ).fetchall()
+        return [self._milestone_row(row) for row in rows]
+
+    def link_milestone_task(
+        self,
+        milestone_id: str,
+        task_id: str,
+        *,
+        required: bool = True,
+    ) -> dict[str, Any]:
+        with self._connect() as db:
+            milestone = db.execute(
+                "SELECT * FROM cognitive_milestones WHERE id = ?",
+                (milestone_id,),
+            ).fetchone()
+        if milestone is None:
+            raise CognitiveBrainError("Milestone не найден.")
+        task = next(
+            (
+                item
+                for item in self.memory_v4.tasks(limit=self.MAX_TASKS)
+                if item["id"] == task_id
+            ),
+            None,
+        )
+        if task is None:
+            raise CognitiveBrainError("Задача milestone не найдена.")
+        scope = self.task_scope(task_id) or self.bind_task(task_id)
+        if scope["project_id"] != milestone["project_id"]:
+            raise CognitiveBrainError(
+                "Milestone может включать только задачи своего проекта."
+            )
+        with self._connect() as db:
+            db.execute(
+                """
+                INSERT INTO cognitive_milestone_tasks(
+                    milestone_id, task_id, required, created_at
+                ) VALUES(?, ?, ?, ?)
+                ON CONFLICT(milestone_id, task_id)
+                DO UPDATE SET required=excluded.required
+                """,
+                (milestone_id, task_id, 1 if required else 0, self._now()),
+            )
+        return {
+            "milestone_id": milestone_id,
+            "task_id": task_id,
+            "required": bool(required),
+        }
+
+    def milestone_assessment(self, milestone_id: str) -> dict[str, Any]:
+        with self._connect() as db:
+            milestone = db.execute(
+                "SELECT * FROM cognitive_milestones WHERE id = ?",
+                (milestone_id,),
+            ).fetchone()
+            links = db.execute(
+                """
+                SELECT task_id, required
+                FROM cognitive_milestone_tasks
+                WHERE milestone_id = ?
+                """,
+                (milestone_id,),
+            ).fetchall()
+        if milestone is None:
+            raise CognitiveBrainError("Milestone не найден.")
+        tasks = {
+            item["id"]: item
+            for item in self.memory_v4.tasks(limit=self.MAX_TASKS)
+        }
+        required_ids = [row["task_id"] for row in links if row["required"]]
+        optional_ids = [row["task_id"] for row in links if not row["required"]]
+        required_done = sum(
+            1
+            for task_id in required_ids
+            if tasks.get(task_id, {}).get("status") == "done"
+        )
+        optional_done = sum(
+            1
+            for task_id in optional_ids
+            if tasks.get(task_id, {}).get("status") == "done"
+        )
+        if not required_ids:
+            status = "criteria_missing"
+        elif required_done == len(required_ids):
+            status = "ready_for_confirmation"
+        else:
+            status = "incomplete"
+        return {
+            "milestone": self._milestone_row(milestone),
+            "status": status,
+            "required_done": required_done,
+            "required_total": len(required_ids),
+            "optional_done": optional_done,
+            "optional_total": len(optional_ids),
+            "automatic_completion": False,
+        }
+
+    def complete_milestone(
+        self,
+        milestone_id: str,
+        *,
+        confirmation: str,
+    ) -> dict[str, Any]:
+        if confirmation != "COMPLETE_MILESTONE":
+            raise CognitiveBrainError("Требуется явное подтверждение COMPLETE_MILESTONE.")
+        assessment = self.milestone_assessment(milestone_id)
+        if assessment["status"] != "ready_for_confirmation":
+            raise CognitiveBrainError(
+                "Milestone нельзя завершить: обязательные задачи ещё не выполнены."
+            )
+        now = self._now()
+        with self._connect() as db:
+            db.execute(
+                """
+                UPDATE cognitive_milestones
+                SET status='done', updated_at=?
+                WHERE id=?
+                """,
+                (now, milestone_id),
+            )
+            row = db.execute(
+                "SELECT * FROM cognitive_milestones WHERE id = ?",
+                (milestone_id,),
+            ).fetchone()
+        return {
+            "status": "done",
+            "milestone": self._milestone_row(row),
+            "automatic_completion": False,
+        }
+
+    def add_external_blocker(
+        self,
+        project_key: str,
+        blocker_key: str,
+        title: str,
+        *,
+        task_id: str | None = None,
+        module_key: str | None = None,
+        source_project_key: str | None = None,
+        source_milestone_id: str | None = None,
+        evidence_ref: str = "explicit_local_api",
+    ) -> dict[str, Any]:
+        project = self.project_by_key(project_key) or self.register_project(project_key)
+        module = (
+            self.module_by_key(project["key"], module_key)
+            if module_key
+            else None
+        )
+        if module_key and module is None:
+            module = self.register_module(project["key"], module_key, title=module_key)
+        if task_id:
+            scope = self.task_scope(task_id) or self.bind_task(task_id)
+            if scope["project_id"] != project["id"]:
+                raise CognitiveBrainError(
+                    "External blocker должен принадлежать проекту связанной задачи."
+                )
+            if module and scope.get("module_id") != module["id"]:
+                raise CognitiveBrainError(
+                    "module_key external blocker не совпадает с module scope связанной задачи."
+                )
+        source_project = (
+            self.project_by_key(source_project_key)
+            if source_project_key
+            else None
+        )
+        if source_project_key and source_project is None:
+            raise CognitiveBrainError("Исходный проект external blocker не найден.")
+        source_milestone = None
+        if source_milestone_id:
+            with self._connect() as db:
+                source_milestone = db.execute(
+                    "SELECT * FROM cognitive_milestones WHERE id = ?",
+                    (source_milestone_id,),
+                ).fetchone()
+            if source_milestone is None:
+                raise CognitiveBrainError("Исходный milestone external blocker не найден.")
+            if source_project and source_milestone["project_id"] != source_project["id"]:
+                raise CognitiveBrainError(
+                    "Исходный milestone не принадлежит указанному source project."
+                )
+            if source_project is None:
+                with self._connect() as db:
+                    source_row = db.execute(
+                        "SELECT * FROM cognitive_projects WHERE id = ?",
+                        (source_milestone["project_id"],),
+                    ).fetchone()
+                source_project = self._project_row(source_row) if source_row else None
+        key = self._key(blocker_key)
+        label = " ".join((title or blocker_key).strip().split())[:500]
+        if not key or not label:
+            raise CognitiveBrainError("External blocker должен иметь key и title.")
+        blocker_id = uuid.uuid4().hex
+        now = self._now()
+        with self._connect() as db:
+            existing = db.execute(
+                """
+                SELECT * FROM cognitive_external_blockers
+                WHERE project_id = ?
+                  AND COALESCE(module_id, '') = COALESCE(?, '')
+                  AND COALESCE(task_id, '') = COALESCE(?, '')
+                  AND blocker_key = ?
+                """,
+                (
+                    project["id"],
+                    module["id"] if module else None,
+                    task_id,
+                    key,
+                ),
+            ).fetchone()
+            if existing is None:
+                db.execute(
+                    """
+                    INSERT INTO cognitive_external_blockers(
+                        id, project_id, module_id, task_id, blocker_key,
+                        title, status, source_project_id, source_milestone_id,
+                        evidence_ref, created_at
+                    ) VALUES(?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?)
+                    """,
+                    (
+                        blocker_id,
+                        project["id"],
+                        module["id"] if module else None,
+                        task_id or None,
+                        key,
+                        label,
+                        source_project["id"] if source_project else None,
+                        source_milestone_id or None,
+                        evidence_ref[:500] or None,
+                        now,
+                    ),
+                )
+            else:
+                blocker_id = existing["id"]
+                db.execute(
+                    """
+                    UPDATE cognitive_external_blockers
+                    SET title=?, module_id=COALESCE(?, module_id),
+                        source_project_id=COALESCE(?, source_project_id),
+                        source_milestone_id=COALESCE(?, source_milestone_id),
+                        evidence_ref=COALESCE(NULLIF(?, ''), evidence_ref)
+                    WHERE id=?
+                    """,
+                    (
+                        label,
+                        module["id"] if module else None,
+                        source_project["id"] if source_project else None,
+                        source_milestone_id or None,
+                        evidence_ref[:500],
+                        blocker_id,
+                    ),
+                )
+            row = db.execute(
+                "SELECT * FROM cognitive_external_blockers WHERE id = ?",
+                (blocker_id,),
+            ).fetchone()
+        return self._external_blocker_row(row)
+
+    def _external_blocker_row(
+        self,
+        row: sqlite3.Row,
+        *,
+        source_milestone_status: str | None = None,
+    ) -> dict[str, Any]:
+        derived_resolved = bool(
+            row["source_milestone_id"]
+            and source_milestone_status == "done"
+        )
+        effective_status = (
+            "resolved"
+            if row["status"] == "resolved" or derived_resolved
+            else row["status"]
+        )
+        return {
+            "id": row["id"],
+            "project_id": row["project_id"],
+            "module_id": row["module_id"],
+            "task_id": row["task_id"],
+            "key": row["blocker_key"],
+            "title": row["title"],
+            "status": row["status"],
+            "effective_status": effective_status,
+            "source_project_id": row["source_project_id"],
+            "source_milestone_id": row["source_milestone_id"],
+            "evidence_ref": row["evidence_ref"],
+            "created_at": row["created_at"],
+            "resolved_at": row["resolved_at"],
+            "resolution": row["resolution"],
+            "derived_resolution": derived_resolved,
+        }
+
+    def external_blockers(
+        self,
+        *,
+        project_id: str | None = None,
+        module_id: str | None = None,
+        task_id: str | None = None,
+        effective_open_only: bool = False,
+        limit: int = 200,
+    ) -> list[dict[str, Any]]:
+        clauses: list[str] = []
+        params: list[Any] = []
+        task_scope = self.task_scope(task_id) if task_id else None
+        if task_id and task_scope is None:
+            return []
+        if task_scope:
+            if project_id and project_id != task_scope["project_id"]:
+                return []
+            project_id = str(task_scope["project_id"])
+            scoped_module_id = task_scope.get("module_id")
+            if module_id and module_id != scoped_module_id:
+                return []
+            module_id = str(scoped_module_id) if scoped_module_id else None
+        if project_id:
+            clauses.append("b.project_id = ?")
+            params.append(project_id)
+        if task_id:
+            if module_id:
+                clauses.append("(b.module_id IS NULL OR b.module_id = ?)")
+                params.append(module_id)
+            else:
+                clauses.append("b.module_id IS NULL")
+            clauses.append("(b.task_id IS NULL OR b.task_id = ?)")
+            params.append(task_id)
+        elif module_id:
+            clauses.append("(b.module_id IS NULL OR b.module_id = ?)")
+            params.append(module_id)
+        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+        params.append(min(max(int(limit), 1), 500))
+        with self._connect() as db:
+            rows = db.execute(
+                f"""
+                SELECT b.*, m.status AS source_milestone_status
+                FROM cognitive_external_blockers b
+                LEFT JOIN cognitive_milestones m
+                  ON m.id = b.source_milestone_id
+                {where}
+                ORDER BY b.created_at DESC
+                LIMIT ?
+                """,
+                params,
+            ).fetchall()
+        result = [
+            self._external_blocker_row(
+                row,
+                source_milestone_status=row["source_milestone_status"],
+            )
+            for row in rows
+        ]
+        if effective_open_only:
+            result = [
+                item
+                for item in result
+                if item["effective_status"] == "open"
+            ]
+        return result
+
+    def resolve_external_blocker(
+        self,
+        blocker_id: str,
+        resolution: str,
+    ) -> dict[str, Any]:
+        text = " ".join((resolution or "").strip().split())[:2000]
+        if not text:
+            raise CognitiveBrainError("Нужно указать resolution external blocker.")
+        now = self._now()
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT * FROM cognitive_external_blockers WHERE id = ?",
+                (blocker_id,),
+            ).fetchone()
+            if row is None:
+                raise CognitiveBrainError("External blocker не найден.")
+            db.execute(
+                """
+                UPDATE cognitive_external_blockers
+                SET status='resolved', resolved_at=?, resolution=?
+                WHERE id=?
+                """,
+                (now, text, blocker_id),
+            )
+            row = db.execute(
+                """
+                SELECT b.*, m.status AS source_milestone_status
+                FROM cognitive_external_blockers b
+                LEFT JOIN cognitive_milestones m
+                  ON m.id = b.source_milestone_id
+                WHERE b.id=?
+                """,
+                (blocker_id,),
+            ).fetchone()
+        return self._external_blocker_row(
+            row,
+            source_milestone_status=row["source_milestone_status"],
+        )
 
     def modules(self, project_key: str | None = None) -> list[dict[str, Any]]:
         with self._connect() as db:
@@ -677,10 +1290,17 @@ class CognitiveProjectBrain:
 
     def sync_tasks(self) -> int:
         tasks = self.memory_v4.tasks(limit=self.MAX_TASKS)
+        with self._connect() as db:
+            known = {
+                str(row["task_id"])
+                for row in db.execute(
+                    "SELECT task_id FROM cognitive_task_scope"
+                ).fetchall()
+            }
         count = 0
         for task in tasks:
             task_id = str(task["id"])
-            if self.task_scope(task_id) is not None:
+            if task_id in known:
                 count += 1
                 continue
             context = self.normalize_task_context(task.get("context"))
@@ -692,8 +1312,14 @@ class CognitiveProjectBrain:
                 module_key=module_key,
                 completion_criteria=context.get("completion_criteria"),
                 attention_state="blocked" if task.get("status") == "blocked" else "active",
-                confidence=0.65 if task.get("source") in {"manual", "memory_intelligence_confirmed"} else 0.5,
+                confidence=(
+                    0.65
+                    if task.get("source")
+                    in {"manual", "memory_intelligence_confirmed", "personal_cabinet"}
+                    else 0.5
+                ),
             )
+            known.add(task_id)
             count += 1
         return count
 
@@ -1512,27 +2138,295 @@ class CognitiveProjectBrain:
             for row in rows
         ]
 
-    def _task_project_module(self, task_id: str) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
-        scope = self.task_scope(task_id)
-        if not scope:
-            return None, None
+    def _portfolio_snapshot(self) -> dict[str, Any]:
+        """Build one consistent read-only portfolio snapshot for a planning cycle."""
+        task_items = self.memory_v4.tasks(limit=self.MAX_TASKS)
+        tasks = {str(item["id"]): item for item in task_items}
         with self._connect() as db:
-            project_row = db.execute(
-                "SELECT * FROM cognitive_projects WHERE id = ?",
-                (scope["project_id"],),
-            ).fetchone()
-            module_row = (
-                db.execute(
-                    "SELECT * FROM cognitive_modules WHERE id = ?",
-                    (scope["module_id"],),
-                ).fetchone()
-                if scope.get("module_id")
-                else None
+            scopes = {
+                str(row["task_id"]): self._scope_row(row)
+                for row in db.execute(
+                    "SELECT * FROM cognitive_task_scope"
+                ).fetchall()
+            }
+            projects = {
+                str(row["id"]): self._project_row(row)
+                for row in db.execute(
+                    "SELECT * FROM cognitive_projects"
+                ).fetchall()
+            }
+            modules = {
+                str(row["id"]): self._module_row(row)
+                for row in db.execute(
+                    "SELECT * FROM cognitive_modules"
+                ).fetchall()
+            }
+            edge_rows = db.execute(
+                """
+                SELECT * FROM cognitive_task_edges
+                WHERE confirmed = 1
+                """
+            ).fetchall()
+            uncertainty_rows = db.execute(
+                """
+                SELECT * FROM cognitive_uncertainties
+                WHERE status='open'
+                """
+            ).fetchall()
+            checkpoint_total_rows = db.execute(
+                """
+                SELECT task_id, COUNT(*) AS total
+                FROM memory_task_checkpoints
+                WHERE applied = 1
+                GROUP BY task_id
+                """
+            ).fetchall()
+            checkpoint_tool_rows = db.execute(
+                """
+                SELECT task_id, tool, COUNT(*) AS total
+                FROM memory_task_checkpoints
+                WHERE applied = 1
+                GROUP BY task_id, tool
+                """
+            ).fetchall()
+            milestone_rows = db.execute(
+                "SELECT * FROM cognitive_milestones"
+            ).fetchall()
+            milestone_task_rows = db.execute(
+                "SELECT * FROM cognitive_milestone_tasks"
+            ).fetchall()
+            external_rows = db.execute(
+                """
+                SELECT b.*, m.status AS source_milestone_status
+                FROM cognitive_external_blockers b
+                LEFT JOIN cognitive_milestones m
+                  ON m.id = b.source_milestone_id
+                WHERE b.status='open'
+                """
+            ).fetchall()
+
+        blockers: dict[str, list[dict[str, Any]]] = {}
+        for row in edge_rows:
+            edge = {
+                "source_task_id": row["source_task_id"],
+                "target_task_id": row["target_task_id"],
+                "relation": row["relation"],
+                "confirmed": bool(row["confirmed"]),
+            }
+            pair = self._edge_dependency_pair(edge)
+            if not pair:
+                continue
+            dependent, prerequisite = pair
+            prerequisite_task = tasks.get(prerequisite)
+            if prerequisite_task and prerequisite_task.get("status") != "done":
+                blockers.setdefault(dependent, []).append(
+                    {
+                        "type": "task_dependency",
+                        "task_id": prerequisite,
+                        "title": prerequisite_task.get("title"),
+                        "status": prerequisite_task.get("status"),
+                        "relation": edge["relation"],
+                    }
+                )
+
+        uncertainties: dict[str, list[dict[str, Any]]] = {}
+        for row in uncertainty_rows:
+            task_id = str(row["task_id"] or "")
+            if not task_id:
+                continue
+            uncertainties.setdefault(task_id, []).append(
+                {
+                    "id": row["id"],
+                    "question": row["question"],
+                    "severity": row["severity"],
+                    "evidence_needed": row["evidence_needed"],
+                    "source_ref": row["source_ref"],
+                }
             )
-        return (
-            self._project_row(project_row) if project_row else None,
-            self._module_row(module_row) if module_row else None,
-        )
+
+        milestones = {
+            str(row["id"]): self._milestone_row(row)
+            for row in milestone_rows
+        }
+        task_milestones: dict[str, list[dict[str, Any]]] = {}
+        milestone_tasks: dict[str, list[dict[str, Any]]] = {}
+        for row in milestone_task_rows:
+            milestone_id = str(row["milestone_id"])
+            task_id = str(row["task_id"])
+            link = {
+                "milestone_id": milestone_id,
+                "task_id": task_id,
+                "required": bool(row["required"]),
+            }
+            milestone_tasks.setdefault(milestone_id, []).append(link)
+            milestone = milestones.get(milestone_id)
+            if milestone:
+                task_milestones.setdefault(task_id, []).append(
+                    {
+                        **milestone,
+                        "required": bool(row["required"]),
+                    }
+                )
+
+        external_by_task: dict[str, list[dict[str, Any]]] = {}
+        external_by_module: dict[str, list[dict[str, Any]]] = {}
+        external_by_project: dict[str, list[dict[str, Any]]] = {}
+        for row in external_rows:
+            item = self._external_blocker_row(
+                row,
+                source_milestone_status=row["source_milestone_status"],
+            )
+            if item["effective_status"] != "open":
+                continue
+            blocker = {
+                "type": "external_blocker",
+                "id": item["id"],
+                "key": item["key"],
+                "title": item["title"],
+                "source_project_id": item["source_project_id"],
+                "source_milestone_id": item["source_milestone_id"],
+                "evidence_ref": item["evidence_ref"],
+            }
+            if item.get("task_id"):
+                external_by_task.setdefault(str(item["task_id"]), []).append(blocker)
+            elif item.get("module_id"):
+                external_by_module.setdefault(str(item["module_id"]), []).append(blocker)
+            else:
+                external_by_project.setdefault(str(item["project_id"]), []).append(blocker)
+
+        return {
+            "tasks": tasks,
+            "scopes": scopes,
+            "projects": projects,
+            "modules": modules,
+            "blockers": blockers,
+            "uncertainties": uncertainties,
+            "checkpoint_totals": {
+                str(row["task_id"]): int(row["total"])
+                for row in checkpoint_total_rows
+            },
+            "checkpoint_tools": {
+                (str(row["task_id"]), str(row["tool"])): int(row["total"])
+                for row in checkpoint_tool_rows
+            },
+            "edges": [
+                {
+                    "source_task_id": row["source_task_id"],
+                    "target_task_id": row["target_task_id"],
+                    "relation": row["relation"],
+                }
+                for row in edge_rows
+            ],
+            "milestones": milestones,
+            "milestone_tasks": milestone_tasks,
+            "task_milestones": task_milestones,
+            "external_by_task": external_by_task,
+            "external_by_module": external_by_module,
+            "external_by_project": external_by_project,
+        }
+
+    def _blockers_from_snapshot(
+        self,
+        task_id: str,
+        snapshot: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        result = list(snapshot["blockers"].get(task_id, []))
+        scope = snapshot["scopes"].get(task_id)
+        if not scope:
+            return result
+        result.extend(snapshot["external_by_project"].get(str(scope["project_id"]), []))
+        if scope.get("module_id"):
+            result.extend(snapshot["external_by_module"].get(str(scope["module_id"]), []))
+        result.extend(snapshot["external_by_task"].get(task_id, []))
+        return result
+
+    def _completion_from_snapshot(
+        self,
+        task_id: str,
+        snapshot: dict[str, Any],
+    ) -> dict[str, Any]:
+        scope = snapshot["scopes"].get(task_id)
+        criteria = list(scope.get("completion_criteria", [])) if scope else []
+        task_blockers = self._blockers_from_snapshot(task_id, snapshot)
+        tasks = snapshot["tasks"]
+        checks: list[dict[str, Any]] = []
+        for criterion in criteria:
+            kind = criterion.get("type")
+            satisfied = False
+            detail = ""
+            if kind == "checkpoint_count":
+                required = int(criterion.get("min") or 1)
+                found = int(snapshot["checkpoint_totals"].get(task_id, 0))
+                satisfied = found >= required
+                detail = f"{found}/{required} applied checkpoints"
+            elif kind == "tool_completed":
+                tool = str(criterion.get("tool") or "")
+                required = int(criterion.get("min") or 1)
+                found = int(snapshot["checkpoint_tools"].get((task_id, tool), 0))
+                satisfied = bool(tool) and found >= required
+                detail = f"{found}/{required} confirmed {tool}"
+            elif kind == "dependency_done":
+                dependency = tasks.get(str(criterion.get("task_id") or ""))
+                satisfied = bool(dependency and dependency.get("status") == "done")
+                detail = str(dependency.get("status") if dependency else "missing")
+            elif kind == "manual_confirmation":
+                satisfied = bool(criterion.get("confirmed"))
+                detail = "confirmed" if satisfied else "requires explicit confirmation"
+            checks.append(
+                {
+                    "criterion": criterion,
+                    "satisfied": satisfied,
+                    "detail": detail,
+                }
+            )
+        satisfied_count = sum(1 for item in checks if item["satisfied"])
+        total = len(checks)
+        if task_blockers:
+            if any(item.get("type") == "external_blocker" for item in task_blockers):
+                status = "blocked_by_external"
+            else:
+                status = "blocked_by_dependencies"
+            score = 0.0
+        elif not total:
+            status = "criteria_missing"
+            score = 0.0
+        elif satisfied_count == total:
+            status = "ready_for_confirmation"
+            score = 1.0
+        else:
+            status = "incomplete"
+            score = satisfied_count / total
+        return {
+            "task_id": task_id,
+            "status": status,
+            "score": round(score, 4),
+            "satisfied": satisfied_count,
+            "total": total,
+            "checks": checks,
+            "blockers": task_blockers,
+            "automatic_completion": False,
+        }
+
+    @staticmethod
+    def _compact_scope(
+        item: dict[str, Any] | None,
+        cloud_allowed: Any,
+    ) -> dict[str, Any] | None:
+        if not isinstance(item, dict):
+            return None
+        title = item.get("title")
+        return {
+            "id": item.get("id"),
+            "key": item.get("key"),
+            "title": title if cloud_allowed(title) else None,
+            "priority": item.get("priority"),
+        }
+
+    def blockers(self, task_id: str) -> list[dict[str, Any]]:
+        return self._blockers_from_snapshot(task_id, self._portfolio_snapshot())
+
+    def completion_assessment(self, task_id: str) -> dict[str, Any]:
+        return self._completion_from_snapshot(task_id, self._portfolio_snapshot())
 
     def scheduler(
         self,
@@ -1540,70 +2434,90 @@ class CognitiveProjectBrain:
         *,
         context: Any = None,
         for_cloud: bool = False,
+        _snapshot: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        snapshot = _snapshot or self._portfolio_snapshot()
         raw_tasks = [
             item
-            for item in self.memory_v4.tasks(limit=self.MAX_TASKS)
+            for item in snapshot["tasks"].values()
             if item.get("status") in self.OPEN_TASK_STATUSES
         ]
         query_tokens = self._tokens(query)
-        context_project = self._key(self._context_key(context, "project"))
+        explicit_project = self._key(self._context_key(context, "project"))
         context_module = self.module_key_from_context(context)
         candidates: list[tuple[int, str, dict[str, Any]]] = []
         for task in raw_tasks:
-            if for_cloud and not self.memory_v4._cloud_text_allowed(
-                task.get("title"), task.get("next_action"), task.get("blocked_reason")
-            ):
-                continue
-            scope = self.task_scope(task["id"])
+            task_id = str(task["id"])
+            scope = snapshot["scopes"].get(task_id)
             if not scope:
                 continue
-            project, module = self._task_project_module(task["id"])
-            if for_cloud:
-                project_view = None
-                if project:
-                    project_view = {
-                        "id": project.get("id"),
-                        "key": project.get("key"),
-                        "title": (
-                            project.get("title")
-                            if self.memory_v4._cloud_text_allowed(project.get("title"))
-                            else None
-                        ),
-                    }
-                module_view = None
-                if module:
-                    module_view = {
-                        "id": module.get("id"),
-                        "key": module.get("key"),
-                        "title": (
-                            module.get("title")
-                            if self.memory_v4._cloud_text_allowed(module.get("title"))
-                            else None
-                        ),
-                    }
-            else:
-                project_view = project
-                module_view = module
-            blockers = self.blockers(task["id"])
-            open_uncertainty = self.uncertainties(task_id=task["id"], limit=20)
-            assessment = self.completion_assessment(task["id"])
-            overlap = len(query_tokens & self._tokens(task.get("title"), task.get("next_action")))
+            project = snapshot["projects"].get(str(scope.get("project_id")))
+            module = (
+                snapshot["modules"].get(str(scope.get("module_id")))
+                if scope.get("module_id")
+                else None
+            )
+            if explicit_project and (
+                not project or project.get("key") != explicit_project
+            ):
+                continue
+            if for_cloud and not self.memory_v4._cloud_text_allowed(
+                task.get("title"),
+                task.get("next_action"),
+                task.get("blocked_reason"),
+            ):
+                continue
+            project_view = (
+                self._compact_scope(project, self.memory_v4._cloud_text_allowed)
+                if for_cloud
+                else project
+            )
+            module_view = (
+                self._compact_scope(module, self.memory_v4._cloud_text_allowed)
+                if for_cloud
+                else module
+            )
+            task_blockers = self._blockers_from_snapshot(task_id, snapshot)
+            open_uncertainty = list(snapshot["uncertainties"].get(task_id, []))
+            high_uncertainty = [
+                item for item in open_uncertainty
+                if item.get("severity") == "high"
+            ]
+            assessment = self._completion_from_snapshot(task_id, snapshot)
+            active_milestones = [
+                item
+                for item in snapshot["task_milestones"].get(task_id, [])
+                if item.get("status") not in {"done", "cancelled"}
+            ]
+            overlap = len(
+                query_tokens
+                & self._tokens(task.get("title"), task.get("next_action"))
+            )
             score = int(task.get("priority") or 1) * 10
-            score += {"in_progress": 8, "planned": 5, "blocked": -20}.get(str(task.get("status")), 0)
+            score += {
+                "in_progress": 8,
+                "planned": 5,
+                "blocked": -20,
+            }.get(str(task.get("status")), 0)
             score += overlap * 12
-            if context_project and project and project["key"] == context_project:
+            if project:
+                score += int(project.get("priority") or 1) * 2
+            if explicit_project and project and project["key"] == explicit_project:
                 score += 12
             if context_module and module and module["key"] == context_module:
                 score += 18
-            score -= len(blockers) * 100
-            score -= sum(15 if item["severity"] == "high" else 5 for item in open_uncertainty)
+            score += sum(int(item.get("priority") or 1) for item in active_milestones)
+            score -= len(task_blockers) * 100
+            score -= sum(
+                15 if item["severity"] == "high" else 5
+                for item in open_uncertainty
+            )
             if scope.get("attention_state") == "later":
                 score -= 20
             if assessment["status"] == "ready_for_confirmation":
                 score += 4
             candidate = {
-                "id": task["id"],
+                "id": task_id,
                 "title": task.get("title"),
                 "status": task.get("status"),
                 "priority": task.get("priority"),
@@ -1611,8 +2525,19 @@ class CognitiveProjectBrain:
                 "blocked_reason": task.get("blocked_reason"),
                 "project": project_view,
                 "module": module_view,
-                "blockers": blockers,
+                "blockers": task_blockers,
                 "uncertainty_count": len(open_uncertainty),
+                "high_uncertainty_count": len(high_uncertainty),
+                "milestones": [
+                    {
+                        "id": item.get("id"),
+                        "key": item.get("key"),
+                        "title": item.get("title"),
+                        "priority": item.get("priority"),
+                        "required": item.get("required"),
+                    }
+                    for item in active_milestones[:3]
+                ],
                 "completion": {
                     "status": assessment["status"],
                     "score": assessment["score"],
@@ -1624,33 +2549,69 @@ class CognitiveProjectBrain:
                 "confidence": scope.get("confidence"),
                 "query_overlap": overlap,
             }
-            candidates.append((score, str(task.get("updated_at") or ""), candidate))
+            candidates.append(
+                (score, str(task.get("updated_at") or ""), candidate)
+            )
         candidates.sort(key=lambda item: (item[0], item[1]), reverse=True)
-        actionable = [item for item in candidates if not item[2]["blockers"] and item[2]["status"] != "blocked"]
+        actionable = [
+            item
+            for item in candidates
+            if not item[2]["blockers"] and item[2]["status"] != "blocked"
+        ]
         selected = actionable[0][2] if actionable else None
         if selected:
-            if selected["completion"]["status"] == "ready_for_confirmation":
-                recommendation = "Проверить критерии готовности и запросить явное подтверждение завершения задачи."
+            if int(selected.get("high_uncertainty_count") or 0) > 0:
+                recommendation = (
+                    "Сначала получить недостающее evidence для high-uncertainty, "
+                    "затем пересчитать план."
+                )
+            elif selected["completion"]["status"] == "ready_for_confirmation":
+                recommendation = (
+                    "Проверить критерии готовности и запросить явное "
+                    "подтверждение завершения задачи."
+                )
             elif selected.get("next_action"):
                 recommendation = str(selected["next_action"])
             else:
                 recommendation = "Определить ближайший проверяемый шаг задачи."
         else:
-            recommendation = "Нет разблокированной задачи; проверить blockers и uncertainties."
+            recommendation = (
+                "Нет разблокированной задачи; проверить task dependencies, "
+                "external blockers и uncertainties."
+            )
         return {
-            "engine": "cognitive-scheduler-v1",
+            "engine": "cognitive-scheduler-v1.2",
             "selected": selected,
             "recommendation": recommendation,
             "open_tasks": len(raw_tasks),
             "actionable_tasks": len(actionable),
-            "blocked_by_dependencies": sum(1 for _, _, item in candidates if item["blockers"]),
+            "blocked_by_dependencies": sum(
+                1
+                for _, _, item in candidates
+                if any(b.get("type") == "task_dependency" for b in item["blockers"])
+            ),
+            "blocked_by_external": sum(
+                1
+                for _, _, item in candidates
+                if any(b.get("type") == "external_blocker" for b in item["blockers"])
+            ),
             "candidates": [item[2] for item in candidates[:8]],
         }
 
-    def metacognition(self, task_id: str | None = None) -> dict[str, Any]:
+    def metacognition(
+        self,
+        task_id: str | None = None,
+        *,
+        _snapshot: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        snapshot = _snapshot or self._portfolio_snapshot()
         if not task_id:
-            scheduled = self.scheduler()
-            task_id = scheduled.get("selected", {}).get("id") if isinstance(scheduled.get("selected"), dict) else None
+            scheduled = self.scheduler(_snapshot=snapshot)
+            task_id = (
+                scheduled.get("selected", {}).get("id")
+                if isinstance(scheduled.get("selected"), dict)
+                else None
+            )
         if not task_id:
             return {
                 "state": "idle",
@@ -1659,17 +2620,14 @@ class CognitiveProjectBrain:
                 "blocked": [],
                 "replan_required": False,
             }
-        task = next(
-            (item for item in self.memory_v4.tasks(limit=self.MAX_TASKS) if item["id"] == task_id),
-            None,
-        )
+        task = snapshot["tasks"].get(str(task_id))
         if not task:
             return {"state": "missing_task", "task_id": task_id}
-        blockers = self.blockers(task_id)
-        uncertainties = self.uncertainties(task_id=task_id, limit=20)
-        assessment = self.completion_assessment(task_id)
-        replans = self.replan_proposals(task_id, limit=1)
-        if task.get("status") == "blocked" or blockers:
+        task_blockers = self._blockers_from_snapshot(str(task_id), snapshot)
+        uncertainties = list(snapshot["uncertainties"].get(str(task_id), []))
+        assessment = self._completion_from_snapshot(str(task_id), snapshot)
+        replans = self.replan_proposals(str(task_id), limit=1)
+        if task.get("status") == "blocked" or task_blockers:
             state = "blocked"
         elif any(item["severity"] == "high" for item in uncertainties):
             state = "uncertain"
@@ -1696,11 +2654,11 @@ class CognitiveProjectBrain:
                 }
                 for item in uncertainties[:5]
             ],
-            "blocked": blockers[:5],
+            "blocked": task_blockers[:5],
             "replan_required": state == "replan_required",
             "completion": assessment,
             "latest_replan": replans[0] if replans else None,
-            "causal_trace": self.causal_links(task_id=task_id, limit=5),
+            "causal_trace": self.causal_links(task_id=str(task_id), limit=5),
         }
 
     def self_evaluation(
@@ -1709,40 +2667,100 @@ class CognitiveProjectBrain:
         project_key: str | None = None,
         module_key: str | None = None,
         persist: bool = False,
+        _snapshot: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        project = self.project_by_key(project_key or self.PROJECT_KEY)
+        snapshot = _snapshot or self._portfolio_snapshot()
+        project = next(
+            (
+                item
+                for item in snapshot["projects"].values()
+                if item.get("key") == (project_key or self.PROJECT_KEY)
+            ),
+            None,
+        )
         if not project:
             raise CognitiveBrainError("Проект не найден.")
-        module = self.module_by_key(project["key"], module_key) if module_key else None
-        tasks = []
-        for task in self.memory_v4.tasks(limit=self.MAX_TASKS):
-            scope = self.task_scope(task["id"])
+        module = None
+        if module_key:
+            module = next(
+                (
+                    item
+                    for item in snapshot["modules"].values()
+                    if item.get("project_id") == project["id"]
+                    and item.get("key") == self._key(module_key)
+                ),
+                None,
+            )
+        tasks: list[dict[str, Any]] = []
+        for task_id, task in snapshot["tasks"].items():
+            scope = snapshot["scopes"].get(task_id)
             if not scope or scope["project_id"] != project["id"]:
                 continue
             if module and scope.get("module_id") != module["id"]:
                 continue
             tasks.append(task)
-        open_tasks = [item for item in tasks if item["status"] in self.OPEN_TASK_STATUSES]
+        open_tasks = [
+            item for item in tasks
+            if item["status"] in self.OPEN_TASK_STATUSES
+        ]
         done = [item for item in tasks if item["status"] == "done"]
-        dependency_blocked = sum(1 for item in open_tasks if self.blockers(item["id"]))
-        completion_ready = sum(
-            1
-            for item in open_tasks
-            if self.completion_assessment(item["id"])["status"] == "ready_for_confirmation"
-        )
-        uncertainties = self.uncertainties(
-            project_id=project["id"],
-            module_id=module["id"] if module else None,
-            limit=200,
-        )
+        dependency_blocked = 0
+        external_blocked = 0
+        completion_ready = 0
+        for item in open_tasks:
+            task_id = str(item["id"])
+            task_blockers = self._blockers_from_snapshot(task_id, snapshot)
+            if any(b.get("type") == "task_dependency" for b in task_blockers):
+                dependency_blocked += 1
+            if any(b.get("type") == "external_blocker" for b in task_blockers):
+                external_blocked += 1
+            if (
+                self._completion_from_snapshot(task_id, snapshot)["status"]
+                == "ready_for_confirmation"
+            ):
+                completion_ready += 1
+        uncertainty_items = []
+        for task_id, items in snapshot["uncertainties"].items():
+            scope = snapshot["scopes"].get(task_id)
+            if not scope or scope["project_id"] != project["id"]:
+                continue
+            if module and scope.get("module_id") != module["id"]:
+                continue
+            uncertainty_items.extend(items)
+        project_milestones = [
+            item
+            for item in snapshot["milestones"].values()
+            if item.get("project_id") == project["id"]
+            and (not module or item.get("module_id") in {None, module["id"]})
+        ]
+        milestone_ready = 0
+        for milestone in project_milestones:
+            links = snapshot["milestone_tasks"].get(milestone["id"], [])
+            required = [link for link in links if link["required"]]
+            if required and all(
+                snapshot["tasks"].get(link["task_id"], {}).get("status") == "done"
+                for link in required
+            ):
+                if milestone.get("status") != "done":
+                    milestone_ready += 1
         checks = {
             "tasks_total": len(tasks),
             "tasks_open": len(open_tasks),
             "tasks_done": len(done),
             "dependency_blocked": dependency_blocked,
+            "external_blocked": external_blocked,
             "completion_ready": completion_ready,
-            "open_uncertainties": len(uncertainties),
-            "high_uncertainties": sum(1 for item in uncertainties if item["severity"] == "high"),
+            "open_uncertainties": len(uncertainty_items),
+            "high_uncertainties": sum(
+                1 for item in uncertainty_items
+                if item["severity"] == "high"
+            ),
+            "milestones_total": len(project_milestones),
+            "milestones_ready": milestone_ready,
+            "milestones_done": sum(
+                1 for item in project_milestones
+                if item.get("status") == "done"
+            ),
         }
         denominator = max(len(tasks), 1)
         score = max(
@@ -1751,18 +2769,24 @@ class CognitiveProjectBrain:
                 1.0,
                 (len(done) / denominator)
                 + (completion_ready * 0.08)
+                + (milestone_ready * 0.04)
                 - (dependency_blocked * 0.06)
+                - (external_blocked * 0.08)
                 - (checks["high_uncertainties"] * 0.08),
             ),
         )
-        if checks["high_uncertainties"] or dependency_blocked:
+        if (
+            checks["high_uncertainties"]
+            or dependency_blocked
+            or external_blocked
+        ):
             status = "attention"
         elif open_tasks:
             status = "in_progress"
         else:
             status = "stable"
         result = {
-            "engine": "cognitive-self-eval-v1",
+            "engine": "cognitive-self-eval-v1.2",
             "project": project,
             "module": module,
             "status": status,
@@ -1775,7 +2799,8 @@ class CognitiveProjectBrain:
                 db.execute(
                     """
                     INSERT INTO cognitive_evaluations(
-                        id, project_id, module_id, task_id, status, score, checks_json, created_at
+                        id, project_id, module_id, task_id, status,
+                        score, checks_json, created_at
                     ) VALUES(?, ?, ?, NULL, ?, ?, ?, ?)
                     """,
                     (
@@ -1790,6 +2815,103 @@ class CognitiveProjectBrain:
                 )
         return result
 
+    def graph_integrity(
+        self,
+        *,
+        _snapshot: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        snapshot = _snapshot or self._portfolio_snapshot()
+        issues: list[dict[str, Any]] = []
+        adjacency: dict[str, set[str]] = {}
+        rows = snapshot.get("edges", [])
+        for row in rows:
+            pair = self._edge_dependency_pair(dict(row))
+            if not pair:
+                issues.append({"type": "invalid_relation"})
+                continue
+            dependent, prerequisite = pair
+            if dependent not in snapshot["tasks"] or prerequisite not in snapshot["tasks"]:
+                issues.append(
+                    {
+                        "type": "missing_task",
+                        "dependent": dependent,
+                        "prerequisite": prerequisite,
+                    }
+                )
+                continue
+            source_scope = snapshot["scopes"].get(dependent)
+            target_scope = snapshot["scopes"].get(prerequisite)
+            if (
+                source_scope
+                and target_scope
+                and source_scope.get("project_id") != target_scope.get("project_id")
+            ):
+                issues.append(
+                    {
+                        "type": "cross_project_task_edge",
+                        "dependent": dependent,
+                        "prerequisite": prerequisite,
+                    }
+                )
+            adjacency.setdefault(dependent, set()).add(prerequisite)
+        visiting: set[str] = set()
+        visited: set[str] = set()
+        cycle_nodes: set[str] = set()
+
+        def visit(node: str) -> None:
+            if node in visited:
+                return
+            if node in visiting:
+                cycle_nodes.add(node)
+                return
+            visiting.add(node)
+            for target in adjacency.get(node, set()):
+                if target in visiting:
+                    cycle_nodes.update({node, target})
+                else:
+                    visit(target)
+            visiting.discard(node)
+            visited.add(node)
+
+        for node in list(adjacency):
+            visit(node)
+        if cycle_nodes:
+            issues.append(
+                {
+                    "type": "cycle",
+                    "task_ids": sorted(cycle_nodes)[:40],
+                }
+            )
+        for milestone_id, links in snapshot["milestone_tasks"].items():
+            milestone = snapshot["milestones"].get(milestone_id)
+            if not milestone:
+                issues.append(
+                    {"type": "missing_milestone", "milestone_id": milestone_id}
+                )
+                continue
+            for link in links:
+                scope = snapshot["scopes"].get(link["task_id"])
+                if not scope:
+                    issues.append(
+                        {
+                            "type": "missing_milestone_task",
+                            "milestone_id": milestone_id,
+                            "task_id": link["task_id"],
+                        }
+                    )
+                elif scope.get("project_id") != milestone.get("project_id"):
+                    issues.append(
+                        {
+                            "type": "cross_project_milestone_task",
+                            "milestone_id": milestone_id,
+                            "task_id": link["task_id"],
+                        }
+                    )
+        return {
+            "status": "healthy" if not issues else "issues",
+            "issues": issues[:40],
+        }
+
     def context(
         self,
         query: str,
@@ -1797,26 +2919,46 @@ class CognitiveProjectBrain:
         ui_context: Any = None,
         for_cloud: bool = True,
     ) -> dict[str, Any]:
-        scheduler = self.scheduler(query, context=ui_context, for_cloud=for_cloud)
-        selected = scheduler.get("selected") if isinstance(scheduler.get("selected"), dict) else None
+        snapshot = self._portfolio_snapshot()
+        scheduler = self.scheduler(
+            query,
+            context=ui_context,
+            for_cloud=for_cloud,
+            _snapshot=snapshot,
+        )
+        selected = (
+            scheduler.get("selected")
+            if isinstance(scheduler.get("selected"), dict)
+            else None
+        )
         task_id = str(selected.get("id") or "") if selected else ""
-        meta = self.metacognition(task_id or None)
-        project = selected.get("project") if selected else self.project_by_key(self.PROJECT_KEY)
+        meta = self.metacognition(task_id or None, _snapshot=snapshot)
+        project = (
+            selected.get("project")
+            if selected
+            else next(
+                (
+                    item
+                    for item in snapshot["projects"].values()
+                    if item.get("key") == self.PROJECT_KEY
+                ),
+                None,
+            )
+        )
         module = selected.get("module") if selected else None
         if for_cloud and not selected and isinstance(project, dict):
-            project = {
-                "id": project.get("id"),
-                "key": project.get("key"),
-                "title": (
-                    project.get("title")
-                    if self.memory_v4._cloud_text_allowed(project.get("title"))
-                    else None
-                ),
-            }
+            project = self._compact_scope(
+                project,
+                self.memory_v4._cloud_text_allowed,
+            )
         project_id = project.get("id") if isinstance(project, dict) else None
         module_id = module.get("id") if isinstance(module, dict) else None
         strategies = (
-            self.strategies(project_id=project_id, module_id=module_id, limit=5)
+            self.strategies(
+                project_id=project_id,
+                module_id=module_id,
+                limit=5,
+            )
             if project_id
             else []
         )
@@ -1824,27 +2966,51 @@ class CognitiveProjectBrain:
             strategies = [
                 item
                 for item in strategies
-                if self.memory_v4._cloud_text_allowed(item.get("pattern"), item.get("strategy"))
+                if self.memory_v4._cloud_text_allowed(
+                    item.get("pattern"), item.get("strategy")
+                )
             ]
             if isinstance(meta.get("uncertain"), list):
                 meta["uncertain"] = [
                     item
                     for item in meta["uncertain"]
                     if self.memory_v4._cloud_text_allowed(
-                        item.get("question"), item.get("evidence_needed")
+                        item.get("question"),
+                        item.get("evidence_needed"),
                     )
                 ][:5]
+        project_milestones = []
+        if project_id:
+            project_milestones = [
+                {
+                    "id": item.get("id"),
+                    "key": item.get("key"),
+                    "title": (
+                        item.get("title")
+                        if not for_cloud
+                        or self.memory_v4._cloud_text_allowed(item.get("title"))
+                        else None
+                    ),
+                    "status": item.get("status"),
+                    "priority": item.get("priority"),
+                }
+                for item in snapshot["milestones"].values()
+                if item.get("project_id") == project_id
+                and item.get("status") not in {"done", "cancelled"}
+            ][:5]
         return {
-            "engine": "cognitive-project-brain-v1",
+            "engine": "cognitive-project-brain-v1.2",
             "version": self.VERSION,
             "scheduler": scheduler,
             "metacognition": meta,
             "strategies": strategies[:5],
             "portfolio": {
-                "projects": len(self.projects()),
-                "modules": len(self.modules()),
+                "projects": len(snapshot["projects"]),
+                "modules": len(snapshot["modules"]),
                 "project": project,
                 "module": module,
+                "active_milestones": project_milestones,
+                "graph_integrity": self.graph_integrity(_snapshot=snapshot)["status"],
             },
             "mutation_policy": "read_only_for_llm",
         }
@@ -1865,6 +3031,10 @@ class CognitiveProjectBrain:
                 ).fetchone()[0],
                 "evaluations": db.execute("SELECT COUNT(*) FROM cognitive_evaluations").fetchone()[0],
                 "causal_links": db.execute("SELECT COUNT(*) FROM cognitive_causal_links").fetchone()[0],
+                "milestones": db.execute("SELECT COUNT(*) FROM cognitive_milestones").fetchone()[0],
+                "external_blockers": db.execute(
+                    "SELECT COUNT(*) FROM cognitive_external_blockers WHERE status='open'"
+                ).fetchone()[0],
             }
         return {
             "version": self.VERSION,
@@ -1882,7 +3052,12 @@ class CognitiveProjectBrain:
                 "self_evaluation": True,
                 "metacognition": True,
                 "long_horizon_restore": True,
+                "portfolio_milestones": True,
+                "external_blockers": True,
+                "batched_scheduler_snapshot": True,
+                "graph_integrity": True,
             },
             "counts": counts,
+            "graph_integrity": "available_on_cognition_context",
             "mutation_policy": "action_broker_or_explicit_local_only",
         }

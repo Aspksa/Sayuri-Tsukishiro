@@ -121,5 +121,93 @@ class CognitiveRuntimeIntegrationTests(unittest.TestCase):
         self.assertNotIn('"cognition.add_dependency"', tool_source)
 
 
+    def test_high_uncertainty_prevents_task_lifecycle_link_for_mutation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            core = SayuriCore(Settings(root=Path(tmp)))
+            core.initialize(record_event=False)
+            created = core.create_sayuri_memory_v4_task(
+                title="Создать папку Договоры",
+                priority=5,
+                next_action="Создать папку Договоры.",
+                context={"module_key": "sayuri-disk"},
+            )
+            task = created["task"]
+            scope = created["cognitive_scope"]
+            core.agent.cognition.record_uncertainty(
+                "Нужно подтвердить место создания папки?",
+                task_id=task["id"],
+                project_id=scope["project_id"],
+                module_id=scope["module_id"],
+                severity="high",
+                evidence_needed="Проверить текущую папку.",
+            )
+
+            planned = core.plan_sayuri_action(
+                text="создай папку Договоры",
+                context={"view": "disk", "disk": {"folder_id": None}},
+            )
+            internal = core.agent.actions.context(planned["action"]["id"])
+
+            self.assertEqual(planned["status"], "proposal")
+            self.assertNotIn("_task_lifecycle", internal)
+
+    def test_portfolio_local_api_links_projects_without_cross_project_task_edge(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            core = SayuriCore(Settings(root=Path(tmp)))
+            core.initialize(record_event=False)
+            source = core.create_sayuri_memory_v4_task(
+                title="Подготовить клипы",
+                context={
+                    "project_key": "madclips",
+                    "module_key": "posting",
+                },
+            )["task"]
+            target = core.create_sayuri_memory_v4_task(
+                title="Опубликовать VK",
+                context={
+                    "project_key": "sayuri-tsukishiro",
+                    "module_key": "agent-core",
+                },
+            )["task"]
+            milestone = core.register_sayuri_cognitive_milestone(
+                "madclips",
+                "clips-ready",
+                title="Клипы готовы",
+            )["milestone"]
+            core.link_sayuri_cognitive_milestone_task(
+                milestone["id"],
+                source["id"],
+                required=True,
+            )
+            blocker = core.add_sayuri_cognitive_external_blocker(
+                "sayuri-tsukishiro",
+                "wait-clips",
+                "Ожидать готовности клипов",
+                task_id=target["id"],
+                source_project_key="madclips",
+                source_milestone_id=milestone["id"],
+            )["external_blocker"]
+
+            self.assertEqual(blocker["effective_status"], "open")
+            with self.assertRaises(BadRequestError):
+                core.add_sayuri_cognitive_dependency(
+                    target["id"],
+                    source["id"],
+                    relation="requires",
+                )
+
+    def test_portfolio_routes_are_not_llm_tools(self):
+        root = Path(__file__).resolve().parents[2]
+        server_source = (root / "app" / "server.py").read_text(encoding="utf-8")
+        tool_source = (root / "agent" / "tool_planner.py").read_text(encoding="utf-8")
+
+        self.assertIn("/api/sayuri/cognition/milestones", server_source)
+        self.assertIn("/api/sayuri/cognition/external-blockers", server_source)
+        self.assertIn("COMPLETE_MILESTONE", server_source)
+        self.assertNotIn('"cognition.complete_milestone"', tool_source)
+        self.assertNotIn('"cognition.add_external_blocker"', tool_source)
+
+
+
 if __name__ == "__main__":
     unittest.main()

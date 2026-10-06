@@ -11,6 +11,24 @@
 На Windows откройте `Sayuri Tsukishiro.bat`.
 
 
+## Portfolio Milestones & Scalable Scheduler 1.2
+
+`0.2.2` добавляет слой координации между отдельными проектами без превращения всего портфолио в один глобальный task graph.
+
+- внутри проекта задачи по-прежнему связаны `requires / follows / blocks / unlocks`;
+- между проектами используется `milestone → external blocker`, а не прямой task edge;
+- milestone объединяет required/optional tasks и требует явного `COMPLETE_MILESTONE`;
+- source milestone может автоматически снять **effective** external blocker, но не переписывает его историю;
+- scheduler учитывает project priority, module affinity, milestones, external blockers, uncertainty и completion criteria;
+- planning cycle строит один batched portfolio snapshot вместо большого числа повторных SQLite-чтений;
+- обычный health-status остаётся дешёвым, глубокая целостность графа проверяется отдельно;
+- mutation API milestones/blockers является explicit local API и не входит в инструменты LLM.
+
+Иерархия мозга теперь:
+
+`Portfolio → Project → Milestone/Module → Goal/Task → Dependencies + External Blockers → Scheduler → Evidence/Checkpoint → Evaluation`.
+
+
 ## Cognitive Project Brain 1.0
 
 `0.2.0` переводит Sayuri от «умной памяти с Planner» к проектному когнитивному ядру, рассчитанному на большое число модулей и отдельных проектов.
