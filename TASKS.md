@@ -396,3 +396,31 @@
   - Agent Core `0.12.0`;
   - Web UI `0.31.0`.
 - Приёмка: unit tests, JS syntax, preflight, version each-commit, Windows launcher checks, PR merge и зелёный финальный workflow на `main`.
+
+
+## AI-010 — Task Lifecycle & Checkpoints
+
+- Статус: `implemented in target 0.1.56`; релиз считается проверенным после зелёного branch/PR/main CI.
+- База: `main 0.1.55`, commit `dc1ca53926d32498da084ce34757eec8c8ee21f5`, Versions #37407648237 success.
+- Добавить persistent `memory_task_checkpoints` в существующую SQLite Memory 4.x.
+- Link action → task:
+  - только внутренний Action Broker context;
+  - только deterministic query overlap;
+  - blocked task автоматически не привязывать к mutation lifecycle.
+- Confirmed checkpoint:
+  - источник — только Action Broker `completed`;
+  - хранить sequence number, before/after task state и SHA-256 результата;
+  - не копировать полный action result в cloud-facing checkpoint projection;
+  - повтор того же action_id идемпотентен.
+- Evidence-based advancement:
+  - planned/in_progress task может получить deterministic follow-up;
+  - task переводится максимум в `in_progress`;
+  - `done` никогда не выставляется автоматически;
+  - stale task state запрещает перезапись нового `next_action`;
+  - blocked/done/cancelled status сохраняется.
+- Restart restoration:
+  - Goal Continuity возвращает latest checkpoint выбранной задачи;
+  - следующий процесс Sayuri восстанавливает continuation из той же SQLite без фоновой mutation.
+- Reasoning Planner 0.5 трактует checkpoint как доказательство конкретного шага, не как завершение всей задачи.
+- Версии: проект `0.1.56`, App `0.1.48`, Agent `0.13.0`.
+- Приёмка: Python tests, JS syntax, preflight, version each-commit, Windows launcher, PR merge и финальный зелёный `main` workflow.

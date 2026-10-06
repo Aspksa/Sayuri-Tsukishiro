@@ -325,6 +325,21 @@ class SayuriActionBroker:
             ).fetchall()
         return [self._public(row) for row in rows]
 
+    def context(self, action_id: str) -> dict[str, Any]:
+        """Return stored action context for trusted local orchestration only."""
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT context_json FROM sayuri_actions WHERE id = ?",
+                (action_id,),
+            ).fetchone()
+        if row is None:
+            raise ActionError("Действие не найдено.")
+        try:
+            value = json.loads(row["context_json"])
+        except json.JSONDecodeError as exc:
+            raise ActionError("Контекст действия повреждён.") from exc
+        return value if isinstance(value, dict) else {}
+
     def begin(self, action_id: str) -> dict[str, Any]:
         now = _utcnow()
         with self._connect() as db:

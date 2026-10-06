@@ -25,6 +25,7 @@ class MemorySystemV4:
 
     ENGINE_ID = "memory-v4"
     QUALITY_GATE_ID = "memory-v4.1-quality"
+    TASK_LIFECYCLE_ID = "memory-v4.2-task-lifecycle"
     MAX_SCAN = 5000
     CLOUD_RECALL_CHAR_BUDGET = 9000
     CLOUD_AUX_CHAR_BUDGET = 7000
@@ -250,6 +251,32 @@ class MemorySystemV4:
             )
             db.execute(
                 "CREATE INDEX IF NOT EXISTS idx_memory_tasks_status ON memory_tasks(status, priority DESC, updated_at DESC)"
+            )
+            db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS memory_task_checkpoints (
+                    id TEXT PRIMARY KEY,
+                    task_id TEXT NOT NULL,
+                    goal_id TEXT,
+                    action_id TEXT NOT NULL UNIQUE,
+                    sequence_no INTEGER NOT NULL,
+                    tool TEXT NOT NULL,
+                    action_title TEXT,
+                    task_status_before TEXT NOT NULL,
+                    task_status_after TEXT NOT NULL,
+                    next_action_before TEXT,
+                    next_action_after TEXT,
+                    evidence_sha256 TEXT NOT NULL,
+                    evidence_json TEXT NOT NULL,
+                    applied INTEGER NOT NULL,
+                    apply_reason TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    UNIQUE(task_id, sequence_no)
+                )
+                """
+            )
+            db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_memory_task_checkpoints_task ON memory_task_checkpoints(task_id, sequence_no DESC)"
             )
             db.execute(
                 """
@@ -1293,6 +1320,236 @@ class MemorySystemV4:
             {"status": task["status"], "next_action": task["next_action"]},
         )
         return task
+
+
+    @staticmethod
+    def _task_checkpoint_row(row: sqlite3.Row) -> dict[str, Any]:
+        try:
+            evidence = json.loads(row["evidence_json"])
+        except json.JSONDecodeError:
+            evidence = {}
+        return {
+            "id": row["id"],
+            "task_id": row["task_id"],
+            "goal_id": row["goal_id"],
+            "action_id": row["action_id"],
+            "sequence_no": row["sequence_no"],
+            "tool": row["tool"],
+            "action_title": row["action_title"],
+            "task_status_before": row["task_status_before"],
+            "task_status_after": row["task_status_after"],
+            "next_action_before": row["next_action_before"],
+            "next_action_after": row["next_action_after"],
+            "evidence_sha256": row["evidence_sha256"],
+            "evidence": evidence,
+            "applied": bool(row["applied"]),
+            "apply_reason": row["apply_reason"],
+            "created_at": row["created_at"],
+        }
+
+    def task_checkpoints(
+        self,
+        *,
+        task_id: str | None = None,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        safe_limit = min(max(int(limit), 1), 200)
+        with self._connect() as db:
+            if task_id:
+                rows = db.execute(
+                    """
+                    SELECT * FROM memory_task_checkpoints
+                    WHERE task_id = ?
+                    ORDER BY sequence_no DESC
+                    LIMIT ?
+                    """,
+                    (task_id, safe_limit),
+                ).fetchall()
+            else:
+                rows = db.execute(
+                    """
+                    SELECT * FROM memory_task_checkpoints
+                    ORDER BY created_at DESC
+                    LIMIT ?
+                    """,
+                    (safe_limit,),
+                ).fetchall()
+        return [self._task_checkpoint_row(row) for row in rows]
+
+    def latest_task_checkpoint(self, task_id: str) -> dict[str, Any] | None:
+        items = self.task_checkpoints(task_id=task_id, limit=1)
+        return items[0] if items else None
+
+    @staticmethod
+    def _checkpoint_follow_up(tool: str, action_title: str) -> str:
+        follow_ups = {
+            "disk.create_folder": "Проверить созданную папку и продолжить следующий шаг задачи.",
+            "disk.set_favorite": "Проверить состояние избранного и продолжить следующий шаг задачи.",
+            "disk.trash_current": "Проверить результат перемещения в корзину и продолжить следующий шаг задачи.",
+            "disk.move_current": "Проверить новое расположение объекта и продолжить следующий шаг задачи.",
+            "memory.remember": "Проверить сохранённую запись памяти и продолжить следующий шаг задачи.",
+        }
+        if tool in follow_ups:
+            return follow_ups[tool]
+        compact = " ".join((action_title or tool or "действие").split())[:500]
+        return f"Проверить подтверждённый результат «{compact}» и определить следующий шаг."
+
+    def checkpoint_confirmed_action(
+        self,
+        action: dict[str, Any],
+        *,
+        context: Any,
+    ) -> dict[str, Any] | None:
+        """Checkpoint only a confirmed Action Broker result linked to a still-current task."""
+        if str(action.get("status") or "") != "completed":
+            return None
+        safe_context = context if isinstance(context, dict) else {}
+        lifecycle = safe_context.get("_task_lifecycle")
+        if not isinstance(lifecycle, dict):
+            return None
+        task_id = str(lifecycle.get("task_id") or "").strip()
+        action_id = str(action.get("id") or "").strip()
+        tool = str(action.get("tool") or "unknown").strip()[:160]
+        if not task_id or not action_id:
+            return None
+
+        result = action.get("result") if isinstance(action.get("result"), dict) else {}
+        evidence_source = {
+            "action_id": action_id,
+            "tool": tool,
+            "status": "completed",
+            "result": result,
+        }
+        evidence_sha256 = hashlib.sha256(
+            self._json(evidence_source).encode("utf-8")
+        ).hexdigest()
+        evidence_summary = {
+            "source": "confirmed_action_broker",
+            "action_status": "completed",
+            "result_status": str(result.get("status") or "")[:120],
+            "result_keys": sorted(str(key)[:80] for key in result.keys())[:20],
+        }
+        expected_updated_at = str(lifecycle.get("task_updated_at") or "")
+        expected_next_action = lifecycle.get("next_action_before")
+        now = self._now()
+
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            existing = db.execute(
+                "SELECT * FROM memory_task_checkpoints WHERE action_id = ?",
+                (action_id,),
+            ).fetchone()
+            if existing is not None:
+                return self._task_checkpoint_row(existing)
+
+            task_row = db.execute(
+                "SELECT * FROM memory_tasks WHERE id = ?",
+                (task_id,),
+            ).fetchone()
+            if task_row is None:
+                return None
+
+            status_before = str(task_row["status"])
+            next_before = task_row["next_action"]
+            status_after = status_before
+            next_after = next_before
+            applied = False
+            apply_reason = "checkpoint_only"
+
+            state_matches = (
+                (not expected_updated_at or expected_updated_at == str(task_row["updated_at"]))
+                and (
+                    expected_next_action is None
+                    or str(expected_next_action or "") == str(next_before or "")
+                )
+            )
+            if status_before == "blocked":
+                apply_reason = "task_blocked"
+            elif status_before in {"done", "cancelled"}:
+                apply_reason = "task_closed"
+            elif not state_matches:
+                apply_reason = "stale_task_state"
+            else:
+                status_after = "in_progress"
+                next_after = self._checkpoint_follow_up(
+                    tool,
+                    str(action.get("title") or ""),
+                )[:2000]
+                db.execute(
+                    """
+                    UPDATE memory_tasks
+                    SET status = ?, next_action = ?, updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (status_after, next_after, now, task_id),
+                )
+                applied = True
+                apply_reason = "confirmed_action_evidence"
+
+            sequence_no = int(
+                db.execute(
+                    """
+                    SELECT COALESCE(MAX(sequence_no), 0) + 1
+                    FROM memory_task_checkpoints
+                    WHERE task_id = ?
+                    """,
+                    (task_id,),
+                ).fetchone()[0]
+            )
+            checkpoint_id = uuid.uuid4().hex
+            db.execute(
+                """
+                INSERT INTO memory_task_checkpoints(
+                    id, task_id, goal_id, action_id, sequence_no, tool, action_title,
+                    task_status_before, task_status_after, next_action_before,
+                    next_action_after, evidence_sha256, evidence_json, applied,
+                    apply_reason, created_at
+                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    checkpoint_id,
+                    task_id,
+                    task_row["goal_id"],
+                    action_id,
+                    sequence_no,
+                    tool,
+                    str(action.get("title") or "")[:500] or None,
+                    status_before,
+                    status_after,
+                    next_before,
+                    next_after,
+                    evidence_sha256,
+                    self._json(evidence_summary),
+                    1 if applied else 0,
+                    apply_reason,
+                    now,
+                ),
+            )
+            checkpoint_row = db.execute(
+                "SELECT * FROM memory_task_checkpoints WHERE id = ?",
+                (checkpoint_id,),
+            ).fetchone()
+            updated_task_row = db.execute(
+                "SELECT * FROM memory_tasks WHERE id = ?",
+                (task_id,),
+            ).fetchone()
+
+        checkpoint = self._task_checkpoint_row(checkpoint_row)
+        if applied and updated_task_row is not None:
+            self._link_task_graph(self._task_row(updated_task_row))
+        self._audit(
+            "task_checkpoint_recorded",
+            "task",
+            task_id,
+            {
+                "checkpoint_id": checkpoint["id"],
+                "action_id": action_id,
+                "tool": tool,
+                "applied": checkpoint["applied"],
+                "reason": checkpoint["apply_reason"],
+            },
+        )
+        return checkpoint
 
     def _decision_rationale(self, content: str) -> tuple[str | None, list[str]]:
         text = " ".join((content or "").split())
@@ -2409,6 +2666,9 @@ class MemorySystemV4:
             causal = db.execute(
                 "SELECT COUNT(*) FROM memory_causal_links"
             ).fetchone()[0]
+            checkpoints = db.execute(
+                "SELECT COUNT(*) FROM memory_task_checkpoints"
+            ).fetchone()[0]
             audits = db.execute(
                 "SELECT COUNT(*) FROM memory_audit_log"
             ).fetchone()[0]
@@ -2416,6 +2676,7 @@ class MemorySystemV4:
             "version": "4.1",
             "engine": self.ENGINE_ID,
             "quality_gate": self.QUALITY_GATE_ID,
+            "task_lifecycle": self.TASK_LIFECYCLE_ID,
             "hot": tiers.get("hot", 0),
             "warm": tiers.get("warm", 0),
             "cold": tiers.get("cold", 0),
@@ -2431,6 +2692,7 @@ class MemorySystemV4:
             "recalls": recalls,
             "snapshots": snapshots,
             "causal_links": causal,
+            "task_checkpoints": checkpoints,
             "audit_events": audits,
         }
 
@@ -2766,7 +3028,7 @@ class MemorySystemV4:
             return len(query_tokens & tokens)
 
         status_weight = {"in_progress": 8, "planned": 5, "blocked": 2}
-        ranked_tasks: list[tuple[int, str, dict[str, Any]]] = []
+        ranked_tasks: list[tuple[int, str, int, dict[str, Any]]] = []
         for item in tasks:
             linked_goal = goal_by_id.get(item.get("goal_id"))
             overlap = token_overlap(
@@ -2781,7 +3043,7 @@ class MemorySystemV4:
                 + overlap * 12
                 + (2 if item.get("next_action") else 0)
             )
-            ranked_tasks.append((score, str(item.get("updated_at") or ""), item))
+            ranked_tasks.append((score, str(item.get("updated_at") or ""), overlap, item))
         ranked_tasks.sort(key=lambda value: (value[0], value[1]), reverse=True)
 
         ranked_goals: list[tuple[int, str, dict[str, Any]]] = []
@@ -2800,8 +3062,10 @@ class MemorySystemV4:
                 "priority": item["priority"],
                 "next_action": item.get("next_action"),
                 "blocked_reason": item.get("blocked_reason"),
+                "updated_at": item.get("updated_at"),
+                "query_overlap": overlap,
             }
-            for _, _, item in ranked_tasks[:bounded_limit]
+            for _, _, overlap, item in ranked_tasks[:bounded_limit]
         ]
         compact_goals = [
             {
@@ -2832,12 +3096,30 @@ class MemorySystemV4:
         if selected_goal is None and compact_goals:
             selected_goal = compact_goals[0]
 
+        latest_checkpoint = (
+            self.latest_task_checkpoint(str(selected_task.get("id")))
+            if isinstance(selected_task, dict) and selected_task.get("id")
+            else None
+        )
+        resume = None
+        if isinstance(selected_task, dict):
+            resume = {
+                "restorable": True,
+                "task_id": selected_task.get("id"),
+                "goal_id": selected_task.get("goal_id"),
+                "next_action": selected_task.get("next_action"),
+                "blocked_reason": selected_task.get("blocked_reason"),
+                "latest_checkpoint": latest_checkpoint,
+            }
+
         return {
             "engine": "goal-continuity-v1",
+            "task_lifecycle": self.TASK_LIFECYCLE_ID,
             "active_goal_count": len(goals),
             "open_task_count": len(tasks),
             "selected_goal": selected_goal,
             "selected_task": selected_task,
+            "resume": resume,
             "goals": compact_goals,
             "tasks": compact_tasks,
         }

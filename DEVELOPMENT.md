@@ -1603,3 +1603,57 @@ Evidence Tool Planner 0.3 разрешает `memory.continuity` только к
 - `app/tests/test_web_contract.py`.
 
 Новых runtime dependencies нет.
+
+
+## Sayuri 0.1.56 — Task Lifecycle & Checkpoints
+
+### Persistent checkpoint model
+
+`memory_task_checkpoints` хранится в той же `data/sayuri-memory.db`, что Goal/Task Memory. Checkpoint содержит:
+- `task_id / goal_id / action_id`;
+- монотонный `sequence_no` внутри задачи;
+- tool и action title;
+- task status + next_action до и после;
+- SHA-256 полного подтверждённого action result;
+- безопасную локальную evidence summary;
+- флаг `applied` и причину применения/отказа.
+
+Полный action result не включается в cloud-facing resume projection.
+
+### Link policy
+
+`SayuriAgent.plan_action()` самостоятельно строит Goal Continuity snapshot и удаляет любой входной `_task_lifecycle` из пользовательского context. Внутренняя связь с task создаётся только когда:
+
+1. selected task имеет status `planned` или `in_progress`;
+2. текущая action-команда имеет реальный token overlap с title / next_action / goal;
+3. task snapshot сохраняет `updated_at` и `next_action_before` для optimistic stale-state guard.
+
+Blocked task автоматически не связывается с mutation lifecycle.
+
+### Confirm policy
+
+`SayuriAgent.complete_action()` сначала завершает Action Broker action, затем передаёт только `completed` result в `checkpoint_confirmed_action()`.
+
+Автоматическое продвижение разрешено только если сохранённый snapshot всё ещё совпадает с текущей task state. Тогда:
+- status становится `in_progress`;
+- `next_action` получает deterministic tool-specific follow-up;
+- task никогда автоматически не становится `done`.
+
+Если task была изменена, заблокирована или закрыта, checkpoint может быть записан как доказательство прошлого action, но актуальная task state не переписывается.
+
+### Restart restoration
+
+`MemorySystemV4.continuity_context()` читает latest checkpoint выбранной задачи и возвращает bounded `resume` projection. Новый процесс Sayuri после повторной инициализации получает тот же selected task, checkpoint и актуальный `next_action` из SQLite.
+
+Reasoning Planner 0.5 использует checkpoint только как подтверждение конкретного Action Broker шага. Он не может из checkpoint вывести `done`, разблокировать task или выполнить mutation.
+
+### Regression coverage
+
+- checkpoint idempotency по `action_id`;
+- stale-state protection;
+- restart restoration;
+- internal-only Action Broker context;
+- core confirm → checkpoint → next_action integration;
+- Reasoning public capability flag.
+
+Новых внешних зависимостей нет.

@@ -2,6 +2,20 @@
 
 ## Невыпущенные изменения
 
+### 0.1.56 — 2026-10-06 — Task Lifecycle & Checkpoints
+
+- Добавлен `memory-v4.2-task-lifecycle` поверх существующей Goal/Task Memory без отдельного task manager.
+- Подтверждённые Action Broker результаты могут создавать локальный task checkpoint только если действие детерминированно связано с незавершённой задачей по query overlap.
+- Checkpoint хранит task/action linkage, sequence number, состояние до/после, SHA-256 результата и безопасную evidence summary без копирования полного результата в Cloud context.
+- `next_action` обновляется только после реально завершённого confirmation-gated действия; planned task переводится в `in_progress`, но никогда автоматически не становится `done`.
+- Добавлен stale-state guard: если задача была изменена после планирования действия, checkpoint сохраняется, но актуальный `next_action` не перезаписывается.
+- Blocked/done/cancelled tasks автоматически не разблокируются и не переоткрываются.
+- Goal Continuity теперь возвращает `resume.latest_checkpoint`, поэтому незавершённая многошаговая работа восстанавливается из SQLite после повторной инициализации Sayuri.
+- Reasoning Planner обновлён до `0.5` и понимает checkpoint только как доказательство конкретного подтверждённого шага, а не как доказательство завершения всей задачи.
+- Контекст Action Broker остаётся внутренним и не добавлен в public action payload.
+- Добавлены regressions для idempotent checkpoints, stale-state protection, restart restoration и end-to-end confirm → checkpoint → next_action.
+- Проект: `0.1.56`; Ядро/App: `0.1.48`; Agent Core: `0.13.0`. Web UI, Disk и dev-tools без изменений.
+
 ### 0.1.55 — 2026-10-06 — Workspace Quality & Goal Continuity
 
 - Закрыт рассинхрон контрольной точки после опубликованного `0.1.54`; новая база разработки — проверенный `main dd4907a5ba`.

@@ -704,3 +704,17 @@
 - текущая команда пользователя всегда может заменить или отменить старую цель.
 
 Workspace quality в том же релизе ограничена accessibility/responsive-инвариантами: без нового frontend-фреймворка, второй копии чата и нового постоянного меню.
+
+
+## 2026-10-06 — Task checkpoints создаются только из подтверждённых Action Broker результатов
+
+**Решение:** Sayuri не сохраняет lifecycle progress по тексту ответа LLM или по обещанию выполнить действие. Контрольная точка многошаговой задачи появляется только после локального `Action Broker -> completed`.
+
+Следствия:
+- action → task linkage вычисляется локально по deterministic query overlap;
+- пользовательский context не может подставить внутренний `_task_lifecycle`: runtime удаляет его и создаёт заново;
+- checkpoint хранит digest результата и before/after state;
+- task автоматически может перейти только в `in_progress`, но не в `done`;
+- stale, blocked и closed task state имеет приоритет над старым action snapshot;
+- Planner читает lifecycle как evidence, но не является владельцем lifecycle mutations;
+- restart restoration выполняется из persistent SQLite, без отдельного фонового worker.
