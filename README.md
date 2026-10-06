@@ -6,6 +6,36 @@
 Основная ветка: `main`  
 Текущая версия: [VERSION](VERSION).
 
+## Последнее опубликованное состояние — 0.2.8
+
+GitHub синхронизирован с фактическим `main`. Функциональная база — **0.2.7 Portfolio Milestones & Cross-Project Coordination**, успешно прошедшая branch CI, PR CI и финальный push-CI на `main`.
+
+- Project: `0.2.8` — публикационная синхронизация документации.
+- App/Core: `0.1.55`.
+- Agent Core: `0.15.2`.
+- Cognitive Project Brain: `1.3.2`.
+- Reasoning Planner: `1.1`.
+- Evidence Tool Planner: `0.4.2`.
+- Web UI: `0.31.0`.
+- Disk Sayuri: `0.8.0`.
+- Основная ветка: `main`.
+- Функциональный merge: `bb7151baf72d7d681e84cd124f52e623bb3588c1`.
+- Проверка: GitHub Actions `#37418057599` — success.
+
+### Что добавлено в 0.2.7
+
+- project milestones с required/optional task links;
+- external blockers между самостоятельными проектами;
+- запрет direct cross-project task dependencies;
+- защита от portfolio cycles;
+- strict `project_key` scheduler boundary;
+- milestones/external blockers в Cognitive Brain snapshot;
+- bounded Cloud projection без локальных task/milestone/blocker DB IDs;
+- explicit local API без выдачи mutation-прав DeepSeek-V4-Flash.
+
+Подробный контракт: [COGNITIVE_BRAIN.md](COGNITIVE_BRAIN.md).  
+Актуальная контрольная точка: [PROJECT_STATE.md](PROJECT_STATE.md).
+
 ## Быстрый запуск
 
 На Windows откройте `Sayuri Tsukishiro.bat`.
