@@ -4053,50 +4053,6 @@ footer {
   background: #3aa86e;
 }
 
-.sayuri-tool-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-  gap: 9px;
-  margin: 15px 0 18px;
-}
-
-.sayuri-tool-chip {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 11px 12px;
-  border: 1px solid #e3e7ed;
-  border-radius: 13px;
-  background: #fafbfc;
-}
-
-.sayuri-tool-chip > div {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-}
-
-.sayuri-tool-chip strong {
-  font-size: 12px;
-}
-
-.sayuri-tool-chip small {
-  color: var(--ui-muted, #6f7b8c);
-  font-size: 10.5px;
-}
-
-.sayuri-tool-chip > span {
-  flex: 0 0 auto;
-  padding: 3px 7px;
-  border-radius: 999px;
-  background: #edf8f1;
-  color: #31714d;
-  font-size: 9.5px;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
 .sayuri-actions-history-head {
   display: flex;
   align-items: center;
@@ -5537,68 +5493,7 @@ footer {
 .sayuri-reasoning-issues { margin: 7px 0; color: var(--ui-muted); }
 .sayuri-reasoning-summary small { display: block; margin-top: 6px; color: var(--ui-muted); }
 
-
 /* ==========================================================================
-   SAYURI UI 0.24 — Evidence-aware Tool Planner
+   SAYURI UI 0.25 — Background Evidence Automation
+   Technical execution receipts stay out of the ordinary UI.
    ========================================================================== */
-.sayuri-tool-receipts {
-  display: grid;
-  gap: 7px;
-  margin: 9px 0 7px;
-  padding: 9px;
-  border: 1px solid var(--ui-line);
-  border-radius: 10px;
-  background: rgba(248, 250, 253, .86);
-}
-.sayuri-tool-receipts > strong {
-  font-size: 11px;
-  font-weight: 760;
-  color: var(--ui-text);
-}
-.sayuri-tool-receipt {
-  display: grid;
-  grid-template-columns: 22px minmax(0, 1fr);
-  gap: 8px;
-  align-items: center;
-  min-width: 0;
-}
-.sayuri-tool-receipt > span {
-  display: grid;
-  place-items: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 999px;
-  background: #eef2f7;
-  color: #627087;
-  font-size: 11px;
-  font-weight: 800;
-}
-.sayuri-tool-receipt.completed > span {
-  background: #eaf7ef;
-  color: #25734b;
-}
-.sayuri-tool-receipt.requires_action_broker > span {
-  background: #fff3dd;
-  color: #90651f;
-}
-.sayuri-tool-receipt.failed > span,
-.sayuri-tool-receipt.rejected > span {
-  background: #fdecec;
-  color: #9b3f3f;
-}
-.sayuri-tool-receipt > div {
-  display: grid;
-  gap: 1px;
-  min-width: 0;
-}
-.sayuri-tool-receipt b {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 10.5px;
-}
-.sayuri-tool-receipt small {
-  margin: 0;
-  font-size: 9.5px;
-  color: var(--ui-muted);
-}

@@ -351,7 +351,11 @@ class SayuriAgent:
             },
             "experience": self.experience.stats(),
             "reasoning": self.reasoning.public_status(),
-            "tool_planner": self.tool_planner.public_status(),
+            "automation": {
+                **self.tool_planner.public_status(),
+                "mode": "background_read_only",
+                "mutations": "action_broker_confirmation",
+            },
             "tools_connected": True,
             "tools": self.actions.tools(),
             "message": (
@@ -377,10 +381,10 @@ class SayuriAgent:
             },
             "experience": self.experience.stats(),
             "reasoning": self.reasoning.public_status(),
-            "tool_planner": {
+            "automation": {
                 **self.tool_planner.public_status(),
-                "catalog": self.tool_planner.catalog(),
-                "recent_receipts": self.tool_planner.recent(8),
+                "mode": "background_read_only",
+                "mutations": "action_broker_confirmation",
             },
             "avatars": self.avatars.public(),
             "actions": {
@@ -900,7 +904,11 @@ class SayuriAgent:
                         "v4": self.memory_v4.stats(),
                     },
                     "reasoning": self.reasoning.public_status(),
-                    "tool_planner": self.tool_planner.public_status(),
+                    "automation": {
+                        **self.tool_planner.public_status(),
+                        "mode": "background_read_only",
+                        "mutations": "action_broker_confirmation",
+                    },
                 },
                 "evidence_refs": ["system:runtime-status"],
             }
@@ -1130,10 +1138,11 @@ class SayuriAgent:
                         **reasoning_decision.public(),
                         "planner_status": "skipped",
                         "plan": None,
-                        "tool_execution": {
+                        "automation": {
                             "status": "skipped",
-                            "receipts": [],
-                            "read_only_calls": 0,
+                            "read_only_checks": 0,
+                            "evidence_receipts": 0,
+                            "blocked_mutations": 0,
                         },
                         "verification": {"status": "skipped"},
                         "revised": False,
@@ -1189,11 +1198,11 @@ class SayuriAgent:
             **reasoning_decision.public(),
             "planner_status": "skipped",
             "plan": None,
-            "tool_execution": {
+            "automation": {
                 "status": "skipped",
-                "request_id": tool_execution["request_id"],
-                "receipts": [],
-                "read_only_calls": 0,
+                "read_only_checks": 0,
+                "evidence_receipts": 0,
+                "blocked_mutations": 0,
             },
             "verification": {"status": "skipped"},
             "revised": False,
@@ -1227,11 +1236,21 @@ class SayuriAgent:
                 handlers=self._tool_handlers(safe_context),
                 request_id=tool_execution["request_id"],
             )
-            reasoning_payload["tool_execution"] = {
+            completed_receipts = [
+                item
+                for item in tool_execution["receipts"]
+                if item.get("status") == "completed"
+            ]
+            blocked_mutations = [
+                item
+                for item in tool_execution["receipts"]
+                if item.get("status") == "requires_action_broker"
+            ]
+            reasoning_payload["automation"] = {
                 "status": "completed",
-                "request_id": tool_execution["request_id"],
-                "receipts": tool_execution["receipts"],
-                "read_only_calls": tool_execution["read_only_calls"],
+                "read_only_checks": tool_execution["read_only_calls"],
+                "evidence_receipts": len(completed_receipts),
+                "blocked_mutations": len(blocked_mutations),
             }
             reasoning_evidence["tool_receipts"] = tool_execution["cloud_evidence"]
 

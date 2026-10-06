@@ -258,7 +258,13 @@ class EvidenceToolPlanner:
     ) -> dict[str, Any]:
         receipt_id = uuid.uuid4().hex
         safe_preview = self._sanitize(output_preview)
-        preview_json = self._bounded_text(safe_preview, MAX_RECEIPT_PREVIEW_CHARS)
+        preview_json = self._json(safe_preview)
+        if len(preview_json) > MAX_RECEIPT_PREVIEW_CHARS:
+            safe_preview = {
+                "truncated": True,
+                "excerpt_json": self._bounded_text(safe_preview, MAX_RECEIPT_PREVIEW_CHARS - 120),
+            }
+            preview_json = self._json(safe_preview)
         with self._connect() as db:
             db.execute(
                 """
@@ -304,6 +310,57 @@ class EvidenceToolPlanner:
             "error": (error_message or "")[:1000] or None,
         }
 
+    @staticmethod
+    def _automatic_read_only_intents(
+        plan: dict[str, Any],
+        explicit_tools: set[str] | None = None,
+    ) -> list[dict[str, Any]]:
+        goal = str(plan.get("goal") or "")
+        evidence = plan.get("evidence_needed") if isinstance(plan.get("evidence_needed"), list) else []
+        text = " ".join([goal, *(str(item) for item in evidence)]).casefold().replace("ё", "е")
+        explicit = explicit_tools or set()
+        intents: list[dict[str, Any]] = []
+
+        def add(tool: str, *, args: dict[str, Any] | None = None, purpose: str) -> None:
+            intents.append({
+                "step": 1,
+                "tool": tool,
+                "args": args or {},
+                "purpose": purpose,
+            })
+
+        if (
+            not any(tool.startswith("memory.") for tool in explicit)
+            and any(marker in text for marker in ("памят", "решени", "предыдущ", "истори", "контекст проекта"))
+        ):
+            query = " ".join(goal.strip().split())[:1200] or "текущая задача"
+            add(
+                "memory.search",
+                args={"query": query, "scope": "all", "limit": 4},
+                purpose="Автоматически сверить релевантную память по цели задачи.",
+            )
+        if (
+            "system.status" not in explicit
+            and any(marker in text for marker in ("состояни систем", "статус систем", "верси", "модул", "provider", "cloud"))
+        ):
+            add("system.status", purpose="Автоматически проверить текущее состояние системы.")
+        if (
+            "memory.integrity" not in explicit
+            and any(marker in text for marker in ("целостност", "integrity", "поврежден", "sqlite"))
+        ):
+            add("memory.integrity", purpose="Автоматически проверить целостность памяти.")
+        if (
+            "context.current_document" not in explicit
+            and any(marker in text for marker in ("текущ документ", "открыт документ", "этот документ"))
+        ):
+            add("context.current_document", purpose="Автоматически сверить текущий документ из UI-контекста.")
+        if (
+            "experience.stats" not in explicit
+            and any(marker in text for marker in ("опыт", "стратег", "ошибк прошлого", "не повтор"))
+        ):
+            add("experience.stats", purpose="Автоматически сверить накопленный опыт Sayuri.")
+        return intents[:MAX_READ_ONLY_CALLS]
+
     def execute_plan(
         self,
         plan: Any,
@@ -314,6 +371,15 @@ class EvidenceToolPlanner:
         safe_plan = plan if isinstance(plan, dict) else {}
         steps = safe_plan.get("steps") if isinstance(safe_plan.get("steps"), list) else []
         intents = safe_plan.get("tool_intents") if isinstance(safe_plan.get("tool_intents"), list) else []
+        explicit_tools = {
+            str(intent.get("tool") or "").strip()
+            for intent in intents
+            if isinstance(intent, dict) and str(intent.get("tool") or "").strip()
+        }
+        intents = list(intents[:MAX_TOOL_INTENTS]) + self._automatic_read_only_intents(
+            safe_plan,
+            explicit_tools,
+        )
         normalized = [
             item
             for item in (
@@ -523,6 +589,10 @@ class EvidenceToolPlanner:
         cloud_evidence: list[dict[str, Any]] = []
         used = 0
         for receipt in receipts:
+            output = receipt["output_preview"]
+            output_json = self._bounded_text(output, 2800)
+            if len(self._json(output)) > 2800:
+                output = {"truncated": True, "excerpt_json": output_json}
             item = {
                 "receipt_id": receipt["id"],
                 "step_index": receipt["step_index"],
@@ -532,11 +602,11 @@ class EvidenceToolPlanner:
                 "args": receipt["args"],
                 "evidence_refs": receipt["evidence_refs"],
                 "output_sha256": receipt["output_sha256"],
-                "output": receipt["output_preview"],
+                "output": output,
                 "error_class": receipt["error_class"],
                 "error": receipt["error"],
             }
-            encoded = self._bounded_text(item, 3600)
+            encoded = self._json(item)
             if used + len(encoded) > MAX_CLOUD_EVIDENCE_CHARS:
                 break
             cloud_evidence.append(item)

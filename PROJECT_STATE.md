@@ -4,66 +4,78 @@
 
 - Дата: 2026-10-06.
 - Репозиторий: https://github.com/Aspksa/Sayuri-Tsukishiro
-- Проверенная исходная ревизия: `0fdb2512fc8d6595774c322a41c2c5c6ee7867a8` — проект `0.1.47`, Reasoning Planner + Result Verifier.
-- Целевая версия: `0.1.48`.
-- Текущая задача: **AI-006 — Evidence-aware Tool Planner**.
-- Целевое дерево содержит реализацию; релиз подтверждается только PR CI и финальным workflow на `main`.
+- Проверенная исходная ревизия: `bcf047437f1274a412612563459dcb6406b89e88` — проект `0.1.48`, Evidence-aware Tool Planner.
+- Проверка базы: финальный workflow Versions #473 (`37392794275`) — success.
+- Целевая версия: `0.1.49`.
+- Текущая задача: **AI-007 — Background Evidence Automation**.
+- Статус целевого дерева: реализация подготовлена; release считается завершённым только после PR CI, merge и зелёного финального workflow на `main`.
 
 ## Версии целевого дерева
 
-- Проект: `0.1.48`.
-- Ядро Саюри: `0.1.40`.
-- Agent Core: `0.10.0`.
-- Web UI: `0.24.0`.
+- Проект: `0.1.49`.
+- Ядро Саюри: `0.1.41`.
+- Agent Core: `0.10.1`.
+- Web UI: `0.25.0`.
 - Диск Sayuri: `0.7.1` — не изменялся.
 - Dev tools: `0.1.6` — не изменялись.
 
-## Evidence-aware Tool Planner
+## Background Evidence Automation
 
 ```text
-user task
-→ complexity gate
-→ Planner
-→ structured steps + tool_intents
-→ deterministic allowlist
-→ read-only tools execute / mutations blocked
-→ execution receipts + evidence
-→ answer
-→ Result Verifier
-→ post-success memory attribution
+complex user task
+→ Reasoning Planner
+→ structured goal / steps / evidence_needed / optional intents
+→ deterministic background evidence policy
+→ safe read-only checks only
+→ local execution receipts
+→ primary answer
+→ Result Verifier with bounded receipts
+→ compact automation summary to Web UI
 ```
+
+### Автоподбор
+
+Локальная policy может дополнить Planner безопасной read-only проверкой по `goal/evidence_needed`:
+
+- релевантная память / история / прежние решения -> `memory.search`;
+- состояние системы / версия / provider -> `system.status`;
+- integrity / SQLite -> `memory.integrity`;
+- текущий документ -> `context.current_document`;
+- опыт / прежние ошибки -> `experience.stats`.
+
+Если Planner уже выбрал проверку той же категории, автоподбор не создаёт лишний дублирующий вызов.
 
 ### Security boundary
 
-- DeepSeek не исполняет инструменты напрямую.
+- DeepSeek не выполняет инструмент напрямую.
 - Unknown tool отклоняется.
-- Read-only инструменты ограничены allowlist и максимум четырьмя вызовами.
-- Duplicate tool+args не выполняется повторно.
-- Mutation intent не получает исполняемый payload от модели и возвращает `requires_action_broker`.
-- Existing SayuriActionBroker остаётся единственным путём изменения данных после явного подтверждения пользователя.
+- Read-only вызовы ограничены allowlist, duplicate suppression и максимум 4 вызовами.
+- Mutation intent не получает исполняемый payload и возвращает `requires_action_broker`.
+- Единственный путь изменения состояния: существующий `SayuriActionBroker` после явного подтверждения пользователя.
 
-### Evidence
+### Evidence и privacy
 
-Receipts хранятся локально в `data/sayuri-tool-receipts.db` и содержат tool, step, args, status, timestamps, duration, evidence refs, output SHA-256 и sanitized preview.
+- Полные sanitized execution receipts остаются локально в `data/sayuri-tool-receipts.db`.
+- Result Verifier получает только bounded evidence.
+- Oversized output сокращается до controlled excerpt перед Cloud.ru.
+- `memory.search` использует Memory 4.1 `for_cloud=True`; attribution commit остаётся post-success.
+- Секретные поля не попадают в receipt preview или Cloud evidence.
 
-Result Verifier получает фактические receipts. `completed` доказывает выполнение локального tool call, но не делает любую интерпретацию модели истинной.
+## UI policy
 
-### Privacy
+По прямому указанию пользователя технические инструменты не должны перегружать интерфейс.
 
-- tool output проходит secret sanitization;
-- Cloud evidence budget: 9000 chars;
-- `memory.search` использует Memory 4.1 `for_cloud=True`;
-- tool-memory IDs добавляются в prepared recall;
-- recall usage фиксируется только после успешного reasoning pipeline.
+- меню не меняется;
+- постоянный каталог инструментов в Личном кабинете убирается;
+- строки execution receipts в чате убираются;
+- история подтверждаемых изменяющих действий сохраняется;
+- в reasoning summary при фактической фоновой проверке показывается только короткое `автопроверка N`;
+- системный индикатор называется «Автопроверка».
 
-### UI
+## Релизный критерий 0.1.49
 
-В reasoning summary добавлены строки инструментов и их статусы. Меню проекта не изменялось.
-
-## Релизный критерий 0.1.48
-
-1. Один атомарный commit от `main 0.1.47`.
-2. App/core tests включая `test_reasoning.py` и `test_tool_planner.py` — success.
+1. Один атомарный commit от подтверждённого `main 0.1.48`.
+2. App/core tests включая reasoning/tool-planner automation tests — success.
 3. Scripts/versioning tests — success.
 4. JavaScript syntax — success.
 5. Preflight — success.
@@ -74,4 +86,4 @@ Result Verifier получает фактические receipts. `completed` д
 
 ## Следующий рациональный этап
 
-После стабилизации v0.1.48 расширять evidence tools на документные read-only операции Диска/ДНК: безопасное чтение preview/DNA evidence, ссылки page/line/bbox и claim-to-evidence mapping, не меняя mutation boundary.
+После стабилизации фоновой automation расширять только **read-only document evidence** Диска/ДНК: preview/DNA facts/page-line-bbox/ledger evidence. Не добавлять отдельный инструментальный UI и не ослаблять Action Broker.

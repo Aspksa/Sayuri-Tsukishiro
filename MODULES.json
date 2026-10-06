@@ -4,13 +4,13 @@
     {
       "id": "sayuri-core",
       "display_name": "Ядро Саюри",
-      "description": "Системное ядро, SQLite, API, диагностика, Memory 4.1, Reasoning/Verifier, execution receipts и безопасный Action Broker.",
+      "description": "Системное ядро, SQLite, API, диагностика, Memory 4.1, Reasoning/Verifier, фоновая evidence automation и безопасный Action Broker.",
       "path": "app"
     },
     {
       "id": "agent-core",
       "display_name": "Агентное ядро",
-      "description": "Sayuri Agent Core: DeepSeek-V4-Flash, Reasoning Planner 0.2, Evidence-aware Tool Planner, Result Verifier, Memory 4.1 и confirmation-gated actions.",
+      "description": "Sayuri Agent Core: DeepSeek-V4-Flash, Reasoning Planner 0.2, Background Evidence Automation, Result Verifier, Memory 4.1 и confirmation-gated actions.",
       "path": "agent"
     },
     {
@@ -22,7 +22,7 @@
     {
       "id": "web-ui",
       "display_name": "Веб-интерфейс",
-      "description": "Единая оболочка Sayuri с чатом, визуализацией Planner/Tools/Evidence/Verifier, Memory 4.1, Личным кабинетом, Диском и ДНК; меню сохранено.",
+      "description": "Единая оболочка Sayuri с компактной визуализацией Planner/Verifier и фоновой автопроверки, Memory 4.1, Личным кабинетом, Диском и ДНК; меню сохранено.",
       "path": "web"
     },
     {
