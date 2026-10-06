@@ -425,6 +425,105 @@ class MemoryV4Tests(unittest.TestCase):
             self.assertGreaterEqual(snapshot["open_task_count"], 2)
             self.assertIn("восстановление", snapshot["selected_task"]["next_action"].casefold())
 
+    def test_confirmed_action_checkpoint_advances_task_once_and_restores_after_restart(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            memory, semantic, v3, v4 = self._build(root)
+            goal = v4.create_goal(
+                "Организовать документы проекта",
+                description="Создать структуру и продолжить работу.",
+                priority=5,
+            )
+            task = v4.create_task(
+                "Создать папку Договоры",
+                goal_id=goal["id"],
+                priority=5,
+                next_action="Создать папку Договоры в корне Диска.",
+            )
+            context = {
+                "_task_lifecycle": {
+                    "task_id": task["id"],
+                    "goal_id": goal["id"],
+                    "task_updated_at": task["updated_at"],
+                    "next_action_before": task["next_action"],
+                }
+            }
+            action = {
+                "id": "confirmed-action-1",
+                "tool": "disk.create_folder",
+                "title": "Создать папку «Договоры»",
+                "status": "completed",
+                "result": {
+                    "status": "выполнено",
+                    "folder": {"id": "folder-1", "name": "Договоры"},
+                },
+            }
+
+            checkpoint = v4.checkpoint_confirmed_action(action, context=context)
+            duplicate = v4.checkpoint_confirmed_action(action, context=context)
+            updated = next(item for item in v4.tasks() if item["id"] == task["id"])
+
+            self.assertTrue(checkpoint["applied"])
+            self.assertEqual(checkpoint["apply_reason"], "confirmed_action_evidence")
+            self.assertEqual(checkpoint["id"], duplicate["id"])
+            self.assertEqual(len(v4.task_checkpoints(task_id=task["id"])), 1)
+            self.assertEqual(updated["status"], "in_progress")
+            self.assertIn("Проверить созданную папку", updated["next_action"])
+            self.assertEqual(v4.stats()["task_checkpoints"], 1)
+
+            memory2 = SayuriMemory(root / "data" / "sayuri-memory.db")
+            memory2.initialize()
+            semantic2 = SemanticMemoryIndex(memory2)
+            v3_2 = MemorySystemV3(root / "data" / "sayuri-memory.db", memory2, semantic2)
+            v4_2 = MemorySystemV4(root, memory2, semantic2, v3_2)
+            restored = v4_2.continuity_context("продолжай работу с папкой Договоры", limit=4)
+
+            self.assertEqual(restored["task_lifecycle"], v4_2.TASK_LIFECYCLE_ID)
+            self.assertEqual(restored["selected_task"]["id"], task["id"])
+            self.assertTrue(restored["resume"]["restorable"])
+            self.assertEqual(
+                restored["resume"]["latest_checkpoint"]["action_id"],
+                "confirmed-action-1",
+            )
+            self.assertTrue(restored["resume"]["latest_checkpoint"]["applied"])
+            self.assertIn("Проверить созданную папку", restored["resume"]["next_action"])
+
+    def test_checkpoint_does_not_overwrite_task_when_state_changed_after_plan(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            memory, semantic, v3, v4 = self._build(Path(tmp))
+            task = v4.create_task(
+                "Подготовить архив документов",
+                priority=4,
+                next_action="Создать папку Архив.",
+            )
+            context = {
+                "_task_lifecycle": {
+                    "task_id": task["id"],
+                    "task_updated_at": task["updated_at"],
+                    "next_action_before": task["next_action"],
+                }
+            }
+            changed = v4.update_task(
+                task["id"],
+                status="in_progress",
+                next_action="Сначала проверить список документов.",
+            )
+            checkpoint = v4.checkpoint_confirmed_action(
+                {
+                    "id": "stale-action-1",
+                    "tool": "disk.create_folder",
+                    "title": "Создать папку «Архив»",
+                    "status": "completed",
+                    "result": {"status": "выполнено"},
+                },
+                context=context,
+            )
+            current = next(item for item in v4.tasks() if item["id"] == task["id"])
+
+            self.assertFalse(checkpoint["applied"])
+            self.assertEqual(checkpoint["apply_reason"], "stale_task_state")
+            self.assertEqual(current["next_action"], changed["next_action"])
+
     def test_later_success_is_only_observation_until_user_confirms_resolution(self):
         with tempfile.TemporaryDirectory() as tmp:
             memory, semantic, v3, v4 = self._build(Path(tmp))

@@ -57,6 +57,7 @@ class ReasoningEngineTests(unittest.TestCase):
         self.assertIn("active_continuation", decision.reasons)
         self.assertIn("Добавить восстановление", fallback["steps"][1])
         self.assertTrue(engine.public_status()["goal_continuity_planner"])
+        self.assertTrue(engine.public_status()["task_lifecycle_checkpoints"])
         self.assertIn("continuity_context", planner_messages[1]["content"])
 
     def test_plan_and_verifier_json_are_normalized_without_hidden_reasoning(self):

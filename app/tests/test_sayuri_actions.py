@@ -22,6 +22,11 @@ class SayuriActionBrokerTests(unittest.TestCase):
             self.assertEqual(action["tool"], "disk.create_folder")
             self.assertEqual(action["status"], "pending")
             self.assertTrue(action["confirmation_required"])
+            self.assertNotIn("context", action)
+            self.assertEqual(
+                broker.context(action["id"])["disk"]["folder_id"],
+                None,
+            )
 
             first = broker.begin(action["id"])
             self.assertTrue(first["claimed"])
@@ -80,6 +85,43 @@ class SayuriActionBrokerTests(unittest.TestCase):
             memory = core.sayuri_memory(scope="project")
             self.assertEqual(memory["stats"]["project"]["count"], 1)
             self.assertEqual(memory["entries"][0]["kind"], "decision")
+
+    def test_confirmed_action_creates_task_checkpoint_and_advances_linked_task(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            core = SayuriCore(Settings(root=root))
+            core.initialize(record_event=False)
+            goal = core.agent.memory_v4.create_goal(
+                "Организовать договоры",
+                priority=5,
+            )
+            task = core.agent.memory_v4.create_task(
+                "Создать папку Договоры",
+                goal_id=goal["id"],
+                priority=5,
+                next_action="Создать папку Договоры.",
+            )
+
+            planned = core.plan_sayuri_action(
+                text="создай папку Договоры",
+                context={"view": "disk", "disk": {"folder_id": None}},
+            )
+            completed = core.confirm_sayuri_action(planned["action"]["id"])
+            updated = next(
+                item for item in core.agent.memory_v4.tasks()
+                if item["id"] == task["id"]
+            )
+
+            self.assertEqual(completed["status"], "completed")
+            self.assertIn("task_checkpoint", completed)
+            self.assertTrue(completed["task_checkpoint"]["applied"])
+            self.assertEqual(completed["task_checkpoint"]["task_id"], task["id"])
+            self.assertEqual(updated["status"], "in_progress")
+            self.assertIn("Проверить созданную папку", updated["next_action"])
+            self.assertEqual(
+                len(core.agent.memory_v4.task_checkpoints(task_id=task["id"])),
+                1,
+            )
 
     def test_create_folder_executes_only_after_core_confirmation(self):
         with tempfile.TemporaryDirectory() as tmp:

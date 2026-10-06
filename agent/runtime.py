@@ -866,8 +866,30 @@ class SayuriAgent:
     def plan_action(self, *, text: str, context: Any = None) -> dict[str, Any]:
         try:
             self.memory_v3.update_working(message=text, context=context)
-            action = self.actions.plan(text, context)
-        except ActionError as exc:
+            safe_context = dict(context) if isinstance(context, dict) else {}
+            safe_context.pop("_task_lifecycle", None)
+            continuity = self.memory_v4.continuity_context(text, limit=3)
+            selected_task = (
+                continuity.get("selected_task")
+                if isinstance(continuity.get("selected_task"), dict)
+                else None
+            )
+            if (
+                selected_task
+                and int(selected_task.get("query_overlap") or 0) > 0
+                and selected_task.get("status") in {"planned", "in_progress"}
+            ):
+                safe_context["_task_lifecycle"] = {
+                    "task_id": selected_task.get("id"),
+                    "goal_id": selected_task.get("goal_id"),
+                    "task_title": selected_task.get("title"),
+                    "task_status": selected_task.get("status"),
+                    "task_updated_at": selected_task.get("updated_at"),
+                    "next_action_before": selected_task.get("next_action"),
+                    "link_reason": "deterministic_query_overlap",
+                }
+            action = self.actions.plan(text, safe_context)
+        except (ActionError, MemorySystemV4Error) as exc:
             raise AgentRuntimeError(str(exc)) from exc
         return {
             "status": "proposal" if action else "none",
@@ -1047,9 +1069,24 @@ class SayuriAgent:
 
     def complete_action(self, action_id: str, result: dict[str, Any]) -> dict[str, Any]:
         try:
-            return self.actions.complete(action_id, result)
+            action_context = self.actions.context(action_id)
+            completed = self.actions.complete(action_id, result)
         except ActionError as exc:
             raise AgentRuntimeError(str(exc)) from exc
+
+        try:
+            checkpoint = self.memory_v4.checkpoint_confirmed_action(
+                completed,
+                context=action_context,
+            )
+        except MemorySystemV4Error:
+            checkpoint = {
+                "status": "not_recorded",
+                "reason": "task_checkpoint_error",
+            }
+        if checkpoint is not None:
+            completed = {**completed, "task_checkpoint": checkpoint}
+        return completed
 
     def fail_action(self, action_id: str, message: str) -> dict[str, Any]:
         try:
