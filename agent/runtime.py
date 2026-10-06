@@ -976,6 +976,23 @@ class SayuriAgent:
                 "memory_explanations": explanations,
             }
 
+        def memory_continuity(args: dict[str, Any]) -> dict[str, Any]:
+            snapshot = self.memory_v4.continuity_context(
+                str(args.get("query") or ""),
+                limit=int(args.get("limit") or 6),
+            )
+            refs: list[str] = []
+            selected_goal = snapshot.get("selected_goal")
+            selected_task = snapshot.get("selected_task")
+            if isinstance(selected_goal, dict) and selected_goal.get("id"):
+                refs.append("goal:" + str(selected_goal["id"])[:120])
+            if isinstance(selected_task, dict) and selected_task.get("id"):
+                refs.append("task:" + str(selected_task["id"])[:120])
+            return {
+                "data": snapshot,
+                "evidence_refs": refs or ["memory:continuity:none"],
+            }
+
         def memory_integrity(_args: dict[str, Any]) -> dict[str, Any]:
             return {
                 "data": self.memory_v4.integrity_check(audit=False),
@@ -1016,6 +1033,7 @@ class SayuriAgent:
             "system.status": system_status,
             "memory.stats": memory_stats,
             "memory.search": memory_search,
+            "memory.continuity": memory_continuity,
             "memory.integrity": memory_integrity,
             "experience.stats": experience_stats,
             "context.current_document": current_document,
@@ -1267,6 +1285,7 @@ class SayuriAgent:
                 self.memory_v3.ingest_memory(memory_saved, event_type="memory_explicit")
                 self.memory_v4.ingest_memory(memory_saved)
             memory_v4_context = self.memory_v4.context(text, record_usage=False)
+            continuity_context = self.memory_v4.continuity_context(text, limit=6)
             memory_context = {
                 "retrieval": memory_v4_context["engine"],
                 "personal": memory_v4_context["personal"],
@@ -1287,7 +1306,11 @@ class SayuriAgent:
         except (MemoryError, MemoryIntelligenceError, MemorySystemError, MemorySystemV4Error) as exc:
             raise AgentRuntimeError(str(exc)) from exc
 
-        reasoning_decision = self.reasoning.classify(text, context)
+        reasoning_decision = self.reasoning.classify(
+            text,
+            context,
+            continuity_context=continuity_context,
+        )
         api_key = self.secrets.get()
         if not api_key:
             if memory_saved is not None:
@@ -1333,6 +1356,7 @@ class SayuriAgent:
         memory_v4_aux = {
             "goals": memory_v4_context.get("goals", []),
             "tasks": memory_v4_context.get("tasks", []),
+            "continuity": continuity_context,
             "failures_to_avoid": memory_v4_context.get("failures_to_avoid", []),
             "questions": memory_v4_context.get("questions", []),
         }
@@ -1396,6 +1420,7 @@ class SayuriAgent:
                         evidence_context=reasoning_evidence,
                         ui_context=safe_context,
                         tool_catalog=self.tool_planner.catalog(),
+                        continuity_context=continuity_context,
                     ),
                     max_tokens=900,
                     temperature=0.2,
@@ -1404,7 +1429,10 @@ class SayuriAgent:
                 plan = self.reasoning.parse_plan(planner_result["answer"])
                 reasoning_payload["planner_status"] = "ready"
             except (AgentRuntimeError, ReasoningError):
-                plan = self.reasoning.fallback_plan(text)
+                plan = self.reasoning.fallback_plan(
+                    text,
+                    continuity_context=continuity_context,
+                )
                 reasoning_payload["planner_status"] = "fallback"
             reasoning_payload["plan"] = plan
             handlers = self._tool_handlers(safe_context)

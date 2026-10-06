@@ -1567,3 +1567,39 @@ Disk использует `aria-busy` через `setDiskLoading()`.
 - UI 0.30 CSS;
 - viewer/disk workspace surfaces;
 - сохранение Spatial Evidence перехода.
+
+
+## Sayuri 0.1.55 — Goal Continuity & Workspace Quality
+
+### Goal Continuity
+
+`MemorySystemV4.continuity_context(query, limit)` является read-only projection. Он:
+
+1. берёт только active goals и задачи со статусом `planned / in_progress / blocked`;
+2. повторно применяет memory/cloud privacy boundary;
+3. ранжирует задачи по priority, status и token-overlap с текущим запросом;
+4. возвращает `selected_task`, `selected_goal`, bounded списки и счётчики;
+5. не меняет статусы, utility, use counters или task timestamps.
+
+Reasoning Planner 0.4 получает continuity snapshot отдельно от UI и evidence context. Continuation-маркеры сами по себе не делают любой короткий запрос сложным: planned-mode включается только при наличии selected task/goal.
+
+Evidence Tool Planner 0.3 разрешает `memory.continuity` только как read-only tool. Mutation payload по-прежнему не принимается от LLM.
+
+### Workspace keyboard contract
+
+- Command Palette сохраняет исходный focus и возвращает его после закрытия.
+- Maximized chat выставляет `aria-modal=true` и удерживает Tab/Shift+Tab внутри dialog.
+- При возврате во floating mode `aria-modal=false`.
+- Avatar не участвует в tab-order, пока workspace maximized.
+- На viewport <=760px maximized chat занимает доступный экран без rounded outer shell; floating chat ограничивается отступом 8px.
+- Основной размер текста compact/responsive режимами не уменьшается.
+
+### Проверки
+
+К обычному workflow добавлены regressions в:
+- `app/tests/test_memory_v4.py`;
+- `app/tests/test_reasoning.py`;
+- `app/tests/test_tool_planner.py`;
+- `app/tests/test_web_contract.py`.
+
+Новых runtime dependencies нет.

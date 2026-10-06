@@ -394,6 +394,37 @@ class MemoryV4Tests(unittest.TestCase):
             self.assertEqual(len(v4.tasks()), 1)
             self.assertEqual(len(v4.goals()), 1)
 
+    def test_continuity_context_prioritizes_relevant_in_progress_task(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            memory, semantic, v3, v4 = self._build(Path(tmp))
+            goal = v4.create_goal(
+                "Развивать память и планирование Sayuri",
+                description="Долгосрочная цель проекта.",
+                priority=5,
+            )
+            generic = v4.create_task(
+                "Проверить интерфейс",
+                goal_id=goal["id"],
+                priority=3,
+                next_action="Проверить адаптивность.",
+            )
+            target = v4.create_task(
+                "Усилить Planner памяти",
+                goal_id=goal["id"],
+                priority=5,
+                next_action="Добавить восстановление незавершённых задач.",
+            )
+            v4.update_task(generic["id"], status="planned")
+            v4.update_task(target["id"], status="in_progress")
+
+            snapshot = v4.continuity_context("Продолжай развивать Planner памяти", limit=4)
+
+            self.assertEqual(snapshot["engine"], "goal-continuity-v1")
+            self.assertEqual(snapshot["selected_task"]["id"], target["id"])
+            self.assertEqual(snapshot["selected_goal"]["id"], goal["id"])
+            self.assertGreaterEqual(snapshot["open_task_count"], 2)
+            self.assertIn("восстановление", snapshot["selected_task"]["next_action"].casefold())
+
     def test_later_success_is_only_observation_until_user_confirms_resolution(self):
         with tempfile.TemporaryDirectory() as tmp:
             memory, semantic, v3, v4 = self._build(Path(tmp))

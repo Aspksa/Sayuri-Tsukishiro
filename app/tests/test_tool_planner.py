@@ -183,10 +183,44 @@ class EvidenceToolPlannerTests(unittest.TestCase):
             catalog = {item["id"]: item for item in planner.catalog()}
             self.assertEqual(catalog["memory.search"]["mode"], "read_only")
             self.assertFalse(catalog["memory.search"]["confirmation_required"])
+            self.assertEqual(catalog["memory.continuity"]["mode"], "read_only")
+            self.assertFalse(catalog["memory.continuity"]["confirmation_required"])
             self.assertEqual(catalog["document.evidence_search"]["mode"], "read_only")
             self.assertFalse(catalog["document.evidence_search"]["confirmation_required"])
             self.assertEqual(catalog["memory.remember"]["mode"], "confirmation_gated")
             self.assertTrue(catalog["memory.remember"]["confirmation_required"])
+
+    def test_continuation_goal_can_trigger_read_only_continuity_check(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            planner = EvidenceToolPlanner(Path(tmp) / "receipts.db")
+            seen = []
+
+            def handler(args):
+                seen.append(args)
+                return {
+                    "data": {
+                        "selected_task": {"id": "t1", "title": "Продолжить Planner"},
+                        "open_task_count": 1,
+                    },
+                    "evidence_refs": ["task:t1"],
+                }
+
+            result = planner.execute_plan(
+                {
+                    "goal": "Продолжить текущую задачу и определить следующий шаг",
+                    "steps": ["Сверить незавершённую работу"],
+                    "evidence_needed": ["Активная задача и следующий шаг"],
+                    "tool_intents": [],
+                },
+                handlers={"memory.continuity": handler},
+                request_id="req-continuity",
+            )
+
+            self.assertEqual(len(seen), 1)
+            self.assertEqual(seen[0]["limit"], 6)
+            receipt = next(item for item in result["receipts"] if item["tool"] == "memory.continuity")
+            self.assertEqual(receipt["status"], "completed")
+            self.assertEqual(receipt["mode"], "read_only")
 
     def test_large_output_is_bounded_before_cloud_evidence(self):
         with tempfile.TemporaryDirectory() as tmp:

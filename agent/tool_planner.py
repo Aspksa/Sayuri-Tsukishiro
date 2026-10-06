@@ -32,6 +32,14 @@ READ_ONLY_TOOLS: dict[str, dict[str, Any]] = {
             "limit": "1..6",
         },
     },
+    "memory.continuity": {
+        "label": "Незавершённые цели и задачи",
+        "mode": "read_only",
+        "args": {
+            "query": "string",
+            "limit": "1..6",
+        },
+    },
     "memory.integrity": {
         "label": "Проверка целостности памяти",
         "mode": "read_only",
@@ -74,7 +82,7 @@ def _utcnow() -> str:
 class EvidenceToolPlanner:
     """Deterministic tool policy + execution receipts for structured plans."""
 
-    VERSION = "0.2"
+    VERSION = "0.3"
 
     def __init__(self, path: Path):
         self.path = path
@@ -220,6 +228,18 @@ class EvidenceToolPlanner:
                 "scope": scope,
                 "limit": min(max(limit, 1), 6),
             }
+        if tool == "memory.continuity":
+            query = " ".join(str(raw.get("query") or "").strip().split())[:1200]
+            if not query:
+                query = "продолжить текущую задачу"
+            try:
+                limit = int(raw.get("limit", 6))
+            except (TypeError, ValueError):
+                limit = 6
+            return {
+                "query": query,
+                "limit": min(max(limit, 1), 6),
+            }
         if tool == "document.evidence_search":
             query = " ".join(str(raw.get("query") or "").strip().split())[:1600]
             if not query:
@@ -351,6 +371,22 @@ class EvidenceToolPlanner:
                 "purpose": purpose,
             })
 
+        if (
+            "memory.continuity" not in explicit
+            and any(
+                marker in text
+                for marker in (
+                    "продолж", "дальше", "возобнов", "незаверш", "следующий шаг",
+                    "активн задач", "текущая задача", "цель проекта",
+                )
+            )
+        ):
+            query = " ".join(goal.strip().split())[:1200] or "продолжить текущую задачу"
+            add(
+                "memory.continuity",
+                args={"query": query, "limit": 6},
+                purpose="Автоматически сверить незавершённые цели, задачи и ближайший шаг.",
+            )
         if (
             not any(tool.startswith("memory.") for tool in explicit)
             and any(marker in text for marker in ("памят", "решени", "предыдущ", "истори", "контекст проекта"))

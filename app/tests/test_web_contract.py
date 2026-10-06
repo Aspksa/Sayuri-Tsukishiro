@@ -444,5 +444,22 @@ class WebContractTests(unittest.TestCase):
         self.assertNotIn(">Runtime<", html)
 
 
+class WorkspaceQualityContractTests(unittest.TestCase):
+    def test_workspace_focus_and_responsive_contract(self):
+        html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+        css = (ROOT / "web" / "styles.css").read_text(encoding="utf-8")
+
+        self.assertIn('aria-modal="false" aria-labelledby="sayuri-chat-title"', html)
+        self.assertIn('id="sayuri-chat-title"', html)
+        self.assertIn("function trapDialogFocus", script)
+        self.assertIn("function restoreSayuriFocus", script)
+        self.assertIn("chat.setAttribute('aria-modal', next ? 'true' : 'false')", script)
+        self.assertIn("if (orb) orb.tabIndex = next ? -1 : 0", script)
+        self.assertIn("SAYURI UI 0.31 — Workspace Quality & Accessibility", css)
+        self.assertIn("@media (max-width: 760px)", css)
+        self.assertIn("body.sayuri-workspace-open .sayuri-chat-window.is-maximized", css)
+
+
 if __name__ == "__main__":
     unittest.main()
