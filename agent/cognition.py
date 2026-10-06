@@ -23,7 +23,7 @@ class CognitiveProjectBrain:
     statistics, replan proposals and metacognitive summaries.
     """
 
-    VERSION = "1.3.1"
+    VERSION = "1.3.2"
     PROJECT_KEY = "sayuri-tsukishiro"
     DEPENDENCY_RELATIONS = {"requires", "blocks", "unlocks", "follows"}
     OPEN_TASK_STATUSES = {"planned", "in_progress", "blocked"}
@@ -3187,6 +3187,26 @@ class CognitiveProjectBrain:
                 SELECT source_task_id, target_task_id, relation, confirmed
                 FROM cognitive_task_edges
                 WHERE confirmed = 1
+                """
+            ).fetchall()
+            milestone_rows = db.execute(
+                "SELECT * FROM cognitive_milestones"
+            ).fetchall()
+            milestone_links = db.execute(
+                "SELECT * FROM cognitive_milestone_tasks"
+            ).fetchall()
+            portfolio_rows = db.execute(
+                """
+                SELECT b.project_id, b.source_project_id
+                FROM cognitive_external_blockers b
+                LEFT JOIN cognitive_milestones m
+                  ON m.id=b.source_milestone_id
+                WHERE b.status='open'
+                  AND b.source_project_id IS NOT NULL
+                  AND (
+                    b.source_milestone_id IS NULL
+                    OR COALESCE(m.status, '') != 'done'
+                  )
                 """
             ).fetchall()
 

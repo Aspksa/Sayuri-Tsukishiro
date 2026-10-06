@@ -2,6 +2,17 @@
 
 ## Невыпущенные изменения
 
+### 0.2.6 — 2026-10-06 — Portfolio Coordination Regression Fix
+
+- Второй branch candidate `0.2.5` прошёл import stage и запустил 169 app tests, что подтвердило исправление SyntaxError из `0.2.4`.
+- Исправлен `graph_integrity()`: milestone/task/portfolio rows теперь явно читаются внутри собственного diagnostic snapshot; устранён `NameError: milestone_rows is not defined`.
+- Обновлён scale regression на фактический scheduler contract `cognitive-scheduler-v1.3` вместо старого `v1.2`.
+- Cognitive Project Brain повышен до `1.3.2`; Agent Core — `0.15.2`.
+- Поскольку корректируется regression в `app/tests`, App/Core повышен до `0.1.54` согласно VERSIONING.md.
+- Candidate `0.2.5` commit `c1816efdade9d44ff98bb925bb565319eb8f068b`, workflow #37417544393, не принят: 1 stale assertion + 5 ошибок, все 5 ошибок имели один корень в missing integrity queries.
+- Project: `0.2.6`; App/Core: `0.1.54`; Agent Core: `0.15.2`; Cognitive Brain: `1.3.2`. Reasoning Planner `1.1`, Tool Planner `0.4.2`, Web UI, Disk и dev-tools без изменений.
+
+
 ### 0.2.5 — 2026-10-06 — Portfolio Coordination Acceptance Fix
 
 - Исправлена синтаксическая ошибка branch candidate `0.2.4`: автоматическая сборка блока metacognition оставила двойную сигнатуру `def self_evaluation(`, из-за чего Python suite останавливался на import-time SyntaxError.

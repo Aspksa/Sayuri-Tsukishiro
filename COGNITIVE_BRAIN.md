@@ -1,6 +1,6 @@
 # Cognitive Project Brain
 
-Версия контракта: **1.3.1**  
+Версия контракта: **1.3.2**  
 Проект: **Sayuri-Tsukishiro**
 
 ## Назначение
@@ -256,3 +256,8 @@ Explicit local mutations:
 ### Acceptance patch 1.3.1
 
 Контракт 1.3.1 не меняет semantics Portfolio Coordination 1.3. Он исправляет только import-time syntax defect candidate 0.2.4. Milestone, external blocker, scheduler, privacy и mutation boundaries остаются теми же.
+
+
+### Regression patch 1.3.2
+
+Контракт 1.3.2 сохраняет semantics 1.3. Исправлен diagnostic implementation `graph_integrity()`: milestone links и effective-open portfolio dependencies читаются в том же read-only diagnostic pass. Scheduler contract остаётся `v1.3`.

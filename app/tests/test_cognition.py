@@ -502,7 +502,7 @@ class CognitiveProjectBrainTests(unittest.TestCase):
             ):
                 result = brain.scheduler("Масштабная задача 19")
 
-            self.assertEqual(result["engine"], "cognitive-scheduler-v1.2")
+            self.assertEqual(result["engine"], "cognitive-scheduler-v1.3")
             self.assertEqual(result["selected"]["id"], next(
                 item["id"]
                 for item in v4.tasks(limit=100)
