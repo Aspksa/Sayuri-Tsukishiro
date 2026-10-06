@@ -611,9 +611,11 @@ class SayuriCore:
                 "memory_used": result.get("memory_used", 0),
                 "memory_saved": bool(result.get("memory_saved")),
                 "response_id": result.get("response_id"),
-                "tool_receipts": len(
-                    ((result.get("reasoning") or {}).get("tool_execution") or {}).get("receipts", [])
-                ),
+                "automation": {
+                    "checks": (((result.get("reasoning") or {}).get("automation") or {}).get("read_only_checks", 0)),
+                    "evidence": (((result.get("reasoning") or {}).get("automation") or {}).get("evidence_receipts", 0)),
+                    "blocked_mutations": (((result.get("reasoning") or {}).get("automation") or {}).get("blocked_mutations", 0)),
+                },
             },
         )
         return result

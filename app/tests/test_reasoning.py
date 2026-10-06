@@ -102,10 +102,12 @@ class ReasoningEngineTests(unittest.TestCase):
             self.assertEqual(result["reasoning"]["verification"]["status"], "revise")
             self.assertTrue(result["reasoning"]["revised"])
             self.assertEqual(result["reasoning"]["model_calls"], 3)
-            execution = result["reasoning"]["tool_execution"]
-            self.assertEqual(execution["read_only_calls"], 1)
-            self.assertEqual(execution["receipts"][0]["tool"], "memory.stats")
-            self.assertEqual(execution["receipts"][0]["status"], "completed")
+            automation = result["reasoning"]["automation"]
+            self.assertEqual(automation["status"], "completed")
+            self.assertEqual(automation["read_only_checks"], 1)
+            self.assertEqual(automation["evidence_receipts"], 1)
+            self.assertEqual(automation["blocked_mutations"], 0)
+            self.assertNotIn("tool_execution", result["reasoning"])
             self.assertTrue(
                 any(
                     "Execution receipts" in item.get("content", "")
@@ -113,6 +115,7 @@ class ReasoningEngineTests(unittest.TestCase):
                     if item.get("role") == "system"
                 )
             )
+            self.assertIn("tool_receipts", calls[2][1]["content"])
             self.assertEqual(result["usage"]["total_tokens"], 6)
 
     def test_simple_chat_uses_one_model_call(self):
@@ -137,7 +140,7 @@ class ReasoningEngineTests(unittest.TestCase):
             self.assertEqual(result["reasoning"]["mode"], "direct")
             self.assertEqual(result["reasoning"]["model_calls"], 1)
             self.assertEqual(result["reasoning"]["verification"]["status"], "skipped")
-            self.assertEqual(result["reasoning"]["tool_execution"]["status"], "skipped")
+            self.assertEqual(result["reasoning"]["automation"]["status"], "skipped")
 
     def test_web_chat_exposes_structured_reasoning_summary(self):
         script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
@@ -145,9 +148,12 @@ class ReasoningEngineTests(unittest.TestCase):
         self.assertIn("createSayuriReasoningSummary", script)
         self.assertIn("result.reasoning", script)
         self.assertIn("план+проверка", script)
-        self.assertIn("SAYURI UI 0.24 — Evidence-aware Tool Planner", css)
+        self.assertIn("автопроверка", script)
+        self.assertIn("SAYURI UI 0.25 — Background Evidence Automation", css)
         self.assertIn(".sayuri-reasoning-summary", css)
-        self.assertIn("sayuri-tool-receipts", css)
+        self.assertNotIn("sayuri-tool-receipts", script)
+        self.assertNotIn(".sayuri-tool-receipts", css)
+        self.assertNotIn("sayuri-tool-list", script)
 
 
 if __name__ == "__main__":

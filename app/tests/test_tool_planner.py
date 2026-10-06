@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import json
 import tempfile
 import unittest
 
@@ -52,6 +53,36 @@ class EvidenceToolPlannerTests(unittest.TestCase):
             self.assertTrue(result["receipts"][0]["output_sha256"])
             self.assertTrue(result["cloud_evidence"])
             self.assertEqual(len(planner.recent(10)), 2)
+
+    def test_evidence_needed_can_trigger_safe_background_check_without_model_intent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            planner = EvidenceToolPlanner(Path(tmp) / "receipts.db")
+            calls = 0
+
+            def handler(args):
+                nonlocal calls
+                calls += 1
+                self.assertEqual(args, {})
+                return {
+                    "data": {"status": "ok"},
+                    "evidence_refs": ["system:auto"],
+                }
+
+            result = planner.execute_plan(
+                {
+                    "goal": "Проверить состояние системы перед выводом",
+                    "steps": ["Сверить факты"],
+                    "evidence_needed": ["Текущее состояние системы"],
+                    "tool_intents": [],
+                },
+                handlers={"system.status": handler},
+                request_id="req-auto",
+            )
+
+            self.assertEqual(calls, 1)
+            self.assertEqual(result["read_only_calls"], 1)
+            self.assertEqual(result["receipts"][0]["tool"], "system.status")
+            self.assertEqual(result["receipts"][0]["status"], "completed")
 
     def test_mutation_intent_never_executes_without_action_broker(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -105,6 +136,34 @@ class EvidenceToolPlannerTests(unittest.TestCase):
             self.assertFalse(catalog["memory.search"]["confirmation_required"])
             self.assertEqual(catalog["memory.remember"]["mode"], "confirmation_gated")
             self.assertTrue(catalog["memory.remember"]["confirmation_required"])
+
+    def test_large_output_is_bounded_before_cloud_evidence(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            planner = EvidenceToolPlanner(Path(tmp) / "receipts.db")
+
+            result = planner.execute_plan(
+                {
+                    "steps": ["Проверить"],
+                    "tool_intents": [
+                        {"step": 1, "tool": "system.status", "args": {}, "purpose": "Большой результат"}
+                    ],
+                },
+                handlers={
+                    "system.status": lambda _args: {
+                        "data": {"payload": "x" * 20000},
+                        "evidence_refs": ["system:large"],
+                    }
+                },
+                request_id="req-large",
+            )
+
+            self.assertEqual(result["receipts"][0]["status"], "completed")
+            self.assertTrue(result["cloud_evidence"])
+            output = result["cloud_evidence"][0]["output"]
+            self.assertTrue(isinstance(output, dict))
+            encoded = json.dumps(output, ensure_ascii=False)
+            self.assertLessEqual(len(encoded), 3000)
+            self.assertNotIn("x" * 5000, encoded)
 
     def test_receipt_api_contract_is_exposed(self):
         core = (ROOT / "app" / "core.py").read_text(encoding="utf-8")

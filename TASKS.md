@@ -256,7 +256,7 @@
 
 ## AI-006 — Evidence-aware Tool Planner
 
-- Статус: `implemented`; релиз считается проверенным только после зелёного atomic/main CI.
+- Статус: `released`; `main` commit `bcf047437f1274a412612563459dcb6406b89e88`, workflow Versions #473 — success.
 - Версия проекта: `0.1.48`.
 - Structured plan расширен `tool_intents` с привязкой к шагам.
 - LLM может только предложить intent; deterministic Evidence Tool Planner решает, разрешён ли инструмент.
@@ -271,3 +271,19 @@
 - Web chat показывает цепочку «План -> Инструменты -> Доказательства -> Проверка» без изменения меню.
 - Приёмка: один атомарный commit от `main 0.1.47`, полный workflow Versions, merge через PR и зелёный финальный main CI.
 
+
+
+## AI-007 — Background Evidence Automation
+
+- Статус: `implemented; release CI pending`.
+- Версия проекта: `0.1.49`.
+- Evidence Tool Planner остаётся внутренним контуром мозга, а не отдельным пользовательским разделом.
+- По `goal` и `evidence_needed` deterministic policy может сама подобрать безопасные read-only проверки, даже если Planner не вернул явный intent.
+- Поддерживаемый автоподбор: релевантная Memory 4.1, состояние системы, integrity памяти, текущий документ и статистика Experience.
+- Read-only вызовы ограничены allowlist, duplicate suppression и лимитом 4 вызова на planned request.
+- Mutation intent никогда не исполняется автоматически и остаётся за существующим `SayuriActionBroker` с явным подтверждением.
+- Полные execution receipts остаются локальными для Verifier/диагностики; обычный chat API получает только агрегированную automation-сводку.
+- Из Личного кабинета убирается каталог инструментов; история подтверждённых действий остаётся.
+- Web reasoning summary не показывает технические receipt rows; при наличии evidence показывает только `автопроверка N`.
+- Меню проекта не изменяется.
+- Приёмка: один атомарный commit от подтверждённого `main 0.1.48`, полный workflow Versions, merge через PR и зелёный финальный main CI.
