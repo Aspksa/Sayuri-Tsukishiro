@@ -1508,7 +1508,11 @@ async function openViewer(kind, id, tab = 'preview') {
 
     if (kind === 'file') {
       const stage = byId('file-preview-stage');
-      stage.innerHTML = '<p class="muted">Загрузка предпросмотра…</p>';
+      stage.replaceChildren();
+      const loading = document.createElement('p');
+      loading.className = 'muted';
+      loading.textContent = 'Загрузка предпросмотра…';
+      stage.append(loading);
       const previewResponse = await fetch(`/api/disk/files/${encodeURIComponent(id)}/preview`, {cache: 'no-store'});
       const preview = await previewResponse.json();
       if (!previewResponse.ok) throw new Error(preview?.error?.message || `HTTP ${previewResponse.status}`);
@@ -1529,6 +1533,104 @@ function closeViewer() {
   updateSayuriContextUI();
 }
 
+function sayuriCitationMap(metadata) {
+  const map = new Map();
+  for (const source of Array.isArray(metadata?.evidence) ? metadata.evidence : []) {
+    if (
+      source?.kind === 'spatial_document'
+      && /^D[1-6]$/.test(String(source.citation_id || ''))
+      && source.target?.type === 'disk_evidence'
+      && source.coordinate_status === 'exact_from_document_engine'
+    ) {
+      map.set(String(source.citation_id), source);
+    }
+  }
+  return map;
+}
+
+async function restoreViewerPreview(fileId) {
+  const response = await fetch('/api/disk/files/' + encodeURIComponent(fileId) + '/preview', {cache: 'no-store'});
+  const preview = await response.json();
+  if (!response.ok) throw new Error(preview?.error?.message || ('HTTP ' + response.status));
+  renderPreview(preview);
+}
+
+async function renderSayuriEvidenceFocus(source) {
+  const target = source?.target;
+  if (
+    source?.kind !== 'spatial_document'
+    || source.coordinate_status !== 'exact_from_document_engine'
+    || target?.type !== 'disk_evidence'
+    || !target.file_id
+    || !target.fact_id
+  ) throw new Error('У источника нет точной Spatial Evidence привязки.');
+
+  const stage = byId('file-preview-stage');
+  stage.replaceChildren();
+  const shell = document.createElement('section');
+  shell.className = 'evidence-focus-shell';
+  const toolbar = document.createElement('div');
+  toolbar.className = 'evidence-focus-toolbar';
+  const context = document.createElement('div');
+  const title = document.createElement('strong');
+  title.textContent = String(source.citation_id || 'Источник') + ' · ' + String(source.label || 'Документ');
+  const meta = document.createElement('small');
+  const parts = [];
+  if (Number(source.page) > 0) parts.push('стр. ' + Number(source.page));
+  if (Number(source.line) > 0) parts.push('строка ' + Number(source.line));
+  if (source.fact_label) parts.push(String(source.fact_label));
+  meta.textContent = parts.join(' · ');
+  context.append(title, meta);
+  const normal = document.createElement('button');
+  normal.type = 'button';
+  normal.className = 'secondary-button';
+  normal.textContent = 'Обычный просмотр';
+  normal.addEventListener('click', () => {
+    restoreViewerPreview(String(target.file_id)).catch(showDiskError);
+  });
+  toolbar.append(context, normal);
+
+  const imageWrap = document.createElement('div');
+  imageWrap.className = 'evidence-focus-image-wrap';
+  const loading = document.createElement('div');
+  loading.className = 'evidence-focus-loading';
+  loading.textContent = 'Открываю точное место документа…';
+  const image = document.createElement('img');
+  image.className = 'evidence-focus-image';
+  image.alt = 'Источник ' + String(source.citation_id || '') + ': ' + String(source.fact_label || source.label || 'фрагмент документа');
+  image.hidden = true;
+  image.addEventListener('load', () => { loading.remove(); image.hidden = false; }, {once: true});
+  image.addEventListener('error', () => {
+    loading.className = 'evidence-focus-error';
+    loading.textContent = 'Не удалось отрисовать страницу с подсветкой. Откройте обычный просмотр документа.';
+  }, {once: true});
+  const params = new URLSearchParams({fact_id: String(target.fact_id)});
+  image.src = '/api/disk/files/' + encodeURIComponent(String(target.file_id)) + '/evidence-focus?' + params.toString();
+  imageWrap.append(loading, image);
+  shell.append(toolbar, imageWrap);
+
+  const excerptText = String(source.excerpt || source.value || '').trim();
+  if (excerptText) {
+    const excerpt = document.createElement('blockquote');
+    excerpt.className = 'evidence-focus-excerpt';
+    const label = document.createElement('span');
+    label.textContent = 'Фрагмент';
+    const text = document.createElement('p');
+    text.textContent = excerptText;
+    excerpt.append(label, text);
+    shell.append(excerpt);
+  }
+  stage.append(shell);
+}
+
+async function openSayuriSpatialEvidence(source) {
+  const target = source?.target;
+  if (!target?.file_id || !target?.fact_id) return;
+  showView('disk');
+  await openViewer('file', String(target.file_id), 'preview');
+  if (viewerItem?.id !== String(target.file_id)) return;
+  await renderSayuriEvidenceFocus(source);
+}
 async function saveViewerName() {
   if (!viewerItem) return;
   const name = byId('property-name-input').value.trim();
@@ -3807,6 +3909,41 @@ function appendSayuriInline(parent, source) {
   if (offset < text.length) parent.append(document.createTextNode(text.slice(offset)));
 }
 
+function appendSayuriInlineWithCitations(parent, source, citationMap = null) {
+  const text = String(source ?? '');
+  if (!(citationMap instanceof Map) || citationMap.size === 0) {
+    appendSayuriInline(parent, text);
+    return;
+  }
+  const parts = text.split(/(\[D[1-6]\])/g);
+  for (const part of parts) {
+    if (!part) continue;
+    const match = part.match(/^\[(D[1-6])\]$/);
+    if (!match) {
+      appendSayuriInline(parent, part);
+      continue;
+    }
+    const citationId = match[1];
+    const evidence = citationMap.get(citationId);
+    if (!evidence) {
+      parent.append(document.createTextNode(part));
+      continue;
+    }
+    const citation = document.createElement('button');
+    citation.type = 'button';
+    citation.className = 'sayuri-inline-citation';
+    citation.textContent = citationId;
+    const location = [];
+    if (Number(evidence.page) > 0) location.push('стр. ' + Number(evidence.page));
+    if (Number(evidence.line) > 0) location.push('строка ' + Number(evidence.line));
+    citation.title = [String(evidence.label || 'Документ'), ...location].join(' · ');
+    citation.setAttribute('aria-label', 'Открыть источник ' + citationId + ': ' + citation.title);
+    citation.addEventListener('click', () => {
+      openSayuriSpatialEvidence(evidence).catch(showDiskError);
+    });
+    parent.append(citation);
+  }
+}
 function sayuriMarkdownCells(line) {
   return String(line)
     .trim()
@@ -3859,7 +3996,7 @@ function createSayuriCodeBlock(language, codeText) {
   return block;
 }
 
-function renderSayuriRichText(container, source) {
+function renderSayuriRichText(container, source, citationMap = null) {
   container.replaceChildren();
   const lines = String(source ?? '').replace(/\r\n?/g, '\n').split('\n');
   let index = 0;
@@ -3900,7 +4037,7 @@ function renderSayuriRichText(container, source) {
       const headRow = document.createElement('tr');
       headers.forEach((cell) => {
         const th = document.createElement('th');
-        appendSayuriInline(th, cell);
+        appendSayuriInlineWithCitations(th, cell, citationMap);
         headRow.append(th);
       });
       thead.append(headRow);
@@ -3909,7 +4046,7 @@ function renderSayuriRichText(container, source) {
         const tr = document.createElement('tr');
         headers.forEach((_, cellIndex) => {
           const td = document.createElement('td');
-          appendSayuriInline(td, cells[cellIndex] || '');
+          appendSayuriInlineWithCitations(td, cells[cellIndex] || '', citationMap);
           tr.append(td);
         });
         tbody.append(tr);
@@ -3924,7 +4061,7 @@ function renderSayuriRichText(container, source) {
     if (heading) {
       const level = Math.min(6, heading[1].length + 2);
       const element = document.createElement(`h${level}`);
-      appendSayuriInline(element, heading[2]);
+      appendSayuriInlineWithCitations(element, heading[2], citationMap);
       container.append(element);
       index += 1;
       continue;
@@ -3934,7 +4071,7 @@ function renderSayuriRichText(container, source) {
       const quote = document.createElement('blockquote');
       while (index < lines.length && /^\s*>\s?/.test(lines[index])) {
         const part = document.createElement('p');
-        appendSayuriInline(part, lines[index].replace(/^\s*>\s?/, ''));
+        appendSayuriInlineWithCitations(part, lines[index].replace(/^\s*>\s?/, ''), citationMap);
         quote.append(part);
         index += 1;
       }
@@ -3950,7 +4087,7 @@ function renderSayuriRichText(container, source) {
         const itemMatch = lines[index].match(/^\s*(?:([-*+])|(\d+)[.)])\s+(.+)$/);
         if (!itemMatch || Boolean(itemMatch[2]) !== ordered) break;
         const item = document.createElement('li');
-        appendSayuriInline(item, itemMatch[3]);
+        appendSayuriInlineWithCitations(item, itemMatch[3], citationMap);
         list.append(item);
         index += 1;
       }
@@ -3976,7 +4113,7 @@ function renderSayuriRichText(container, source) {
     const paragraph = document.createElement('p');
     paragraphLines.forEach((paragraphLine, lineIndex) => {
       if (lineIndex) paragraph.append(document.createElement('br'));
-      appendSayuriInline(paragraph, paragraphLine);
+      appendSayuriInlineWithCitations(paragraph, paragraphLine, citationMap);
     });
     container.append(paragraph);
   }
@@ -3984,26 +4121,33 @@ function renderSayuriRichText(container, source) {
 
 function createSayuriEvidenceSummary(metadata) {
   const evidence = Array.isArray(metadata?.evidence)
-    ? metadata.evidence.filter((item) => item && typeof item === 'object').slice(0, 6)
+    ? metadata.evidence.filter((item) => item && typeof item === 'object').slice(0, 8)
     : [];
   if (!evidence.length) return null;
 
   const details = document.createElement('details');
   details.className = 'sayuri-evidence-summary';
   const summary = document.createElement('summary');
-  summary.textContent = `Источники · ${evidence.length}`;
+  const spatialCount = evidence.filter((item) => item.kind === 'spatial_document').length;
+  summary.textContent = spatialCount
+    ? 'Источники · ' + evidence.length + ' · точных ' + spatialCount
+    : 'Источники · ' + evidence.length;
   details.append(summary);
 
   const list = document.createElement('div');
   list.className = 'sayuri-evidence-list';
   evidence.forEach((source) => {
-    const row = source.kind === 'document' && source.target?.type === 'disk_item'
-      ? document.createElement('button')
-      : document.createElement('div');
-    row.className = `sayuri-evidence-item ${source.kind || 'source'}`;
+    const spatial = source.kind === 'spatial_document' && source.target?.type === 'disk_evidence';
+    const genericDocument = source.kind === 'document' && source.target?.type === 'disk_item';
+    const row = document.createElement((spatial || genericDocument) ? 'button' : 'div');
+    row.className = 'sayuri-evidence-item ' + String(source.kind || 'source');
     if (row instanceof HTMLButtonElement) {
       row.type = 'button';
       row.addEventListener('click', () => {
+        if (spatial) {
+          openSayuriSpatialEvidence(source).catch(showDiskError);
+          return;
+        }
         showView('disk');
         openViewer(
           source.target.kind === 'folder' ? 'folder' : 'file',
@@ -4012,14 +4156,32 @@ function createSayuriEvidenceSummary(metadata) {
         );
       });
     }
+
     const kind = document.createElement('span');
-    kind.textContent = source.kind === 'document' ? 'Документ' : 'Память';
+    kind.textContent = spatial
+      ? String(source.citation_id || 'D') + ' · Документ'
+      : (source.kind === 'document' ? 'Документ' : 'Память');
     const label = document.createElement('strong');
     label.textContent = String(source.label || 'Источник');
     row.append(kind, label);
-    if (Number(source.count) > 0) {
+
+    if (spatial) {
+      const position = document.createElement('small');
+      const parts = [];
+      if (Number(source.page) > 0) parts.push('стр. ' + Number(source.page));
+      if (Number(source.line) > 0) parts.push('строка ' + Number(source.line));
+      if (source.fact_label) parts.push(String(source.fact_label));
+      position.textContent = parts.join(' · ');
+      row.append(position);
+      const excerptText = String(source.excerpt || source.value || '').trim();
+      if (excerptText) {
+        const excerpt = document.createElement('p');
+        excerpt.textContent = excerptText;
+        row.append(excerpt);
+      }
+    } else if (Number(source.count) > 0) {
       const count = document.createElement('small');
-      count.textContent = `${Number(source.count)} фрагм.`;
+      count.textContent = Number(source.count) + ' фрагм.';
       row.append(count);
     }
     list.append(row);
@@ -4058,7 +4220,8 @@ function renderSayuriMessages() {
     const bubble = document.createElement('div');
     const text = document.createElement('div');
     text.className = 'sayuri-message-text sayuri-rich-text';
-    renderSayuriRichText(text, message.content);
+    const citationMap = sayuriCitationMap(message.metadata);
+    renderSayuriRichText(text, message.content, citationMap);
     bubble.append(text);
     if (message.metadata?.action) {
       bubble.append(createSayuriActionCard(message.metadata.action, messageIndex));

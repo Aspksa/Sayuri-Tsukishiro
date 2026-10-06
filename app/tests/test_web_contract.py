@@ -219,6 +219,37 @@ class WebContractTests(unittest.TestCase):
         self.assertIn("[data-sayuri-memory-panel].sayuri-lazy-loading", css)
         self.assertIn("@keyframes sayuriSkeletonSweep", css)
 
+    def test_spatial_evidence_citations_open_exact_fact_without_client_bbox(self):
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+        css = (ROOT / "web" / "styles.css").read_text(encoding="utf-8")
+        server = (ROOT / "app" / "server.py").read_text(encoding="utf-8")
+        runtime = (ROOT / "agent" / "runtime.py").read_text(encoding="utf-8")
+        core = (ROOT / "app" / "core.py").read_text(encoding="utf-8")
+
+        self.assertIn("sayuriCitationMap", script)
+        self.assertIn("openSayuriSpatialEvidence", script)
+        self.assertIn("renderSayuriEvidenceFocus", script)
+        self.assertIn("sayuri-inline-citation", script)
+        self.assertIn("/evidence-focus?", script)
+        self.assertIn("fact_id", script)
+        self.assertNotIn("bbox=", script)
+
+        self.assertIn("SAYURI UI 0.29 — Spatial Evidence Citations", css)
+        self.assertIn(".sayuri-inline-citation", css)
+        self.assertIn(".evidence-focus-shell", css)
+        self.assertIn(".evidence-focus-image", css)
+
+        self.assertIn("/evidence-focus", server)
+        self.assertIn('query.get("fact_id"', server)
+        self.assertNotIn('query.get("bbox"', server)
+
+        self.assertIn("document.evidence_search", runtime)
+        self.assertIn("_strip_unknown_spatial_citations", runtime)
+        self.assertIn("Spatial Evidence citations", runtime)
+        self.assertIn("_sayuri_document_evidence_handlers", core)
+        self.assertIn("search_cached_evidence", core)
+        self.assertNotIn('"bbox": locator.get("bbox")', core)
+
     def test_personal_cabinet_has_memory_and_avatar_studio(self):
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")

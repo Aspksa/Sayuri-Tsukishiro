@@ -4,25 +4,25 @@
     {
       "id": "sayuri-core",
       "display_name": "Ядро Саюри",
-      "description": "Системное ядро, SQLite, API, диагностика, Memory 4.1, Reasoning/Verifier, evidence automation, Action Broker и Web/security contracts 0.1.44.",
+      "description": "Системное ядро 0.1.45: API, диагностика, Memory 4.1, Reasoning/Verifier, evidence automation, spatial evidence bridge, Action Broker и security contracts.",
       "path": "app"
     },
     {
       "id": "agent-core",
       "display_name": "Агентное ядро",
-      "description": "Sayuri Agent Core 0.10.2: DeepSeek-V4-Flash, Reasoning Planner, Evidence-aware read-only automation, Result Verifier, Memory 4.1, confirmation-gated actions и privacy-safe public evidence projection.",
+      "description": "Sayuri Agent Core 0.11.0: DeepSeek-V4-Flash, Reasoning Planner 0.3, read-only document evidence search, D1..D6 citation firewall, Result Verifier, Memory 4.1 и confirmation-gated actions.",
       "path": "agent"
     },
     {
       "id": "sayuri-disk",
       "display_name": "Диск Sayuri",
-      "description": "Диск Sayuri и ДНК 0.7.1: автоматический анализ после загрузки, Evidence Engine, Spatial/OCR, координатные доказательства и Evolution Core.",
+      "description": "Диск Sayuri 0.8.0: ДНК/Evidence Engine, SpatialDNAEngine 0.8.0, cached exact-evidence search и fact-id Evidence Focus через PDFium/Pillow.",
       "path": "disk"
     },
     {
       "id": "web-ui",
       "display_name": "Веб-интерфейс",
-      "description": "Единая оболочка Sayuri 0.28: global design system, safe rich answers, code/tables/quotes, public evidence links, lazy Memory 3/4 diagnostics, fullscreen chat и command palette.",
+      "description": "Единая оболочка Sayuri 0.29: safe rich answers, inline Spatial citations, Evidence Focus, lazy diagnostics, fullscreen ChatGPT-like chat и command palette.",
       "path": "web"
     },
     {
