@@ -4,7 +4,7 @@
     {
       "id": "sayuri-core",
       "display_name": "Ядро Саюри",
-      "description": "Системное ядро, SQLite, API, диагностика, Memory 4.1, Reasoning/Verifier, фоновая evidence automation и безопасный Action Broker.",
+      "description": "Системное ядро, SQLite, API, диагностика, Memory 4.1, Reasoning/Verifier, фоновая evidence automation и безопасный Action Broker; Web contract 0.1.42.",
       "path": "app"
     },
     {
@@ -22,7 +22,7 @@
     {
       "id": "web-ui",
       "display_name": "Веб-интерфейс",
-      "description": "Единая оболочка Sayuri с компактной визуализацией Planner/Verifier и фоновой автопроверки, Memory 4.1, Личным кабинетом, Диском и ДНК; меню сохранено.",
+      "description": "Единая оболочка Sayuri 0.26: avatar-only вход в Личный кабинет, плавный floating drag, resizable ChatGPT-like чат, вкладки Профиль/AI/Поведение/Память/Образ/Диагностика; основное меню сохранено.",
       "path": "web"
     },
     {

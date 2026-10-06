@@ -23,10 +23,6 @@
       </nav>
 
       <div class="sidebar-bottom">
-        <button class="sayuri-account-nav" id="sayuri-account-nav" type="button" data-view="sayuri">
-          <img src="/assets/sayuri-avatar.svg" alt="">
-          <span><strong>Личный кабинет</strong><small>Sayuri</small></span>
-        </button>
         <div class="mini-status"><span class="dot"></span><span>Локальная система</span></div>
         <small id="sidebar-version">версия —</small>
       </div>
@@ -301,8 +297,32 @@
           <button class="primary-button" id="sayuri-open-chat-account" type="button">Открыть чат</button>
         </section>
 
+        <nav class="sayuri-account-tabs" id="sayuri-account-tabs" aria-label="Разделы личного кабинета">
+          <button class="active" type="button" data-sayuri-tab="profile">Профиль</button>
+          <button type="button" data-sayuri-tab="ai">AI</button>
+          <button type="button" data-sayuri-tab="behavior">Поведение</button>
+          <button type="button" data-sayuri-tab="memory">Память</button>
+          <button type="button" data-sayuri-tab="appearance">Образ</button>
+          <button type="button" data-sayuri-tab="diagnostics">Диагностика</button>
+        </nav>
+
         <section class="sayuri-account-grid">
-          <article class="sayuri-account-card">
+          <article class="sayuri-account-card sayuri-wide-card sayuri-profile-overview" data-sayuri-panel="profile">
+            <div>
+              <p class="eyebrow">ПРОФИЛЬ</p>
+              <h3>Sayuri всегда рядом, но не мешает работе</h3>
+              <p>Клик по плавающему аватару открывает чат. Правая кнопка — быстрые действия и вход в Личный кабинет. Отдельной кнопки кабинета в левом меню больше нет.</p>
+            </div>
+            <div class="sayuri-profile-overview-grid">
+              <button type="button" data-sayuri-tab-jump="ai"><span>AI</span><strong>Cloud.ru · DeepSeek-V4-Flash</strong></button>
+              <button type="button" data-sayuri-tab-jump="behavior"><span>Поведение</span><strong>Позиция, история и безопасные действия</strong></button>
+              <button type="button" data-sayuri-tab-jump="memory"><span>Память</span><strong>Личная, проектная, Memory 3/4 и опыт</strong></button>
+              <button type="button" data-sayuri-tab-jump="appearance"><span>Образ</span><strong>Аватары для разных мест интерфейса</strong></button>
+              <button type="button" data-sayuri-tab-jump="diagnostics"><span>Диагностика</span><strong>Контекст, который Sayuri видит сейчас</strong></button>
+            </div>
+          </article>
+
+          <article class="sayuri-account-card" data-sayuri-panel="ai">
             <div class="section-head">
               <div><p class="eyebrow">ИИ · CLOUD.RU</p><h3>Подключение Sayuri</h3></div>
               <span class="sayuri-connection-state" id="sayuri-connection-state">Не настроено</span>
@@ -333,7 +353,7 @@
             <p class="sayuri-security-note">Ключ не отправляется в GitHub и не возвращается в интерфейс целиком. В Windows локально защищается DPAPI текущего пользователя.</p>
           </article>
 
-          <article class="sayuri-account-card">
+          <article class="sayuri-account-card" data-sayuri-panel="behavior">
             <div class="section-head"><div><p class="eyebrow">ПРИСУТСТВИЕ</p><h3>Как Sayuri ведёт себя в проекте</h3></div></div>
             <div class="sayuri-preference-list">
               <label><span><strong>Sayuri всегда рядом</strong><small>Показывать плавающий аватар во всех разделах.</small></span><input id="sayuri-visible-toggle" type="checkbox" checked></label>
@@ -343,7 +363,7 @@
             <button class="secondary-button" id="sayuri-reset-layout" type="button">Вернуть Sayuri на место</button>
           </article>
 
-          <article class="sayuri-account-card sayuri-context-card">
+          <article class="sayuri-account-card sayuri-context-card" data-sayuri-panel="diagnostics">
             <div class="section-head"><div><p class="eyebrow">КОНТЕКСТ</p><h3>Что Sayuri видит сейчас</h3></div></div>
             <dl id="sayuri-context-summary">
               <div><dt>Раздел</dt><dd id="sayuri-context-view">Главная</dd></div>
@@ -352,7 +372,7 @@
             </dl>
             <p>В чат передаются только сведения о текущем интерфейсе и выбранном объекте. Содержимое документа не отправляется в Cloud.ru автоматически.</p>
           </article>
-          <article class="sayuri-account-card sayuri-wide-card sayuri-actions-card">
+          <article class="sayuri-account-card sayuri-wide-card sayuri-actions-card" data-sayuri-panel="behavior">
             <div class="section-head">
               <div><p class="eyebrow">ДЕЙСТВИЯ</p><h3>Безопасные действия Sayuri</h3></div>
               <div class="sayuri-action-mode"><span></span><strong>Только после подтверждения</strong></div>
@@ -365,7 +385,14 @@
             <div class="sayuri-actions-history" id="sayuri-actions-history"><p class="muted">История действий загружается…</p></div>
           </article>
 
-          <article class="sayuri-account-card sayuri-wide-card sayuri-memory-card">
+          <nav class="sayuri-memory-tabs" data-sayuri-panel="memory" aria-label="Разделы памяти">
+            <button class="active" type="button" data-sayuri-memory-tab="overview">Обзор</button>
+            <button type="button" data-sayuri-memory-tab="architecture">Архитектура</button>
+            <button type="button" data-sayuri-memory-tab="quality">Quality Gate</button>
+            <button type="button" data-sayuri-memory-tab="experience">Опыт</button>
+          </nav>
+
+          <article class="sayuri-account-card sayuri-wide-card sayuri-memory-card" data-sayuri-panel="memory" data-sayuri-memory-panel="overview">
             <div class="section-head">
               <div><p class="eyebrow">ДОЛГОВРЕМЕННАЯ ПАМЯТЬ</p><h3>Память Sayuri</h3></div>
               <div class="sayuri-memory-stats">
@@ -467,7 +494,7 @@
             <p class="sayuri-security-note">Быстрое сохранение из чата: «запомни лично: …» или «запомни в проект: …». Обычная переписка не записывается целиком: автоматизация создаёт только отдельные кандидаты памяти, которые можно принять или отклонить.</p>
           </article>
 
-          <article class="sayuri-account-card sayuri-wide-card sayuri-memory-v3-card">
+          <article class="sayuri-account-card sayuri-wide-card sayuri-memory-v3-card" data-sayuri-panel="memory" data-sayuri-memory-panel="architecture">
             <div class="section-head">
               <div><p class="eyebrow">MEMORY 3.0</p><h3>Архитектура памяти Sayuri</h3></div>
               <div class="sayuri-memory-v3-actions">
@@ -529,7 +556,7 @@
             <p class="sayuri-security-note">Обслуживание памяти не удаляет данные автоматически. Консолидация создаёт устойчивое знание с сохранением источников, а Forgetting Engine только снижает retrieval-вес устаревшей информации.</p>
           </article>
 
-          <article class="sayuri-account-card sayuri-wide-card sayuri-memory-v4-card">
+          <article class="sayuri-account-card sayuri-wide-card sayuri-memory-v4-card" data-sayuri-panel="memory" data-sayuri-memory-panel="quality">
             <div class="section-head">
               <div><p class="eyebrow">MEMORY 4.1 · QUALITY GATE</p><h3>Цели, доверие и качественное вспоминание</h3></div>
               <div class="sayuri-memory-v4-actions">
@@ -661,7 +688,7 @@
             <p class="sayuri-security-note">Секреты, чувствительные идентификаторы и high-risk instruction content остаются локальными и исключаются из Cloud-контекста. Оценка «Полезно / Не помогло» меняет utility recall, но не объявляет источник истинным или ложным. Restore никогда не выполняется автоматически: требуется выбрать снимок и вручную ввести <code>RESTORE MEMORY</code>.</p>
           </article>
 
-          <article class="sayuri-account-card sayuri-wide-card sayuri-experience-card">
+          <article class="sayuri-account-card sayuri-wide-card sayuri-experience-card" data-sayuri-panel="memory" data-sayuri-memory-panel="experience">
             <div class="section-head">
               <div><p class="eyebrow">EXPERIENCE LEARNING</p><h3>Опыт Sayuri</h3></div>
               <button class="secondary-button" id="sayuri-experience-refresh" type="button">Обновить</button>
@@ -679,7 +706,7 @@
             <p class="sayuri-security-note">Experience Learning не изменяет правила безопасности и не даёт модели новых разрешений. Опыт влияет только на оценку качества стратегий и калибровку Memory Intelligence.</p>
           </article>
 
-          <article class="sayuri-account-card sayuri-wide-card sayuri-avatar-card">
+          <article class="sayuri-account-card sayuri-wide-card sayuri-avatar-card" data-sayuri-panel="appearance">
             <div class="section-head">
               <div><p class="eyebrow">ОБРАЗ SAYURI</p><h3>Аватары разных размеров</h3></div>
               <button class="secondary-button" id="sayuri-avatar-refresh" type="button">Обновить</button>
@@ -754,17 +781,26 @@
 
   <aside class="sayuri-chat-window hidden" id="sayuri-chat-window" role="dialog" aria-label="Чат Sayuri">
     <header class="sayuri-chat-head" id="sayuri-chat-drag">
-      <img src="/assets/sayuri-avatar.svg" alt="">
-      <div><strong>Sayuri Tsukishiro</strong><small id="sayuri-chat-context">Рядом с вами</small></div>
-      <button class="icon-button" id="sayuri-chat-clear" type="button" title="Очистить чат">↺</button>
-      <button class="icon-button" id="sayuri-chat-close" type="button" aria-label="Закрыть">×</button>
+      <div class="sayuri-chat-identity">
+        <img src="/assets/sayuri-avatar.svg" alt="">
+        <div><strong>Sayuri</strong><small id="sayuri-chat-context">Рядом с вами</small></div>
+      </div>
+      <div class="sayuri-chat-head-actions">
+        <button class="icon-button" id="sayuri-chat-reset-size" type="button" title="Вернуть размер окна" aria-label="Вернуть размер окна">□</button>
+        <button class="icon-button" id="sayuri-chat-clear" type="button" title="Очистить чат" aria-label="Очистить чат">↺</button>
+        <button class="icon-button" id="sayuri-chat-close" type="button" aria-label="Закрыть">×</button>
+      </div>
     </header>
     <div class="sayuri-chat-messages" id="sayuri-chat-messages" aria-live="polite"></div>
-    <div class="sayuri-chat-status" id="sayuri-chat-status">DeepSeek-V4-Flash · Cloud.ru</div>
-    <form class="sayuri-chat-form" id="sayuri-chat-form">
-      <textarea id="sayuri-chat-input" rows="2" maxlength="12000" placeholder="Напишите Sayuri…"></textarea>
-      <button class="primary-button" id="sayuri-chat-send" type="submit">Отправить</button>
-    </form>
+    <div class="sayuri-chat-footer">
+      <div class="sayuri-chat-status" id="sayuri-chat-status">DeepSeek-V4-Flash · Cloud.ru</div>
+      <form class="sayuri-chat-form" id="sayuri-chat-form">
+        <textarea id="sayuri-chat-input" rows="1" maxlength="12000" placeholder="Сообщение Sayuri…" aria-label="Сообщение Sayuri"></textarea>
+        <button class="sayuri-chat-send-button" id="sayuri-chat-send" type="submit" aria-label="Отправить">↑</button>
+      </form>
+      <small class="sayuri-chat-hint">Enter — отправить · Shift+Enter — новая строка</small>
+    </div>
+    <div class="sayuri-chat-resize-handle" id="sayuri-chat-resize" role="separator" aria-label="Изменить размер чата"></div>
   </aside>
 
   <script src="/app.js" defer></script>

@@ -287,3 +287,18 @@
 - Web reasoning summary не показывает технические receipt rows; при наличии evidence показывает только `автопроверка N`.
 - Меню проекта не изменяется.
 - Приёмка: один атомарный commit от подтверждённого `main 0.1.48`, полный workflow Versions, merge через PR и зелёный финальный main CI.
+
+
+## UI-004 — Sayuri Presence UX Cleanup
+
+- Статус: `implemented in target 0.1.50`; релиз считается проверенным только после зелёного PR/main CI.
+- Версия проекта: `0.1.50`.
+- Удалить только кнопку Личного кабинета из левого sidebar; остальные пункты меню не менять.
+- Сохранить вход в кабинет через правый клик по плавающему аватару.
+- Переписать avatar/chat drag на Pointer Events + requestAnimationFrame + translate3d с click-vs-drag threshold.
+- Не писать позицию в localStorage на каждом движении; сохранять после pointerup.
+- Добавить resizable floating chat с локальным сохранением размера и кнопкой сброса.
+- Перестроить chat surface в ChatGPT-подобную компоновку без изменения backend chat pipeline.
+- Разделить Личный кабинет на смысловые вкладки без удаления существующей функциональности.
+- Добавить regression contract для avatar-only entry, tabs, smooth drag и resize.
+- Приёмка: один атомарный commit от `main 0.1.49`, полный workflow Versions, PR merge и зелёный финальный main CI.

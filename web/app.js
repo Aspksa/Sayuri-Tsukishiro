@@ -38,6 +38,10 @@ const sayuriState = {
   suppressOrbClick: false,
   orbDrag: null,
   chatDrag: null,
+  chatResize: null,
+  motionFrame: 0,
+  activeCabinetTab: localStorage.getItem('sayuri-account-tab') || 'profile',
+  activeMemoryTab: localStorage.getItem('sayuri-memory-tab') || 'overview',
   visible: localStorage.getItem('sayuri-visible') !== '0',
   rememberPosition: localStorage.getItem('sayuri-remember-position') !== '0',
   rememberHistory: localStorage.getItem('sayuri-remember-history') !== '0'
@@ -94,8 +98,6 @@ function showView(name) {
   document.querySelectorAll('.nav-item').forEach((button) => {
     button.classList.toggle('active', button.dataset.view === name);
   });
-  byId('sayuri-account-nav')?.classList.toggle('active', name === 'sayuri');
-
   const titles = {
     home: ['СИСТЕМА', 'Главная'],
     disk: ['ФАЙЛЫ И ДОКУМЕНТЫ', 'Диск Sayuri'],
@@ -3748,10 +3750,15 @@ function createSayuriReasoningSummary(metadata) {
 }
 
 function openSayuriChat() {
-  byId('sayuri-chat-window').classList.remove('hidden');
+  const chat = byId('sayuri-chat-window');
+  chat.classList.remove('hidden');
+  keepFloatingInViewport(chat);
   updateSayuriContextUI();
   renderSayuriMessages();
-  window.setTimeout(() => byId('sayuri-chat-input').focus(), 0);
+  window.setTimeout(() => {
+    autoSizeSayuriComposer();
+    byId('sayuri-chat-input').focus();
+  }, 0);
 }
 
 function closeSayuriChat() {
@@ -3769,6 +3776,7 @@ async function sendSayuriMessage(text) {
 
   addSayuriMessage('user', message);
   byId('sayuri-chat-input').value = '';
+  autoSizeSayuriComposer();
   byId('sayuri-chat-send').disabled = true;
   byId('sayuri-chat-status').textContent = 'Sayuri думает через DeepSeek-V4-Flash…';
 
@@ -3861,6 +3869,46 @@ function runSayuriAction(action) {
   if (prompts[action]) sendSayuriMessage(prompts[action]);
 }
 
+function setSayuriAccountTab(tab, {persist = true} = {}) {
+  const allowed = new Set(['profile', 'ai', 'behavior', 'memory', 'appearance', 'diagnostics']);
+  const next = allowed.has(tab) ? tab : 'profile';
+  sayuriState.activeCabinetTab = next;
+  document.querySelectorAll('[data-sayuri-tab]').forEach((button) => {
+    const active = button.dataset.sayuriTab === next;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-selected', active ? 'true' : 'false');
+  });
+  document.querySelectorAll('[data-sayuri-panel]').forEach((panel) => {
+    panel.hidden = panel.dataset.sayuriPanel !== next;
+  });
+  if (next === 'memory') {
+    setSayuriMemoryTab(sayuriState.activeMemoryTab, {persist: false});
+  }
+  if (persist) localStorage.setItem('sayuri-account-tab', next);
+}
+
+function setSayuriMemoryTab(tab, {persist = true} = {}) {
+  const allowed = new Set(['overview', 'architecture', 'quality', 'experience']);
+  const next = allowed.has(tab) ? tab : 'overview';
+  sayuriState.activeMemoryTab = next;
+  document.querySelectorAll('[data-sayuri-memory-tab]').forEach((button) => {
+    const active = button.dataset.sayuriMemoryTab === next;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-selected', active ? 'true' : 'false');
+  });
+  document.querySelectorAll('[data-sayuri-memory-panel]').forEach((panel) => {
+    panel.hidden = panel.dataset.sayuriMemoryPanel !== next;
+  });
+  if (persist) localStorage.setItem('sayuri-memory-tab', next);
+}
+
+function autoSizeSayuriComposer() {
+  const input = byId('sayuri-chat-input');
+  if (!input) return;
+  input.style.height = 'auto';
+  input.style.height = `${Math.min(Math.max(input.scrollHeight, 26), 180)}px`;
+}
+
 function applySayuriPreferences() {
   const orb = byId('sayuri-orb');
   orb.classList.toggle('hidden', !sayuriState.visible);
@@ -3870,122 +3918,232 @@ function applySayuriPreferences() {
 
   const orbPosition = readLocalJson('sayuri-orb-position', null);
   if (sayuriState.rememberPosition && orbPosition) {
-    orb.style.left = `${orbPosition.left}px`;
-    orb.style.top = `${orbPosition.top}px`;
-    orb.style.right = 'auto';
-    orb.style.bottom = 'auto';
+    setFloatingPosition(orb, orbPosition.left, orbPosition.top);
   }
 
-  const chatPosition = readLocalJson('sayuri-chat-position', null);
   const chat = byId('sayuri-chat-window');
-  if (sayuriState.rememberPosition && chatPosition) {
-    chat.style.left = `${chatPosition.left}px`;
-    chat.style.top = `${chatPosition.top}px`;
-    chat.style.right = 'auto';
-    chat.style.bottom = 'auto';
+  const chatSize = readLocalJson('sayuri-chat-size', null);
+  if (chatSize) {
+    const size = clampChatSize(chatSize.width, chatSize.height);
+    chat.style.width = `${size.width}px`;
+    chat.style.height = `${size.height}px`;
   }
+  const chatPosition = readLocalJson('sayuri-chat-position', null);
+  if (sayuriState.rememberPosition && chatPosition && window.innerWidth > 640) {
+    setFloatingPosition(chat, chatPosition.left, chatPosition.top);
+  }
+  setSayuriAccountTab(sayuriState.activeCabinetTab, {persist: false});
+  setSayuriMemoryTab(sayuriState.activeMemoryTab, {persist: false});
 }
 
 function clampFloating(element, left, top) {
   const margin = 8;
+  const width = element.getBoundingClientRect().width || element.offsetWidth;
+  const height = element.getBoundingClientRect().height || element.offsetHeight;
   return {
-    left: Math.max(margin, Math.min(left, window.innerWidth - element.offsetWidth - margin)),
-    top: Math.max(margin, Math.min(top, window.innerHeight - element.offsetHeight - margin))
+    left: Math.max(margin, Math.min(left, Math.max(margin, window.innerWidth - width - margin))),
+    top: Math.max(margin, Math.min(top, Math.max(margin, window.innerHeight - height - margin)))
   };
 }
 
-function beginOrbDrag(event) {
-  if (event.button !== 0) return;
-  const orb = byId('sayuri-orb');
-  const rect = orb.getBoundingClientRect();
-  sayuriState.orbDrag = {
+function setFloatingPosition(element, left, top) {
+  const pos = clampFloating(element, Number(left) || 0, Number(top) || 0);
+  element.style.transform = '';
+  element.style.left = `${pos.left}px`;
+  element.style.top = `${pos.top}px`;
+  element.style.right = 'auto';
+  element.style.bottom = 'auto';
+  return pos;
+}
+
+function keepFloatingInViewport(element) {
+  if (!element || element.classList.contains('hidden') || window.innerWidth <= 640) return;
+  const rect = element.getBoundingClientRect();
+  setFloatingPosition(element, rect.left, rect.top);
+}
+
+function scheduleMotion(callback) {
+  if (sayuriState.motionFrame) cancelAnimationFrame(sayuriState.motionFrame);
+  sayuriState.motionFrame = requestAnimationFrame(() => {
+    sayuriState.motionFrame = 0;
+    callback();
+  });
+}
+
+function startSmoothDrag(event, element, type) {
+  if (event.button !== 0) return null;
+  event.preventDefault();
+  const rect = element.getBoundingClientRect();
+  const drag = {
     pointerId: event.pointerId,
     startX: event.clientX,
     startY: event.clientY,
     left: rect.left,
     top: rect.top,
+    dx: 0,
+    dy: 0,
     moved: false
   };
-  orb.setPointerCapture?.(event.pointerId);
+  element.classList.add('is-dragging');
+  if (type === 'orb') element.setPointerCapture?.(event.pointerId);
+  if (type === 'orb') sayuriState.orbDrag = drag;
+  else sayuriState.chatDrag = drag;
+  return drag;
+}
+
+function updateSmoothDrag(event, element, drag) {
+  if (!drag || drag.pointerId !== event.pointerId) return;
+  drag.dx = event.clientX - drag.startX;
+  drag.dy = event.clientY - drag.startY;
+  if (Math.hypot(drag.dx, drag.dy) > 5) drag.moved = true;
+  if (!drag.moved) return;
+  scheduleMotion(() => {
+    const target = clampFloating(element, drag.left + drag.dx, drag.top + drag.dy);
+    const tx = target.left - drag.left;
+    const ty = target.top - drag.top;
+    element.style.transform = `translate3d(${tx}px, ${ty}px, 0)`;
+  });
+}
+
+function finishSmoothDrag(event, element, drag, storageKey) {
+  if (!drag || drag.pointerId !== event.pointerId) return false;
+  if (sayuriState.motionFrame) {
+    cancelAnimationFrame(sayuriState.motionFrame);
+    sayuriState.motionFrame = 0;
+  }
+  const rect = element.getBoundingClientRect();
+  element.classList.remove('is-dragging');
+  element.style.transform = '';
+  const pos = setFloatingPosition(element, rect.left, rect.top);
+  if (drag.moved && sayuriState.rememberPosition) {
+    localStorage.setItem(storageKey, JSON.stringify(pos));
+  }
+  return drag.moved;
+}
+
+function beginOrbDrag(event) {
+  startSmoothDrag(event, byId('sayuri-orb'), 'orb');
 }
 
 function moveOrbDrag(event) {
-  const drag = sayuriState.orbDrag;
-  if (!drag || drag.pointerId !== event.pointerId) return;
-  const dx = event.clientX - drag.startX;
-  const dy = event.clientY - drag.startY;
-  if (Math.abs(dx) + Math.abs(dy) > 5) drag.moved = true;
-  if (!drag.moved) return;
-  const orb = byId('sayuri-orb');
-  const pos = clampFloating(orb, drag.left + dx, drag.top + dy);
-  orb.style.left = `${pos.left}px`;
-  orb.style.top = `${pos.top}px`;
-  orb.style.right = 'auto';
-  orb.style.bottom = 'auto';
+  updateSmoothDrag(event, byId('sayuri-orb'), sayuriState.orbDrag);
 }
 
 function endOrbDrag(event) {
   const drag = sayuriState.orbDrag;
-  if (!drag || drag.pointerId !== event.pointerId) return;
-  sayuriState.suppressOrbClick = drag.moved;
+  if (!drag) return;
+  sayuriState.suppressOrbClick = finishSmoothDrag(
+    event,
+    byId('sayuri-orb'),
+    drag,
+    'sayuri-orb-position'
+  );
   sayuriState.orbDrag = null;
-  if (drag.moved && sayuriState.rememberPosition) {
-    const rect = byId('sayuri-orb').getBoundingClientRect();
-    localStorage.setItem('sayuri-orb-position', JSON.stringify({left: rect.left, top: rect.top}));
-  }
 }
 
 function beginChatDrag(event) {
   if (event.button !== 0 || event.target.closest('button')) return;
-  const chat = byId('sayuri-chat-window');
-  const rect = chat.getBoundingClientRect();
-  sayuriState.chatDrag = {
-    pointerId: event.pointerId,
-    startX: event.clientX,
-    startY: event.clientY,
-    left: rect.left,
-    top: rect.top
-  };
-  byId('sayuri-chat-drag').setPointerCapture?.(event.pointerId);
+  const drag = startSmoothDrag(event, byId('sayuri-chat-window'), 'chat');
+  if (drag) byId('sayuri-chat-drag').setPointerCapture?.(event.pointerId);
 }
 
 function moveChatDrag(event) {
-  const drag = sayuriState.chatDrag;
-  if (!drag || drag.pointerId !== event.pointerId) return;
-  const chat = byId('sayuri-chat-window');
-  const pos = clampFloating(
-    chat,
-    drag.left + event.clientX - drag.startX,
-    drag.top + event.clientY - drag.startY
-  );
-  chat.style.left = `${pos.left}px`;
-  chat.style.top = `${pos.top}px`;
-  chat.style.right = 'auto';
-  chat.style.bottom = 'auto';
+  updateSmoothDrag(event, byId('sayuri-chat-window'), sayuriState.chatDrag);
 }
 
 function endChatDrag(event) {
   const drag = sayuriState.chatDrag;
-  if (!drag || drag.pointerId !== event.pointerId) return;
+  if (!drag) return;
+  finishSmoothDrag(event, byId('sayuri-chat-window'), drag, 'sayuri-chat-position');
   sayuriState.chatDrag = null;
+}
+
+function clampChatSize(width, height) {
+  const mobile = window.innerWidth <= 640;
+  if (mobile) {
+    return {
+      width: Math.max(280, window.innerWidth - 16),
+      height: Math.max(420, Math.min(window.innerHeight - 16, Number(height) || 620))
+    };
+  }
+  return {
+    width: Math.max(420, Math.min(Number(width) || 560, window.innerWidth - 24)),
+    height: Math.max(480, Math.min(Number(height) || 720, window.innerHeight - 24))
+  };
+}
+
+function beginChatResize(event) {
+  if (event.button !== 0 || window.innerWidth <= 640) return;
+  event.preventDefault();
+  const chat = byId('sayuri-chat-window');
+  const rect = chat.getBoundingClientRect();
+  sayuriState.chatResize = {
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    width: rect.width,
+    height: rect.height
+  };
+  chat.classList.add('is-resizing');
+  byId('sayuri-chat-resize').setPointerCapture?.(event.pointerId);
+}
+
+function moveChatResize(event) {
+  const resize = sayuriState.chatResize;
+  if (!resize || resize.pointerId !== event.pointerId) return;
+  const width = resize.width + event.clientX - resize.startX;
+  const height = resize.height + event.clientY - resize.startY;
+  scheduleMotion(() => {
+    const chat = byId('sayuri-chat-window');
+    const size = clampChatSize(width, height);
+    chat.style.width = `${size.width}px`;
+    chat.style.height = `${size.height}px`;
+    keepFloatingInViewport(chat);
+  });
+}
+
+function endChatResize(event) {
+  const resize = sayuriState.chatResize;
+  if (!resize || resize.pointerId !== event.pointerId) return;
+  if (sayuriState.motionFrame) {
+    cancelAnimationFrame(sayuriState.motionFrame);
+    sayuriState.motionFrame = 0;
+  }
+  const chat = byId('sayuri-chat-window');
+  sayuriState.chatResize = null;
+  chat.classList.remove('is-resizing');
+  const rect = chat.getBoundingClientRect();
+  const size = clampChatSize(rect.width, rect.height);
+  localStorage.setItem('sayuri-chat-size', JSON.stringify(size));
   if (sayuriState.rememberPosition) {
-    const rect = byId('sayuri-chat-window').getBoundingClientRect();
     localStorage.setItem('sayuri-chat-position', JSON.stringify({left: rect.left, top: rect.top}));
   }
+}
+
+function resetSayuriChatSize() {
+  localStorage.removeItem('sayuri-chat-size');
+  const chat = byId('sayuri-chat-window');
+  chat.style.width = '';
+  chat.style.height = '';
+  keepFloatingInViewport(chat);
 }
 
 function resetSayuriLayout() {
   localStorage.removeItem('sayuri-orb-position');
   localStorage.removeItem('sayuri-chat-position');
+  localStorage.removeItem('sayuri-chat-size');
   const orb = byId('sayuri-orb');
   const chat = byId('sayuri-chat-window');
   for (const element of [orb, chat]) {
+    element.style.transform = '';
     element.style.left = '';
     element.style.top = '';
     element.style.right = '';
     element.style.bottom = '';
   }
-  setSayuriProviderMessage('Положение Sayuri сброшено.');
+  chat.style.width = '';
+  chat.style.height = '';
+  setSayuriProviderMessage('Положение и размер Sayuri сброшены.');
 }
 
 function initializeSayuri() {
@@ -4012,7 +4170,13 @@ function initializeSayuri() {
   byId('sayuri-chat-drag').addEventListener('pointerup', endChatDrag);
   byId('sayuri-chat-drag').addEventListener('pointercancel', endChatDrag);
 
+  byId('sayuri-chat-resize').addEventListener('pointerdown', beginChatResize);
+  byId('sayuri-chat-resize').addEventListener('pointermove', moveChatResize);
+  byId('sayuri-chat-resize').addEventListener('pointerup', endChatResize);
+  byId('sayuri-chat-resize').addEventListener('pointercancel', endChatResize);
+
   byId('sayuri-chat-close').addEventListener('click', closeSayuriChat);
+  byId('sayuri-chat-reset-size').addEventListener('click', resetSayuriChatSize);
   byId('sayuri-chat-clear').addEventListener('click', () => {
     sayuriState.messages = [];
     persistSayuriHistory();
@@ -4022,6 +4186,7 @@ function initializeSayuri() {
     event.preventDefault();
     sendSayuriMessage(byId('sayuri-chat-input').value);
   });
+  byId('sayuri-chat-input').addEventListener('input', autoSizeSayuriComposer);
   byId('sayuri-chat-input').addEventListener('keydown', (event) => {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
@@ -4029,7 +4194,15 @@ function initializeSayuri() {
     }
   });
 
-  byId('sayuri-account-nav').addEventListener('click', () => showView('sayuri'));
+  document.querySelectorAll('[data-sayuri-tab]').forEach((button) => {
+    button.addEventListener('click', () => setSayuriAccountTab(button.dataset.sayuriTab));
+  });
+  document.querySelectorAll('[data-sayuri-tab-jump]').forEach((button) => {
+    button.addEventListener('click', () => setSayuriAccountTab(button.dataset.sayuriTabJump));
+  });
+  document.querySelectorAll('[data-sayuri-memory-tab]').forEach((button) => {
+    button.addEventListener('click', () => setSayuriMemoryTab(button.dataset.sayuriMemoryTab));
+  });
   byId('sayuri-open-chat-account').addEventListener('click', openSayuriChat);
   byId('sayuri-save-provider').addEventListener('click', saveSayuriProvider);
   byId('sayuri-test-provider').addEventListener('click', testSayuriProvider);
@@ -4224,6 +4397,8 @@ document.addEventListener('click', (event) => {
 window.addEventListener('resize', () => {
   closeContextMenu();
   closeSayuriContextMenu();
+  keepFloatingInViewport(byId('sayuri-orb'));
+  keepFloatingInViewport(byId('sayuri-chat-window'));
   updateSayuriContextUI();
 });
 window.addEventListener('scroll', closeContextMenu, true);
