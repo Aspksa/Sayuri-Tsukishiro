@@ -143,8 +143,8 @@ class ReasoningEngineTests(unittest.TestCase):
             self.assertEqual(result["reasoning"]["model_calls"], 3)
             automation = result["reasoning"]["automation"]
             self.assertEqual(automation["status"], "completed")
-            self.assertEqual(automation["read_only_checks"], 2)
-            self.assertEqual(automation["evidence_receipts"], 2)
+            self.assertEqual(automation["read_only_checks"], 1)
+            self.assertEqual(automation["evidence_receipts"], 1)
             self.assertEqual(automation["blocked_mutations"], 0)
             self.assertNotIn("tool_execution", result["reasoning"])
             self.assertTrue(

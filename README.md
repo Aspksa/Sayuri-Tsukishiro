@@ -11,9 +11,9 @@
 На Windows откройте `Sayuri Tsukishiro.bat`.
 
 
-## Portfolio Scale & Integrity — 0.2.2
+## Portfolio Scale & Integrity — 0.2.3
 
-`0.2.2` не добавляет ещё один тип памяти: он масштабирует существующий Cognitive Project Brain под большое число модулей и задач.
+`0.2.3` не добавляет ещё один тип памяти: он масштабирует существующий Cognitive Project Brain под большое число модулей и задач.
 
 - один scheduler cycle читает portfolio state пакетно;
 - confirmed task graph можно проверить через отдельный integrity scan;

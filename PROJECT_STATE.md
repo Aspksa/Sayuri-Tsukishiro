@@ -6,13 +6,13 @@
 - Репозиторий: https://github.com/Aspksa/Sayuri-Tsukishiro
 - Проверенная исходная ревизия: `bf9ffc499fbfa5b472c526f79f0e18166d6c7ce5` — опубликованный `main 0.2.1`, Versions #37412163229 success.
 - Рабочая ветка этапа: `portfolio-scale-v0202`.
-- Текущий целевой результат: **0.2.2 — Portfolio Scale & Integrity**.
+- Текущий целевой результат: **0.2.3 — Portfolio Scale & Integrity**.
 - Задача: **AI-013**.
 
 ## Версии результата
 
-- Project: `0.2.2`.
-- App/Core: `0.1.51`.
+- Project: `0.2.3`.
+- App/Core: `0.1.52`.
 - Agent Core: `0.14.2`.
 - Cognitive Project Brain: `1.2`.
 - Reasoning Planner: `1.0` — без изменений.
@@ -63,6 +63,12 @@
 8. Sensitive/local metadata и внутренние causal/replan identifiers не отправляются в Cloud.
 9. Chain-of-thought не сохраняется.
 
+## Последняя неуспешная проверка
+
+- Branch run `37413209059`, candidate `0.2.2`: version tooling прошёл, Python suite остановился на `test_complex_chat_runs_planner_answer_verifier_and_uses_revision` — ожидалось `read_only_checks=2`, фактически `1`.
+- Причина: тест всё ещё учитывал старый generic `cognition.next` trigger от слова «модуль». В новом policy этот лишний вызов намеренно удалён.
+- Решение в `0.2.3`: обновить только regression expectation на `1` read-only/evidence receipt; runtime policy не откатывать.
+
 ## Приёмка
 
 Релиз считается принятым только после:
@@ -80,6 +86,6 @@
 
 Локальная загрузка непривязанной GitHub archive ревизии была заблокирована средой, поэтому локальный suite не заявляется как выполненный. Источником исполняемой проверки является GitHub Actions после атомарного branch commit.
 
-## Следующий этап после 0.2.2
+## Следующий этап после 0.2.3
 
 Не наращивать абстрактный мозг дальше без реального workflow. Подключить первый крупный прикладной модуль к canonical contract и измерять scheduler accuracy, graph blockers, criteria quality, uncertainty handling и strategy transfer на реальной работе.

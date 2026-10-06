@@ -114,7 +114,7 @@
 - Keep cognition persistence in local SQLite unless a future explicit migration decision changes this.
 
 
-## Portfolio scale contract (0.2.2+)
+## Portfolio scale contract (0.2.3+)
 
 - Для scheduler/self-evaluation сначала используй общий snapshot; не добавляй per-task N+1 queries без измеримой причины.
 - `graph_integrity()` является диагностикой, а не repair operation. Invalid persisted state не исправлять молча.

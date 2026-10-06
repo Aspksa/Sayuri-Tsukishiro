@@ -1820,7 +1820,7 @@ Explicit local mutations:
 - runtime/API contract.
 
 
-## Sayuri 0.2.2 — Portfolio Scale & Integrity
+## Sayuri 0.2.3 — Portfolio Scale & Integrity
 
 ### Snapshot scheduler
 
@@ -1863,3 +1863,7 @@ Cloud output по-прежнему ограничен top-8 candidates.
 ### Evidence Tool Planner 0.4.1
 
 `cognition.next` автоматически добавляется только для специфических признаков scheduler/dependency/blocker/criteria/replan/uncertainty/priority intent. Слова «проект» или «модуль» без такого intent не запускают tool call.
+
+### Branch acceptance correction
+
+Первый candidate `0.2.2` корректно сократил generic cognition auto-trigger, но существующий reasoning regression всё ещё ожидал два read-only receipt. В `0.2.3` test contract синхронизирован с policy: сложный запрос о проектировании модуля без dependency/scheduler intent использует только явный `memory.stats` check; `cognition.next` не добавляется автоматически.

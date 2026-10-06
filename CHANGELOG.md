@@ -2,7 +2,7 @@
 
 ## Невыпущенные изменения
 
-### 0.2.2 — 2026-10-06 — Portfolio Scale & Integrity
+### 0.2.3 — 2026-10-06 — Portfolio Scale & Integrity
 
 - Cognitive Project Brain обновлён до `1.2`: scheduler и self-evaluation используют пакетный portfolio snapshot вместо повторных per-task SQLite/Memory запросов.
 - Snapshot за один цикл собирает task state, scopes, project/module registry, confirmed dependencies, open uncertainty и applied checkpoint counters.
@@ -16,7 +16,8 @@
 - Явный local `/api/sayuri/cognition` diagnostics включает `graph_integrity`; лёгкий `cognition.status` остаётся без тяжёлого integrity scan.
 - Новых mutation tools, автономного execution loop и второй LLM не добавлено.
 - Добавлены regressions на snapshot scheduler, graph integrity, metadata preservation, evidence-first uncertainty, Cloud ID privacy и specific cognition auto-trigger.
-- Project: `0.2.2`; App/Core: `0.1.51`; Agent Core: `0.14.2`; Cognitive Brain: `1.2`; Evidence Tool Planner: `0.4.1`.
+- Branch acceptance: после первого `0.2.2` candidate устаревший reasoning regression всё ещё ожидал лишний generic `cognition.next`; тест-контракт исправлен на фактический policy `1` read-only evidence check.
+- Project: `0.2.3`; App/Core: `0.1.52`; Agent Core: `0.14.2`; Cognitive Brain: `1.2`; Evidence Tool Planner: `0.4.1`.
 
 ### 0.2.1 — 2026-10-06 — Cognitive Brain Hardening
 

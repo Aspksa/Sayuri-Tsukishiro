@@ -523,7 +523,7 @@
 
 ## AI-013 — Portfolio Scale & Integrity
 
-- Статус: `implemented in target 0.2.2`; приёмка только после branch/PR/main CI.
+- Статус: `implemented in target 0.2.3`; приёмка только после branch/PR/main CI.
 - База: `main 0.2.1`, commit `bf9ffc499fbfa5b472c526f79f0e18166d6c7ce5`, Versions #37412163229 success.
 - Цель: масштабировать уже существующий Cognitive Brain, не добавляя новый cognitive layer.
 - Portfolio snapshot:
@@ -553,5 +553,6 @@
   - LLM cognition только read-only;
   - explicit local cognition mutation API из 0.2.1 сохраняется, но не входит в LLM tool catalog;
   - real actions по-прежнему Action Broker confirmation-gated.
-- Версии: Project `0.2.2`, App `0.1.51`, Agent `0.14.2`, Cognitive Brain `1.2`, Tool Planner `0.4.1`.
+- Версии: Project `0.2.3`, App `0.1.52`, Agent `0.14.2`, Cognitive Brain `1.2`, Tool Planner `0.4.1`.
+- Первый branch candidate `0.2.2` остановлен core test gate: старый reasoning regression ожидал 2 read-only checks, хотя новый narrow-trigger policy корректно дал 1. Runtime не откатывать; исправить тест-контракт в `0.2.3`.
 - Приёмка: полный Python suite, JS syntax, preflight, version each-commit, Windows launcher, PR CI и final green main CI.
