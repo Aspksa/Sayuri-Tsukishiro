@@ -349,3 +349,20 @@
 - Меню проекта не менять.
 - Добавить regression tests tool policy, cached evidence, fact-id focus, privacy projection, citation firewall и Web/API contracts.
 - Приёмка: один атомарный commit от подтверждённого `main 0.1.52`, branch CI, PR CI, merge и зелёный финальный main workflow.
+
+
+## UI-007 — Visual Refinement & Workspace UX
+
+- Статус: `implemented in target 0.1.54`; релиз считается проверенным только после зелёного branch/PR/main CI.
+- База: `main 0.1.53`, commit `d232df512560155b31c8b6cf642229196efc38af`, Versions #499 success.
+- Не менять структуру левого меню.
+- Сделать maximized chat полноценным workspace-состоянием существующего окна.
+- Добавить мягкие avatar magnet zones после drag без forced snap из центра.
+- Добавить реальные presence-state для аватара.
+- Добавить локальный compact-density mode без уменьшения основного текста.
+- Унифицировать Disk/viewer/loading/empty/error через общий UI-state и aria-busy.
+- Улучшить пустой chat state и переход chat → Spatial Evidence viewer.
+- Добавить локальные recent commands в Ctrl/⌘+K без новой панели.
+- Сохранить Memory, Agent, Action Broker и Spatial Evidence backend без изменения permissions.
+- Добавить Web contract regressions на новые UX-инварианты и sidebar regression.
+- Приёмка: один атомарный commit от `main 0.1.53`, branch CI, PR CI, merge и зелёный финальный main workflow.

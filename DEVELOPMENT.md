@@ -1474,3 +1474,96 @@ Endpoint не принимает координаты. `DiskService.render_evide
 - клик открывает существующий Disk viewer и заменяет preview на Evidence Focus;
 - «Обычный просмотр» возвращает штатный preview;
 - menu/navigation structure не изменяется.
+
+
+## Visual Refinement & Workspace UX 0.30
+
+Релиз проекта: `0.1.54`.
+
+### Версии
+
+- Project: `0.1.54`.
+- App/Core contract: `0.1.46`.
+- Web UI: `0.30.0`.
+- Agent Core: без изменений.
+- Disk: без изменений.
+
+### AI workspace
+
+`toggleSayuriChatMaximize()` по-прежнему работает на единственном `#sayuri-chat-window`, но UI 0.30 добавляет класс `body.sayuri-workspace-open`.
+
+Workspace mode:
+
+- скрывает floating avatar от взаимодействия;
+- показывает `#sayuri-workspace-badge`;
+- сохраняет тот же message history/composer/context;
+- ограничивает читаемую ширину ответов;
+- использует sticky composer;
+- Esc возвращает floating mode существующим keyboard contract.
+
+При `openSayuriSpatialEvidence()` maximized chat сначала возвращается в floating mode, затем открывается Disk viewer.
+
+### Avatar magnet
+
+После обычного smooth drag:
+
+```text
+pointerup
+→ commit compositor position
+→ calculate distance to 4 viewport edges
+→ if nearest edge <= bounded threshold
+   → snap only to that edge
+→ persist final position once
+```
+
+Threshold ограничен и не действует на mobile <=640px.
+
+### Presence state
+
+`setSayuriPresenceState()` устанавливает только визуальное состояние:
+
+- `ready`;
+- `thinking`;
+- `attention`;
+- `error`;
+- `offline`.
+
+Thinking animation существует только пока выполняется запрос и отключается через `prefers-reduced-motion`.
+
+### Compact density
+
+Local storage: `sayuri-compact-ui`.
+
+CSS class: `body.ui-compact`.
+
+Меняются padding/gap/min-height карточек и рабочих поверхностей; основной font-size ответов и long-form content не уменьшается.
+
+### Unified UI states
+
+`createUiState(kind, title, detail)` строит DOM через `createElement/textContent`.
+
+Используется для:
+
+- initial Disk loading;
+- Disk empty/error;
+- file preview loading/error;
+- empty table preview;
+- unsupported preview;
+- empty command palette.
+
+Disk использует `aria-busy` через `setDiskLoading()`.
+
+### Command palette recent
+
+До трёх последних command IDs хранятся в `sayuri-command-recent`. При пустом поиске они выводятся первыми. Повреждённое/не-массивное localStorage состояние не ломает palette.
+
+### Regression contracts
+
+`app/tests/test_web_contract.py` проверяет:
+
+- sidebar не изменён и не содержит `sayuri-account-nav`;
+- density/workspace DOM;
+- magnet/presence/state/recent JS;
+- UI 0.30 CSS;
+- viewer/disk workspace surfaces;
+- сохранение Spatial Evidence перехода.
