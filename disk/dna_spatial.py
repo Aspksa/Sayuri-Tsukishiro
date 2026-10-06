@@ -14,7 +14,7 @@ import tempfile
 from typing import Any, Callable
 
 
-SPATIAL_ENGINE_VERSION = "0.7.0"
+SPATIAL_ENGINE_VERSION = "0.8.0"
 MAX_PAGES = 120
 MAX_OCR_PAGES = 24
 MAX_NATIVE_CHARS_PER_PAGE = 120_000
@@ -651,6 +651,132 @@ class SpatialDNAEngine:
         if callable(close):
             close()
         return image
+
+    def render_evidence_focus(
+        self,
+        path: Path,
+        *,
+        content_type: str,
+        suffix: str,
+        page_number: int,
+        bbox: dict[str, Any],
+        max_width: int = 1600,
+    ) -> dict[str, Any]:
+        """Render a document page/image and highlight an exact normalized bbox.
+
+        Coordinates are accepted only from a stored SpatialDNA locator. Callers must
+        resolve the locator by fact_id before invoking this method.
+        """
+        normalized = bbox.get("normalized") if isinstance(bbox, dict) else None
+        if not isinstance(normalized, list) or len(normalized) != 4:
+            raise ValueError("Для evidence-focus нужен нормализованный bbox.")
+        try:
+            x0, y0, x1, y1 = [float(value) for value in normalized]
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Некорректные координаты evidence bbox.") from exc
+        coords = [max(0.0, min(1.0, value)) for value in (x0, y0, x1, y1)]
+        x0, y0, x1, y1 = coords
+        if x1 <= x0 or y1 <= y0:
+            raise ValueError("Evidence bbox имеет нулевой размер.")
+        safe_page = max(1, int(page_number or 1))
+        safe_width = min(max(int(max_width), 640), 2200)
+        suffix = suffix.casefold()
+
+        image = None
+        document = None
+        page = None
+        bitmap = None
+        try:
+            if content_type == "application/pdf" or suffix == ".pdf":
+                if self._pdfium is None:
+                    raise RuntimeError("PDFium недоступен для evidence-focus.")
+                document = self._pdfium.PdfDocument(str(path))
+                if safe_page > len(document):
+                    raise ValueError("Страница evidence отсутствует в документе.")
+                page = document[safe_page - 1]
+                page_width, _page_height = [float(value) for value in page.get_size()]
+                scale = min(2.4, max(1.0, safe_width / max(page_width, 1.0)))
+                bitmap = page.render(scale=scale, rotation=0)
+                image = bitmap.to_pil()
+            elif content_type.startswith("image/") or suffix in {
+                ".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".webp",
+            }:
+                if self._image is None:
+                    raise RuntimeError("Pillow недоступен для evidence-focus.")
+                image = self._image.open(path)
+                safe_page = 1
+            else:
+                raise ValueError("Формат не поддерживает визуальную spatial-подсветку.")
+
+            convert = getattr(image, "convert", None)
+            if callable(convert):
+                converted = convert("RGB")
+                if converted is not image:
+                    close_original = getattr(image, "close", None)
+                    if callable(close_original):
+                        close_original()
+                    image = converted
+
+            width, height = [int(value) for value in image.size]
+            if width > safe_width:
+                target_height = max(1, round(height * safe_width / width))
+                resize = getattr(image, "resize", None)
+                if callable(resize):
+                    try:
+                        from PIL import Image as PILImage  # type: ignore
+                        resampling = getattr(getattr(PILImage, "Resampling", PILImage), "LANCZOS", 1)
+                    except Exception:
+                        resampling = 1
+                    resized = resize((safe_width, target_height), resampling)
+                    if resized is not image:
+                        close_original = getattr(image, "close", None)
+                        if callable(close_original):
+                            close_original()
+                        image = resized
+                    width, height = safe_width, target_height
+
+            try:
+                from PIL import ImageDraw  # type: ignore
+            except Exception as exc:  # pragma: no cover - runtime dependency.
+                raise RuntimeError("Pillow ImageDraw недоступен для evidence-focus.") from exc
+
+            left = max(0, min(width - 1, round(x0 * width)))
+            top = max(0, min(height - 1, round(y0 * height)))
+            right = max(left + 1, min(width, round(x1 * width)))
+            bottom = max(top + 1, min(height, round(y1 * height)))
+            pad = max(3, round(min(width, height) * 0.006))
+            box = (
+                max(0, left - pad),
+                max(0, top - pad),
+                min(width - 1, right + pad),
+                min(height - 1, bottom + pad),
+            )
+
+            draw = ImageDraw.Draw(image, "RGBA")
+            outline_width = max(3, round(min(width, height) * 0.004))
+            draw.rectangle(box, fill=(255, 220, 70, 72), outline=(218, 149, 0, 255), width=outline_width)
+
+            from io import BytesIO
+            buffer = BytesIO()
+            image.save(buffer, format="PNG", optimize=True)
+            return {
+                "content_type": "image/png",
+                "body": buffer.getvalue(),
+                "page": safe_page,
+                "width": width,
+                "height": height,
+                "bbox": {
+                    "normalized": [round(value, 6) for value in (x0, y0, x1, y1)],
+                },
+            }
+        finally:
+            for resource in (image, bitmap, page, document):
+                close = getattr(resource, "close", None)
+                if callable(close):
+                    try:
+                        close()
+                    except Exception:
+                        pass
 
     def _extract_pdf(
         self,

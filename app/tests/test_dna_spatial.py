@@ -235,7 +235,7 @@ class SpatialDNAServiceTests(unittest.TestCase):
             )
 
             dna = service.document_dna(item["id"])
-            self.assertEqual(dna["spatial"]["engine_version"], "0.7.0")
+            self.assertEqual(dna["spatial"]["engine_version"], "0.8.0")
             self.assertEqual(dna["spatial"]["ocr"]["used_pages"], 1)
             self.assertEqual(dna["classification"]["document_type"], "Служебная записка")
 
@@ -251,6 +251,45 @@ class SpatialDNAServiceTests(unittest.TestCase):
                 "exact_from_document_engine",
             )
             self.assertGreater(dna["spatial_evidence"]["coverage_percent"], 0)
+
+            evidence = service.search_cached_evidence(item["id"], "сумма", limit=3)
+            self.assertTrue(evidence["available"])
+            self.assertEqual(evidence["items"][0]["citation_id"], "D1")
+            self.assertEqual(evidence["items"][0]["fact_id"], amount["id"])
+            self.assertEqual(
+                evidence["items"][0]["locator"]["coordinate_status"],
+                "exact_from_document_engine",
+            )
+
+            captured = {}
+            def fake_focus(path, **kwargs):
+                captured["path"] = path
+                captured.update(kwargs)
+                return {
+                    "content_type": "image/png",
+                    "body": b"png-evidence",
+                    "page": kwargs["page_number"],
+                    "width": 900,
+                    "height": 1200,
+                    "bbox": {"normalized": kwargs["bbox"]["normalized"]},
+                }
+
+            service.spatial_dna.render_evidence_focus = fake_focus
+            focused = service.render_evidence_focus(item["id"], amount["id"])
+            self.assertEqual(focused["body"], b"png-evidence")
+            self.assertEqual(focused["page"], 1)
+            self.assertEqual(focused["fact_id"], amount["id"])
+            self.assertEqual(captured["page_number"], 1)
+            self.assertEqual(
+                captured["bbox"]["normalized"],
+                amount["source"]["locator"]["bbox"]["normalized"],
+            )
+            with self.assertRaises(TypeError):
+                service.render_evidence_focus(
+                    item["id"],
+                    amount["id"],
+                    bbox={"normalized": [0, 0, 1, 1]},
+                )
 
             cached_spatial = service.spatial_document(item["id"])
             self.assertTrue(cached_spatial["cached"])

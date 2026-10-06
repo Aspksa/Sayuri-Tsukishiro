@@ -6738,3 +6738,198 @@ button.sayuri-evidence-item:hover {
     grid-column: 2;
   }
 }
+
+
+/* ==========================================================================
+   SAYURI UI 0.29 — Spatial Evidence Citations
+   ========================================================================== */
+
+.sayuri-inline-citation {
+  display: inline-grid;
+  place-items: center;
+  min-width: 24px;
+  height: 20px;
+  margin: 0 2px;
+  padding: 0 5px;
+  border: 1px solid #d7dfeb;
+  border-radius: 999px;
+  background: #f4f7fb;
+  color: #365f94;
+  font: 700 9px/1 var(--font-ui);
+  vertical-align: .14em;
+  cursor: pointer;
+  box-shadow: none;
+}
+.sayuri-inline-citation:hover {
+  border-color: #bdcce0;
+  background: #eaf1fa;
+  color: #244e85;
+}
+.sayuri-inline-citation:focus-visible {
+  outline: 2px solid rgba(54, 95, 148, .28);
+  outline-offset: 2px;
+}
+
+.sayuri-evidence-item.spatial_document {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  border: 1px solid #e4e9f0;
+  background: #fff;
+}
+.sayuri-evidence-item.spatial_document > span {
+  background: #eaf2fb;
+  color: #315f98;
+}
+.sayuri-evidence-item.spatial_document > strong {
+  padding-top: 1px;
+}
+.sayuri-evidence-item.spatial_document > small {
+  white-space: nowrap;
+}
+.sayuri-evidence-item.spatial_document > p {
+  grid-column: 2 / -1;
+  margin: -1px 0 1px;
+  overflow: hidden;
+  color: #667181;
+  font-size: 10px;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+button.sayuri-evidence-item.spatial_document:hover {
+  border-color: #cfdae8;
+  background: #f7faff;
+}
+
+.evidence-focus-shell {
+  width: min(100%, 1120px);
+  margin: 0 auto;
+  padding: 14px;
+}
+.evidence-focus-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 10px;
+  padding: 10px 11px;
+  border: 1px solid #e1e5eb;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, .96);
+  box-shadow: 0 5px 18px rgba(16, 24, 40, .06);
+  backdrop-filter: blur(10px);
+}
+.evidence-focus-toolbar > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.evidence-focus-toolbar strong {
+  overflow: hidden;
+  color: #252a31;
+  font-size: 12px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.evidence-focus-toolbar small {
+  color: #76808e;
+  font-size: 10px;
+}
+.evidence-focus-toolbar .secondary-button {
+  flex: 0 0 auto;
+  min-height: 34px;
+  padding: 6px 10px;
+  font-size: 10.5px;
+}
+
+.evidence-focus-image-wrap {
+  min-height: 360px;
+  display: grid;
+  place-items: center;
+  overflow: auto;
+  border: 1px solid #dfe3e9;
+  border-radius: 14px;
+  background:
+    linear-gradient(45deg, #f3f4f6 25%, transparent 25%) 0 0 / 18px 18px,
+    linear-gradient(-45deg, #f3f4f6 25%, transparent 25%) 0 9px / 18px 18px,
+    linear-gradient(45deg, transparent 75%, #f3f4f6 75%) 9px -9px / 18px 18px,
+    linear-gradient(-45deg, transparent 75%, #f3f4f6 75%) -9px 0 / 18px 18px,
+    #fafbfc;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.8);
+}
+.evidence-focus-image {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 16px auto;
+  border: 1px solid #d9dde3;
+  background: #fff;
+  box-shadow: 0 12px 34px rgba(16, 24, 40, .12);
+}
+.evidence-focus-loading,
+.evidence-focus-error {
+  padding: 30px 18px;
+  color: #747e8d;
+  font-size: 12px;
+  text-align: center;
+}
+.evidence-focus-error {
+  color: #985050;
+}
+.evidence-focus-excerpt {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border: 1px solid #e1e5ea;
+  border-left: 3px solid #d79b22;
+  border-radius: 10px;
+  background: #fffdf8;
+}
+.evidence-focus-excerpt > span {
+  display: block;
+  margin-bottom: 4px;
+  color: #92712f;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+.evidence-focus-excerpt p {
+  margin: 0;
+  color: #4f5662;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+@media (max-width: 640px) {
+  .sayuri-inline-citation {
+    min-width: 26px;
+    height: 22px;
+    font-size: 9.5px;
+  }
+  .sayuri-evidence-item.spatial_document {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .sayuri-evidence-item.spatial_document > small,
+  .sayuri-evidence-item.spatial_document > p {
+    grid-column: 2;
+    white-space: normal;
+  }
+  .evidence-focus-shell {
+    padding: 8px;
+  }
+  .evidence-focus-toolbar {
+    position: static;
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .evidence-focus-toolbar .secondary-button {
+    width: 100%;
+  }
+  .evidence-focus-image-wrap {
+    min-height: 260px;
+  }
+}

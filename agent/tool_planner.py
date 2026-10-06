@@ -47,6 +47,14 @@ READ_ONLY_TOOLS: dict[str, dict[str, Any]] = {
         "mode": "read_only",
         "args": {},
     },
+    "document.evidence_search": {
+        "label": "Доказательства текущего документа",
+        "mode": "read_only",
+        "args": {
+            "query": "string",
+            "limit": "1..6",
+        },
+    },
 }
 
 MAX_TOOL_INTENTS = 8
@@ -66,7 +74,7 @@ def _utcnow() -> str:
 class EvidenceToolPlanner:
     """Deterministic tool policy + execution receipts for structured plans."""
 
-    VERSION = "0.1"
+    VERSION = "0.2"
 
     def __init__(self, path: Path):
         self.path = path
@@ -210,6 +218,18 @@ class EvidenceToolPlanner:
             return {
                 "query": query,
                 "scope": scope,
+                "limit": min(max(limit, 1), 6),
+            }
+        if tool == "document.evidence_search":
+            query = " ".join(str(raw.get("query") or "").strip().split())[:1600]
+            if not query:
+                raise ToolPlannerError("document.evidence_search требует непустой query.")
+            try:
+                limit = int(raw.get("limit", 6))
+            except (TypeError, ValueError):
+                limit = 6
+            return {
+                "query": query,
                 "limit": min(max(limit, 1), 6),
             }
         if tool in TOOL_DEFINITIONS:
@@ -363,11 +383,26 @@ class EvidenceToolPlanner:
             and any(marker in text for marker in ("целостност", "integrity", "поврежден", "sqlite"))
         ):
             add("memory.integrity", purpose="Автоматически проверить целостность памяти.")
+        document_markers = (
+            "документ", "договор", "счет", "счёт", "акт", "накладн", "справк",
+            "сумм", "дата", "номер", "реквизит", "таблиц", "строк", "страниц",
+            "подпис", "печат", "файл",
+        )
         if (
             "context.current_document" not in explicit
             and any(marker in text for marker in ("текущ документ", "открыт документ", "этот документ"))
         ):
             add("context.current_document", purpose="Автоматически сверить текущий документ из UI-контекста.")
+        if (
+            "document.evidence_search" not in explicit
+            and any(marker in text for marker in document_markers)
+        ):
+            query = " ".join(goal.strip().split())[:1600] or "основные факты документа"
+            add(
+                "document.evidence_search",
+                args={"query": query, "limit": 6},
+                purpose="Найти точные факты текущего документа с сохранёнными Spatial Evidence координатами.",
+            )
         if (
             "experience.stats" not in explicit
             and any(marker in text for marker in ("опыт", "стратег", "ошибк прошлого", "не повтор"))
