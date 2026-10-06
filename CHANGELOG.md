@@ -2,6 +2,23 @@
 
 ## Невыпущенные изменения
 
+### 0.2.3 — 2026-10-06 — Portfolio Scale & Integrity
+
+- Cognitive Project Brain обновлён до `1.2`: scheduler и self-evaluation используют пакетный portfolio snapshot вместо повторных per-task SQLite/Memory запросов.
+- Snapshot за один цикл собирает task state, scopes, project/module registry, confirmed dependencies, open uncertainty и applied checkpoint counters.
+- `sync_tasks()` читает существующие scope IDs одним запросом и сохраняет уже управляемые attention/confidence/criteria.
+- Повторная регистрация модуля больше не сбрасывает title и не заменяет существующие metadata целиком: metadata merge-ятся.
+- Добавлена явная read-only диагностика `graph_integrity()` для legacy missing-task, cross-project и cycle проблем без автоматического ремонта graph.
+- Completion assessment переиспользует snapshot и продолжает считать только `applied=1` checkpoints.
+- High-severity uncertainty теперь переводит recommendation scheduler в evidence-first шаг до следующего mutation.
+- Cloud cognition projection минимизирована: project/module передаются без DB ids/path/metadata, strategy — без local scope IDs, causal trace — без source/effect IDs, replan — без internal revision/evidence IDs.
+- Evidence Tool Planner обновлён до `0.4.1`: общие слова «проект» и «модуль» больше не запускают `cognition.next` без scheduler/dependency/criteria/replan intent.
+- Явный local `/api/sayuri/cognition` diagnostics включает `graph_integrity`; лёгкий `cognition.status` остаётся без тяжёлого integrity scan.
+- Новых mutation tools, автономного execution loop и второй LLM не добавлено.
+- Добавлены regressions на snapshot scheduler, graph integrity, metadata preservation, evidence-first uncertainty, Cloud ID privacy и specific cognition auto-trigger.
+- Branch acceptance: после первого `0.2.2` candidate устаревший reasoning regression всё ещё ожидал лишний generic `cognition.next`; тест-контракт исправлен на фактический policy `1` read-only evidence check.
+- Project: `0.2.3`; App/Core: `0.1.52`; Agent Core: `0.14.2`; Cognitive Brain: `1.2`; Evidence Tool Planner: `0.4.1`.
+
 ### 0.2.1 — 2026-10-06 — Cognitive Brain Hardening
 
 - Cognitive Project Brain обновлён до `1.1`: hardening существующей multi-project/multi-module архитектуры без добавления второй LLM или автономного mutation loop.

@@ -34,5 +34,28 @@ class AgentRuntimeTests(unittest.TestCase):
             self.assertTrue(profile["chat"]["context_aware"])
 
 
+    def test_cognition_payload_includes_explicit_graph_integrity_diagnostic(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            agent = SayuriAgent(Path(tmp))
+            agent.create_memory_v4_task(
+                title="Проверить портфель",
+                priority=5,
+                next_action="Проверить целостность графа.",
+                context={"module_key": "agent-core"},
+            )
+
+            payload = agent.cognition_payload(
+                query="Проверить портфель",
+                context={"module_key": "agent-core"},
+            )
+
+            self.assertEqual(payload["graph_integrity"]["status"], "healthy")
+            self.assertEqual(payload["context"]["version"], "1.2")
+            self.assertTrue(
+                payload["status"]["capabilities"]["portfolio_snapshot"]
+            )
+
+
+
 if __name__ == "__main__":
     unittest.main()

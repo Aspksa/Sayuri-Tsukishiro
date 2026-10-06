@@ -1818,3 +1818,52 @@ Explicit local mutations:
 - module-scoped evaluation;
 - Cloud metadata boundary;
 - runtime/API contract.
+
+
+## Sayuri 0.2.3 — Portfolio Scale & Integrity
+
+### Snapshot scheduler
+
+`CognitiveProjectBrain._scheduler_snapshot()` одним циклом чтения собирает:
+- до `MAX_TASKS` Memory 4 tasks;
+- все cognitive task scopes;
+- project/module registry;
+- confirmed task edges;
+- open task uncertainties;
+- applied checkpoint totals и per-tool counters.
+
+`scheduler()` больше не вызывает `task_scope()`, `blockers()`, `uncertainties()` и `completion_assessment()` отдельно для каждого candidate. `self_evaluation()` использует тот же snapshot для task/dependency/completion расчётов; project/module uncertainty запрашивается одним scoped query.
+
+Cloud output по-прежнему ограничен top-8 candidates.
+
+### Graph integrity
+
+`graph_integrity()` — явная read-only диагностика persisted confirmed graph. Она обнаруживает:
+- edge на отсутствующую task;
+- legacy cross-project edge;
+- directed cycle.
+
+Диагностика не удаляет и не переписывает edge. Она выполняется только в explicit cognition diagnostics, а лёгкий `status()` не запускает полный scan.
+
+### Evidence-first uncertainty
+
+Если selected task имеет high-severity uncertainty, scheduler recommendation сначала требует получить недостающее evidence и пересчитать план. Это recommendation/policy signal, а не автоматическая mutation.
+
+### Cloud minimization
+
+Для `for_cloud=True`:
+- project/module scope содержит только `key/title`;
+- strategy summary не содержит local DB id/project_id/module_id/updated_at;
+- metacognition убирает task_id;
+- blocked summary не содержит blocker task_id;
+- causal trace не содержит source/effect IDs и evidence_ref;
+- latest replan не содержит internal revision/task/evidence IDs;
+- completion передаётся только status/score/satisfied/total.
+
+### Evidence Tool Planner 0.4.1
+
+`cognition.next` автоматически добавляется только для специфических признаков scheduler/dependency/blocker/criteria/replan/uncertainty/priority intent. Слова «проект» или «модуль» без такого intent не запускают tool call.
+
+### Branch acceptance correction
+
+Первый candidate `0.2.2` корректно сократил generic cognition auto-trigger, но существующий reasoning regression всё ещё ожидал два read-only receipt. В `0.2.3` test contract синхронизирован с policy: сложный запрос о проектировании модуля без dependency/scheduler intent использует только явный `memory.stats` check; `cognition.next` не добавляется автоматически.

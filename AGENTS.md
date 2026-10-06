@@ -112,3 +112,13 @@
 - Never auto-mark a task done from a model answer, checkpoint, verifier score, or completion criteria alone.
 - Dependency blockers and stale task state must win over old plans.
 - Keep cognition persistence in local SQLite unless a future explicit migration decision changes this.
+
+
+## Portfolio scale contract (0.2.3+)
+
+- Для scheduler/self-evaluation сначала используй общий snapshot; не добавляй per-task N+1 queries без измеримой причины.
+- `graph_integrity()` является диагностикой, а не repair operation. Invalid persisted state не исправлять молча.
+- High uncertainty требует evidence-first recommendation, но не даёт права автоматически менять task state.
+- Cloud cognition должна оставаться минимальной: не возвращай DB/action/replan/causal identifiers, если модель не обязана знать их для ответа.
+- Не запускай `cognition.next` автоматически только из-за слов «проект» или «модуль». Нужен конкретный cognitive intent.
+- Масштабирование новых модулей делается через canonical project/module/task contract, а не через отдельные Planner/Scheduler.

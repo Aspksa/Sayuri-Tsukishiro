@@ -11,6 +11,20 @@
 На Windows откройте `Sayuri Tsukishiro.bat`.
 
 
+## Portfolio Scale & Integrity — 0.2.3
+
+`0.2.3` не добавляет ещё один тип памяти: он масштабирует существующий Cognitive Project Brain под большое число модулей и задач.
+
+- один scheduler cycle читает portfolio state пакетно;
+- confirmed task graph можно проверить через отдельный integrity scan;
+- high uncertainty заставляет сначала добыть evidence;
+- Cloud получает только минимальный project/module/task cognitive context;
+- общие упоминания проекта или модуля больше не вызывают лишний cognition tool check;
+- Action Broker и confirmation boundary не меняются.
+
+Контракт Cognitive Brain: [COGNITIVE_BRAIN.md](COGNITIVE_BRAIN.md).
+
+
 ## Cognitive Project Brain 1.0
 
 `0.2.0` переводит Sayuri от «умной памяти с Planner» к проектному когнитивному ядру, рассчитанному на большое число модулей и отдельных проектов.

@@ -764,3 +764,16 @@ LLM не получает mutation tool для replan. Старый proposal н�
 **Решение:** Cognitive Brain записывает только подтверждённую lineage между observed Action Broker outcome и созданным checkpoint/replan/uncertainty.
 
 Свободная гипотеза модели `A вызвало B` не становится causal edge без отдельного evidence mechanism.
+
+
+## 2026-10-06 — Portfolio scheduler масштабируется snapshot-ом, а не новыми слоями
+
+**Решение:** после Cognitive Brain 1.1 не добавлять новую память/Planner ради масштабирования. Оптимизировать чтение уже существующего portfolio state через единый bounded snapshot.
+
+Инварианты:
+- scheduler не выполняет per-task `blockers/uncertainties/completion` queries;
+- integrity scan является отдельной read-only диагностикой и не чинит graph автоматически;
+- high uncertainty меняет recommendation на evidence-first, но не блокирует локальное состояние mutation-ом;
+- Cloud cognition передаёт только минимальный scope и summary, без внутренних DB/action/replan/causal идентификаторов;
+- generic слова «проект/модуль» не являются достаточным основанием для фонового cognition tool call;
+- Action Broker и permission model не меняются.

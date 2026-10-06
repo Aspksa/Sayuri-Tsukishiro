@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 import json
+import sqlite3
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from agent.cognition import CognitiveBrainError, CognitiveProjectBrain
 from agent.memory import SayuriMemory
@@ -447,6 +449,198 @@ class CognitiveProjectBrainTests(unittest.TestCase):
                 {"actionable", "criteria_missing", "ready_for_completion_confirmation"},
             )
             self.assertLessEqual(len(context["scheduler"]["candidates"]), 8)
+
+
+    def test_register_module_merges_metadata_without_resetting_title(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _, _, _, _, brain = self._build(root)
+            before = brain.module_by_key("sayuri-tsukishiro", "agent-core")
+
+            updated = brain.register_module(
+                "sayuri-tsukishiro",
+                "agent-core",
+                metadata={"extra_contract": "kept"},
+            )
+            brain.bootstrap_manifest()
+            after = brain.module_by_key("sayuri-tsukishiro", "agent-core")
+
+            self.assertEqual(updated["title"], before["title"])
+            self.assertEqual(after["title"], before["title"])
+            self.assertEqual(after["metadata"]["extra_contract"], "kept")
+            self.assertEqual(after["metadata"]["source"], "MODULES.json")
+            self.assertEqual(
+                brain.project_by_key("sayuri-tsukishiro")["priority"],
+                5,
+            )
+
+    def test_scheduler_uses_portfolio_snapshot_not_per_task_queries(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _, _, _, v4, brain = self._build(root)
+            for index in range(20):
+                v4.create_task(
+                    f"Масштабная задача {index}",
+                    priority=(index % 5) + 1,
+                    next_action=f"Проверить шаг {index}.",
+                    context={"module_key": "agent-core"},
+                )
+            brain.sync_tasks()
+
+            with patch.object(
+                brain,
+                "blockers",
+                side_effect=AssertionError("scheduler must use snapshot blockers"),
+            ), patch.object(
+                brain,
+                "uncertainties",
+                side_effect=AssertionError("scheduler must use snapshot uncertainties"),
+            ), patch.object(
+                brain,
+                "completion_assessment",
+                side_effect=AssertionError("scheduler must use snapshot completion"),
+            ):
+                result = brain.scheduler("Масштабная задача 19")
+
+            self.assertEqual(result["engine"], "cognitive-scheduler-v1.2")
+            self.assertEqual(result["selected"]["id"], next(
+                item["id"]
+                for item in v4.tasks(limit=100)
+                if item["title"] == "Масштабная задача 19"
+            ))
+            self.assertLessEqual(len(result["candidates"]), 8)
+
+    def test_graph_integrity_detects_legacy_cycle_without_mutating_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _, _, _, v4, brain = self._build(root)
+            first = v4.create_task(
+                "Legacy A",
+                context={"project_key": "sayuri-tsukishiro"},
+            )
+            second = v4.create_task(
+                "Legacy B",
+                context={"project_key": "sayuri-tsukishiro"},
+            )
+            brain.sync_tasks()
+            now = brain._now()
+            with sqlite3.connect(root / "data" / "sayuri-memory.db") as db:
+                db.execute(
+                    """
+                    INSERT INTO cognitive_task_edges(
+                        id, source_task_id, target_task_id, relation,
+                        evidence_ref, confirmed, created_at
+                    ) VALUES(?, ?, ?, 'requires', 'legacy:test', 1, ?)
+                    """,
+                    ("legacy-edge-a", first["id"], second["id"], now),
+                )
+                db.execute(
+                    """
+                    INSERT INTO cognitive_task_edges(
+                        id, source_task_id, target_task_id, relation,
+                        evidence_ref, confirmed, created_at
+                    ) VALUES(?, ?, ?, 'requires', 'legacy:test', 1, ?)
+                    """,
+                    ("legacy-edge-b", second["id"], first["id"], now),
+                )
+
+            integrity = brain.graph_integrity()
+
+            self.assertEqual(integrity["status"], "issues")
+            cycle = next(
+                item for item in integrity["issues"]
+                if item["type"] == "cycle"
+            )
+            self.assertEqual(
+                set(cycle["task_ids"]),
+                {first["id"], second["id"]},
+            )
+            self.assertEqual(len(brain.dependencies(first["id"])), 2)
+
+    def test_high_uncertainty_forces_evidence_first_recommendation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _, _, _, v4, brain = self._build(root)
+            task = v4.create_task(
+                "Подключить внешний API",
+                priority=5,
+                next_action="Выполнить интеграцию.",
+                context={"module_key": "agent-core"},
+            )
+            brain.sync_tasks()
+            scope = brain.task_scope(task["id"])
+            brain.record_uncertainty(
+                "Какой endpoint разрешён?",
+                task_id=task["id"],
+                project_id=scope["project_id"],
+                module_id=scope["module_id"],
+                severity="high",
+                evidence_needed="Актуальная документация API",
+            )
+
+            result = brain.scheduler("Подключить внешний API")
+
+            self.assertEqual(result["selected"]["id"], task["id"])
+            self.assertEqual(
+                result["selected"]["high_uncertainty_count"],
+                1,
+            )
+            self.assertIn("доказательство", result["recommendation"].casefold())
+
+    def test_cloud_context_strips_internal_strategy_causal_and_replan_ids(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _, _, _, v4, brain = self._build(root)
+            task = v4.create_task(
+                "Проверить безопасный контекст",
+                priority=5,
+                next_action="Выполнить проверку.",
+                context={"module_key": "agent-core"},
+            )
+            brain.sync_tasks()
+            failed = brain.observe_action(
+                {
+                    "id": "private-action-id",
+                    "tool": "disk.move_current",
+                    "status": "failed",
+                    "error": "Проверочная ошибка",
+                },
+                context={"_task_lifecycle": {"task_id": task["id"]}},
+            )
+            self.assertIsNotNone(failed)
+
+            cloud = brain.context(
+                "Проверить безопасный контекст",
+                ui_context={"module_key": "agent-core"},
+                for_cloud=True,
+            )
+
+            self.assertTrue(cloud["strategies"])
+            strategy = cloud["strategies"][0]
+            self.assertNotIn("id", strategy)
+            self.assertNotIn("project_id", strategy)
+            self.assertNotIn("module_id", strategy)
+            self.assertNotIn("updated_at", strategy)
+
+            meta = cloud["metacognition"]
+            self.assertNotIn("task_id", meta)
+            self.assertTrue(meta["causal_trace"])
+            causal = meta["causal_trace"][0]
+            self.assertNotIn("source_id", causal)
+            self.assertNotIn("effect_id", causal)
+            self.assertNotIn("evidence_ref", causal)
+            replan = meta["latest_replan"]
+            self.assertIsNotNone(replan)
+            self.assertNotIn("id", replan)
+            self.assertNotIn("task_id", replan)
+            self.assertNotIn("revision", replan)
+            self.assertNotIn("evidence_ref", replan)
+
+            module = cloud["scheduler"]["selected"]["module"]
+            project = cloud["scheduler"]["selected"]["project"]
+            self.assertEqual(set(module), {"key", "title"})
+            self.assertEqual(set(project), {"key", "title"})
+
 
 
 if __name__ == "__main__":

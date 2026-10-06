@@ -519,3 +519,40 @@
   - mutation API не добавляется в LLM tool catalog.
 - Versions: project `0.2.1`, App/Core `0.1.50`, Agent Core `0.14.1`, Cognitive Brain `1.1`.
 - Acceptance: full Python suite, JS syntax, app preflight, version each-commit, Windows launcher, PR CI, squash merge и зелёный final `main` workflow.
+
+
+## AI-013 — Portfolio Scale & Integrity
+
+- Статус: `implemented in target 0.2.3`; приёмка только после branch/PR/main CI.
+- База: `main 0.2.1`, commit `bf9ffc499fbfa5b472c526f79f0e18166d6c7ce5`, Versions #37412163229 success.
+- Цель: масштабировать уже существующий Cognitive Brain, не добавляя новый cognitive layer.
+- Portfolio snapshot:
+  - один bounded read snapshot для scheduler;
+  - batch task scopes/projects/modules/confirmed edges/open uncertainty/applied checkpoint counters;
+  - self-evaluation переиспользует snapshot;
+  - top Cloud candidates остаются ограничены 8.
+- Registry:
+  - repeat module registration сохраняет title;
+  - новые metadata merge-ятся с существующими;
+  - sync получает known scopes пакетно и не меняет managed state.
+- Integrity:
+  - read-only `graph_integrity()`;
+  - диагностировать legacy missing task / cross-project / cycle;
+  - не чинить persisted graph молча.
+- Uncertainty:
+  - high severity => evidence-first recommendation.
+- Cloud privacy:
+  - project/module без DB ids/path/metadata;
+  - strategy без local id/project_id/module_id/updated_at;
+  - causal trace без source_id/effect_id/evidence_ref;
+  - latest replan без internal id/task_id/revision/evidence_ref.
+- Tool policy:
+  - `cognition.next` auto-check только при специфическом cognitive intent;
+  - generic «проект/модуль» недостаточно.
+- Security:
+  - LLM cognition только read-only;
+  - explicit local cognition mutation API из 0.2.1 сохраняется, но не входит в LLM tool catalog;
+  - real actions по-прежнему Action Broker confirmation-gated.
+- Версии: Project `0.2.3`, App `0.1.52`, Agent `0.14.2`, Cognitive Brain `1.2`, Tool Planner `0.4.1`.
+- Первый branch candidate `0.2.2` остановлен core test gate: старый reasoning regression ожидал 2 read-only checks, хотя новый narrow-trigger policy корректно дал 1. Runtime не откатывать; исправить тест-контракт в `0.2.3`.
+- Приёмка: полный Python suite, JS syntax, preflight, version each-commit, Windows launcher, PR CI и final green main CI.

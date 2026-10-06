@@ -94,7 +94,7 @@ def _utcnow() -> str:
 class EvidenceToolPlanner:
     """Deterministic tool policy + execution receipts for structured plans."""
 
-    VERSION = "0.4"
+    VERSION = "0.4.1"
 
     def __init__(self, path: Path):
         self.path = path
@@ -399,7 +399,7 @@ class EvidenceToolPlanner:
                 marker in text
                 for marker in (
                     "следующ", "зависим", "блокир", "разблок", "критер", "готовност",
-                    "модул", "проект", "replan", "переплан", "неопредел", "стратег",
+                    "replan", "переплан", "неопредел", "стратег", "очеред", "приоритет",
                 )
             )
         ):
