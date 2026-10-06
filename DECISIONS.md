@@ -735,3 +735,32 @@ Reasons:
 - project/module portfolio state persists in the same SQLite database for restart recovery.
 
 **Module contract:** `MODULES.json` is upgraded to schema 1-compatible metadata. Future modules can declare `project_key` and capabilities without changing Cognitive Brain code. Task-producing modules should include `project_key/module_key` in task context when they need non-default scope.
+
+
+## 2026-10-06 — Cognitive state принадлежит lifecycle, а не повторной синхронизации
+
+**Решение:** trusted sync регистрирует отсутствующий task scope, но не является владельцем уже существующего cognitive state.
+
+Причины:
+- при большом числе модулей repeated sync неизбежен;
+- derived context не должен стирать user-managed attention, confidence или completion criteria;
+- persistent state должен переживать restart без дрейфа;
+- изменение уже существующего scope требует explicit local mutation.
+
+## 2026-10-06 — Task Graph не связывает проекты напрямую
+
+**Решение:** direct `requires/blocks/unlocks/follows` разрешены только между задачами одного project scope; confirmed cycles запрещены.
+
+Межпроектные зависимости моделируются отдельным milestone/external blocker. Это удерживает каждый проект как изолируемый DAG и предотвращает глобальный граф, в котором один модуль случайно блокирует всё портфолио.
+
+## 2026-10-06 — Replan proposal и его применение являются разными событиями
+
+**Решение:** failure может автоматически создать proposal, но изменение `next_action` требует явного `APPLY_REPLAN` и optimistic stale-state guard.
+
+LLM не получает mutation tool для replan. Старый proposal не может перезаписать новый `next_action` после того, как task уже изменилась.
+
+## 2026-10-06 — Cognitive causality хранит provenance, а не догадки
+
+**Решение:** Cognitive Brain записывает только подтверждённую lineage между observed Action Broker outcome и созданным checkpoint/replan/uncertainty.
+
+Свободная гипотеза модели `A вызвало B` не становится causal edge без отдельного evidence mechanism.

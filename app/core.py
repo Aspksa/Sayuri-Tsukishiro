@@ -470,6 +470,134 @@ class SayuriCore:
         except AgentRuntimeError as exc:
             raise BadRequestError(str(exc)) from exc
 
+    def register_sayuri_cognitive_project(
+        self,
+        project_key: str,
+        *,
+        title: str = "",
+        description: str = "",
+        priority: int | None = None,
+    ) -> dict[str, Any]:
+        try:
+            result = self.agent.register_cognitive_project(
+                project_key,
+                title=title,
+                description=description,
+                priority=priority,
+            )
+        except AgentRuntimeError as exc:
+            raise BadRequestError(str(exc)) from exc
+        self.database.record_event(
+            "Sayuri",
+            "Cognitive project зарегистрирован",
+            details={"project_key": result["project"]["key"]},
+        )
+        return result
+
+    def register_sayuri_cognitive_module(
+        self,
+        project_key: str,
+        module_key: str,
+        *,
+        title: str = "",
+        path: str = "",
+    ) -> dict[str, Any]:
+        try:
+            result = self.agent.register_cognitive_module(
+                project_key,
+                module_key,
+                title=title,
+                path=path,
+            )
+        except AgentRuntimeError as exc:
+            raise BadRequestError(str(exc)) from exc
+        self.database.record_event(
+            "Sayuri",
+            "Cognitive module зарегистрирован",
+            details={"project_key": project_key, "module_key": result["module"]["key"]},
+        )
+        return result
+
+    def add_sayuri_cognitive_dependency(
+        self,
+        task_id: str,
+        dependency_task_id: str,
+        *,
+        relation: str = "requires",
+    ) -> dict[str, Any]:
+        try:
+            result = self.agent.add_cognitive_dependency(
+                task_id,
+                dependency_task_id,
+                relation=relation,
+            )
+        except AgentRuntimeError as exc:
+            raise BadRequestError(str(exc)) from exc
+        self.database.record_event(
+            "Sayuri",
+            "Зависимость Cognitive Task Graph добавлена",
+            details={
+                "task_id": task_id,
+                "dependency_task_id": dependency_task_id,
+                "relation": relation,
+            },
+        )
+        return result
+
+    def set_sayuri_cognitive_completion_criteria(
+        self,
+        task_id: str,
+        criteria: Any,
+    ) -> dict[str, Any]:
+        try:
+            result = self.agent.set_cognitive_completion_criteria(task_id, criteria)
+        except AgentRuntimeError as exc:
+            raise BadRequestError(str(exc)) from exc
+        self.database.record_event(
+            "Sayuri",
+            "Критерии готовности задачи обновлены",
+            details={"task_id": task_id, "criteria": len(result["scope"]["completion_criteria"])},
+        )
+        return result
+
+    def resolve_sayuri_cognitive_uncertainty(
+        self,
+        uncertainty_id: str,
+        resolution: str,
+    ) -> dict[str, Any]:
+        try:
+            result = self.agent.resolve_cognitive_uncertainty(uncertainty_id, resolution)
+        except AgentRuntimeError as exc:
+            raise BadRequestError(str(exc)) from exc
+        self.database.record_event(
+            "Sayuri",
+            "Cognitive uncertainty разрешена",
+            details={"uncertainty_id": uncertainty_id},
+        )
+        return result
+
+    def apply_sayuri_cognitive_replan(
+        self,
+        revision_id: str,
+        *,
+        confirmation: str,
+    ) -> dict[str, Any]:
+        if confirmation != "APPLY_REPLAN":
+            raise BadRequestError("Для применения replanning требуется явное подтверждение.")
+        try:
+            result = self.agent.apply_cognitive_replan(
+                revision_id,
+                confirmation=confirmation,
+            )
+        except AgentRuntimeError as exc:
+            raise BadRequestError(str(exc)) from exc
+        self.database.record_event(
+            "Sayuri",
+            "Cognitive replan применён",
+            details={"revision_id": revision_id},
+        )
+        return result
+
     def _resolve_action_destination(self, destination: str) -> str | None:
         name = (destination or "").strip()
         if name.casefold() in {"", "/", "корень", "диск sayuri", "диск сayuри", "диск саюри"}:

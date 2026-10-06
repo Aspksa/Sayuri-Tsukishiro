@@ -23,7 +23,7 @@ class CognitiveProjectBrain:
     statistics, replan proposals and metacognitive summaries.
     """
 
-    VERSION = "1.0"
+    VERSION = "1.1"
     PROJECT_KEY = "sayuri-tsukishiro"
     DEPENDENCY_RELATIONS = {"requires", "blocks", "unlocks", "follows"}
     OPEN_TASK_STATUSES = {"planned", "in_progress", "blocked"}
@@ -210,6 +210,26 @@ class CognitiveProjectBrain:
                 )
                 """
             )
+            db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS cognitive_causal_links (
+                    id TEXT PRIMARY KEY,
+                    task_id TEXT,
+                    source_type TEXT NOT NULL,
+                    source_id TEXT NOT NULL,
+                    effect_type TEXT NOT NULL,
+                    effect_id TEXT NOT NULL,
+                    relation TEXT NOT NULL,
+                    evidence_ref TEXT,
+                    confidence REAL NOT NULL,
+                    created_at TEXT NOT NULL,
+                    UNIQUE(source_type, source_id, effect_type, effect_id, relation)
+                )
+                """
+            )
+            db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_cognitive_causal_task ON cognitive_causal_links(task_id, created_at DESC)"
+            )
 
     def register_project(
         self,
@@ -217,14 +237,14 @@ class CognitiveProjectBrain:
         *,
         title: str | None = None,
         description: str = "",
-        priority: int = 3,
+        priority: int | None = None,
     ) -> dict[str, Any]:
         key = self._key(project_key, fallback=self.PROJECT_KEY)
         display = " ".join((title or project_key or key).strip().split())[:300]
         if not display:
             raise CognitiveBrainError("Название проекта не может быть пустым.")
         now = self._now()
-        priority = min(max(int(priority), 1), 5)
+        normalized_priority = 3 if priority is None else min(max(int(priority), 1), 5)
         with self._connect() as db:
             row = db.execute(
                 "SELECT * FROM cognitive_projects WHERE project_key = ?",
@@ -239,7 +259,7 @@ class CognitiveProjectBrain:
                         created_at, updated_at
                     ) VALUES(?, ?, ?, ?, 'active', ?, ?, ?)
                     """,
-                    (project_id, key, display, description[:2000] or None, priority, now, now),
+                    (project_id, key, display, description[:2000] or None, normalized_priority, now, now),
                 )
                 row = db.execute(
                     "SELECT * FROM cognitive_projects WHERE id = ?",
@@ -247,6 +267,7 @@ class CognitiveProjectBrain:
                 ).fetchone()
             else:
                 next_title = display if title is not None else row["title"]
+                next_priority = normalized_priority if priority is not None else int(row["priority"])
                 db.execute(
                     """
                     UPDATE cognitive_projects
@@ -254,7 +275,7 @@ class CognitiveProjectBrain:
                         priority = ?, updated_at = ?
                     WHERE id = ?
                     """,
-                    (next_title, description[:2000], priority, now, row["id"]),
+                    (next_title, description[:2000], next_priority, now, row["id"]),
                 )
                 row = db.execute(
                     "SELECT * FROM cognitive_projects WHERE id = ?",
@@ -479,6 +500,50 @@ class CognitiveProjectBrain:
                     return value.strip()
         return ""
 
+    def module_key_from_context(self, context: Any) -> str:
+        explicit = self._key(self._context_key(context, "module"))
+        if explicit:
+            return explicit
+        if not isinstance(context, dict):
+            return ""
+        view = self._key(str(context.get("view") or ""))
+        section = self._key(str(context.get("section") or ""))
+        aliases = {
+            "disk": "sayuri-disk",
+            "drive": "sayuri-disk",
+            "dna": "sayuri-disk",
+            "sayuri": "agent-core",
+            "chat": "agent-core",
+            "home": "sayuri-core",
+            "settings": "sayuri-core",
+            "system": "sayuri-core",
+        }
+        return aliases.get(view) or aliases.get(section) or ""
+
+    def normalize_task_context(self, context: Any) -> dict[str, Any]:
+        raw = context if isinstance(context, dict) else {}
+        project_key = self._key(
+            self._context_key(raw, "project"),
+            fallback=self.PROJECT_KEY,
+        )
+        module_key = self.module_key_from_context(raw)
+        normalized: dict[str, Any] = {
+            "project_key": project_key,
+            "module_key": module_key or None,
+            "completion_criteria": self._normalize_criteria(raw.get("completion_criteria")),
+        }
+        milestone = raw.get("milestone")
+        if isinstance(milestone, str) and milestone.strip():
+            normalized["milestone"] = " ".join(milestone.strip().split())[:300]
+        labels = raw.get("labels")
+        if isinstance(labels, list):
+            normalized["labels"] = [
+                " ".join(str(item).strip().split())[:80]
+                for item in labels[:20]
+                if str(item).strip()
+            ]
+        return normalized
+
     @staticmethod
     def _normalize_criteria(raw: Any) -> list[dict[str, Any]]:
         if not isinstance(raw, list):
@@ -614,20 +679,80 @@ class CognitiveProjectBrain:
         tasks = self.memory_v4.tasks(limit=self.MAX_TASKS)
         count = 0
         for task in tasks:
-            context = task.get("context") if isinstance(task.get("context"), dict) else {}
-            project_key = self._context_key(context, "project") or self.PROJECT_KEY
-            module_key = self._context_key(context, "module") or None
-            criteria = context.get("completion_criteria") if "completion_criteria" in context else None
+            task_id = str(task["id"])
+            if self.task_scope(task_id) is not None:
+                count += 1
+                continue
+            context = self.normalize_task_context(task.get("context"))
+            project_key = str(context.get("project_key") or self.PROJECT_KEY)
+            module_key = str(context.get("module_key") or "") or None
             self.bind_task(
-                str(task["id"]),
+                task_id,
                 project_key=project_key,
                 module_key=module_key,
-                completion_criteria=criteria,
+                completion_criteria=context.get("completion_criteria"),
                 attention_state="blocked" if task.get("status") == "blocked" else "active",
                 confidence=0.65 if task.get("source") in {"manual", "memory_intelligence_confirmed"} else 0.5,
             )
             count += 1
         return count
+
+    @staticmethod
+    def _edge_dependency_pair(edge: dict[str, Any]) -> tuple[str, str] | None:
+        source = str(edge.get("source_task_id") or "")
+        target = str(edge.get("target_task_id") or "")
+        relation = str(edge.get("relation") or "")
+        if relation in {"requires", "follows"} and source and target:
+            return source, target
+        if relation in {"blocks", "unlocks"} and source and target:
+            return target, source
+        return None
+
+    def _dependency_adjacency(self) -> dict[str, set[str]]:
+        with self._connect() as db:
+            rows = db.execute(
+                """
+                SELECT source_task_id, target_task_id, relation, confirmed
+                FROM cognitive_task_edges
+                WHERE confirmed = 1
+                """
+            ).fetchall()
+        adjacency: dict[str, set[str]] = {}
+        for row in rows:
+            pair = self._edge_dependency_pair(dict(row))
+            if pair:
+                dependent, prerequisite = pair
+                adjacency.setdefault(dependent, set()).add(prerequisite)
+        return adjacency
+
+    def _would_create_cycle(
+        self,
+        task_id: str,
+        dependency_task_id: str,
+        relation: str,
+    ) -> bool:
+        pair = self._edge_dependency_pair(
+            {
+                "source_task_id": task_id,
+                "target_task_id": dependency_task_id,
+                "relation": relation,
+            }
+        )
+        if not pair:
+            return False
+        dependent, prerequisite = pair
+        adjacency = self._dependency_adjacency()
+        stack = [prerequisite]
+        seen: set[str] = set()
+        while stack:
+            current = stack.pop()
+            if current == dependent:
+                return True
+            if current in seen:
+                continue
+            seen.add(current)
+            stack.extend(adjacency.get(current, set()) - seen)
+        return False
 
     def add_dependency(
         self,
@@ -642,9 +767,17 @@ class CognitiveProjectBrain:
             raise CognitiveBrainError("Неизвестный тип зависимости.")
         if task_id == dependency_task_id:
             raise CognitiveBrainError("Задача не может зависеть от самой себя.")
-        known = {item["id"] for item in self.memory_v4.tasks(limit=self.MAX_TASKS)}
+        known = {item["id"]: item for item in self.memory_v4.tasks(limit=self.MAX_TASKS)}
         if task_id not in known or dependency_task_id not in known:
             raise CognitiveBrainError("Одна из задач зависимости не найдена.")
+        source_scope = self.task_scope(task_id) or self.bind_task(task_id)
+        target_scope = self.task_scope(dependency_task_id) or self.bind_task(dependency_task_id)
+        if source_scope["project_id"] != target_scope["project_id"]:
+            raise CognitiveBrainError(
+                "Прямые зависимости между разными проектами запрещены; используйте milestone/external blocker."
+            )
+        if confirmed and self._would_create_cycle(task_id, dependency_task_id, relation):
+            raise CognitiveBrainError("Зависимость создаёт цикл в task graph.")
         now = self._now()
         with self._connect() as db:
             row = db.execute(
@@ -724,7 +857,7 @@ class CognitiveProjectBrain:
                 and edge["relation"] in {"blocks", "unlocks"}
             ):
                 blocking_id = edge["source_task_id"]
-            if not blocking_id:
+            if not blocking_id or not edge.get("confirmed"):
                 continue
             blocking_task = tasks.get(blocking_id)
             if blocking_task and blocking_task.get("status") != "done":
@@ -738,10 +871,35 @@ class CognitiveProjectBrain:
                 )
         return blockers
 
+    def set_completion_criteria(self, task_id: str, criteria: Any) -> dict[str, Any]:
+        if self.task_scope(task_id) is None:
+            self.bind_task(task_id)
+        normalized = self._normalize_criteria(criteria)
+        with self._connect() as db:
+            db.execute(
+                """
+                UPDATE cognitive_task_scope
+                SET completion_criteria_json = ?, updated_at = ?
+                WHERE task_id = ?
+                """,
+                (self._json(normalized), self._now(), task_id),
+            )
+            row = db.execute(
+                "SELECT * FROM cognitive_task_scope WHERE task_id = ?",
+                (task_id,),
+            ).fetchone()
+        if row is None:
+            raise CognitiveBrainError("Задача не найдена.")
+        return self._scope_row(row)
+
     def completion_assessment(self, task_id: str) -> dict[str, Any]:
         scope = self.task_scope(task_id)
         criteria = list(scope.get("completion_criteria", [])) if scope else []
-        checkpoints = self.memory_v4.task_checkpoints(task_id=task_id, limit=200)
+        checkpoints = [
+            item
+            for item in self.memory_v4.task_checkpoints(task_id=task_id, limit=200)
+            if item.get("applied")
+        ]
         tasks = {item["id"]: item for item in self.memory_v4.tasks(limit=self.MAX_TASKS)}
         checks: list[dict[str, Any]] = []
         for criterion in criteria:
@@ -768,7 +926,11 @@ class CognitiveProjectBrain:
             checks.append({"criterion": criterion, "satisfied": satisfied, "detail": detail})
         satisfied_count = sum(1 for item in checks if item["satisfied"])
         total = len(checks)
-        if not total:
+        blockers = self.blockers(task_id)
+        if blockers:
+            status = "blocked_by_dependencies"
+            score = 0.0
+        elif not total:
             status = "criteria_missing"
             score = 0.0
         elif satisfied_count == total:
@@ -784,6 +946,7 @@ class CognitiveProjectBrain:
             "satisfied": satisfied_count,
             "total": total,
             "checks": checks,
+            "blockers": blockers,
             "automatic_completion": False,
         }
 
@@ -792,6 +955,7 @@ class CognitiveProjectBrain:
         *,
         task_id: str | None = None,
         project_id: str | None = None,
+        module_id: str | None = None,
         status: str = "open",
         limit: int = 50,
     ) -> list[dict[str, Any]]:
@@ -803,6 +967,9 @@ class CognitiveProjectBrain:
         if project_id:
             clauses.append("project_id = ?")
             params.append(project_id)
+        if module_id:
+            clauses.append("module_id = ?")
+            params.append(module_id)
         params.append(min(max(int(limit), 1), 200))
         with self._connect() as db:
             rows = db.execute(
@@ -894,6 +1061,39 @@ class CognitiveProjectBrain:
             "created_at": row["created_at"],
         }
 
+    def resolve_uncertainty(self, uncertainty_id: str, resolution: str) -> dict[str, Any]:
+        text = " ".join((resolution or "").strip().split())[:2000]
+        if not text:
+            raise CognitiveBrainError("Нужно указать результат разрешения неопределённости.")
+        now = self._now()
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT * FROM cognitive_uncertainties WHERE id = ?",
+                (uncertainty_id,),
+            ).fetchone()
+            if row is None:
+                raise CognitiveBrainError("Неопределённость не найдена.")
+            if row["status"] == "open":
+                db.execute(
+                    """
+                    UPDATE cognitive_uncertainties
+                    SET status='resolved', resolved_at=?, resolution=?
+                    WHERE id=?
+                    """,
+                    (now, text, uncertainty_id),
+                )
+            row = db.execute(
+                "SELECT * FROM cognitive_uncertainties WHERE id = ?",
+                (uncertainty_id,),
+            ).fetchone()
+        return {
+            "id": row["id"],
+            "task_id": row["task_id"],
+            "status": row["status"],
+            "resolution": row["resolution"],
+            "resolved_at": row["resolved_at"],
+        }
+
     def _record_replan_proposal(
         self,
         task_id: str,
@@ -954,6 +1154,52 @@ class CognitiveProjectBrain:
             "automatic_apply": False,
         }
 
+    def apply_replan(self, revision_id: str) -> dict[str, Any]:
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT * FROM cognitive_plan_revisions WHERE id = ?",
+                (revision_id,),
+            ).fetchone()
+        if row is None:
+            raise CognitiveBrainError("Предложение replanning не найдено.")
+        if row["status"] != "proposed":
+            return {
+                "id": row["id"],
+                "task_id": row["task_id"],
+                "status": row["status"],
+                "applied": row["status"] == "accepted",
+            }
+        task = next(
+            (
+                item
+                for item in self.memory_v4.tasks(limit=self.MAX_TASKS)
+                if item["id"] == row["task_id"]
+            ),
+            None,
+        )
+        if task is None:
+            raise CognitiveBrainError("Связанная задача не найдена.")
+        if str(task.get("next_action") or "") != str(row["previous_next_action"] or ""):
+            raise CognitiveBrainError(
+                "Replan устарел: next_action задачи изменился после создания предложения."
+            )
+        updated = self.memory_v4.update_task(
+            task["id"],
+            next_action=str(row["proposed_next_action"] or ""),
+        )
+        with self._connect() as db:
+            db.execute(
+                "UPDATE cognitive_plan_revisions SET status='accepted' WHERE id=?",
+                (revision_id,),
+            )
+        return {
+            "id": revision_id,
+            "task_id": task["id"],
+            "status": "accepted",
+            "applied": True,
+            "next_action": updated.get("next_action"),
+        }
+
     def replan_proposals(self, task_id: str, limit: int = 20) -> list[dict[str, Any]]:
         with self._connect() as db:
             rows = db.execute(
@@ -987,6 +1233,106 @@ class CognitiveProjectBrain:
         if not scope:
             return None, None
         return scope.get("project_id"), scope.get("module_id")
+
+    def _record_causal_link(
+        self,
+        *,
+        task_id: str | None,
+        source_type: str,
+        source_id: str,
+        effect_type: str,
+        effect_id: str,
+        relation: str,
+        evidence_ref: str,
+        confidence: float = 1.0,
+    ) -> dict[str, Any]:
+        fingerprint = hashlib.sha256(
+            self._json([source_type, source_id, effect_type, effect_id, relation]).encode("utf-8")
+        ).hexdigest()
+        link_id = fingerprint[:32]
+        with self._connect() as db:
+            db.execute(
+                """
+                INSERT INTO cognitive_causal_links(
+                    id, task_id, source_type, source_id, effect_type, effect_id,
+                    relation, evidence_ref, confidence, created_at
+                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(source_type, source_id, effect_type, effect_id, relation)
+                DO UPDATE SET
+                    evidence_ref=excluded.evidence_ref,
+                    confidence=excluded.confidence
+                """,
+                (
+                    link_id,
+                    task_id or None,
+                    source_type[:80],
+                    source_id[:200],
+                    effect_type[:80],
+                    effect_id[:200],
+                    relation[:120],
+                    evidence_ref[:500] or None,
+                    max(0.0, min(float(confidence), 1.0)),
+                    self._now(),
+                ),
+            )
+            row = db.execute(
+                "SELECT * FROM cognitive_causal_links WHERE id = ?",
+                (link_id,),
+            ).fetchone()
+        return {
+            "id": row["id"],
+            "task_id": row["task_id"],
+            "source_type": row["source_type"],
+            "source_id": row["source_id"],
+            "effect_type": row["effect_type"],
+            "effect_id": row["effect_id"],
+            "relation": row["relation"],
+            "evidence_ref": row["evidence_ref"],
+            "confidence": row["confidence"],
+            "created_at": row["created_at"],
+        }
+
+    def causal_links(
+        self,
+        *,
+        task_id: str | None = None,
+        limit: int = 30,
+    ) -> list[dict[str, Any]]:
+        safe_limit = min(max(int(limit), 1), 100)
+        with self._connect() as db:
+            if task_id:
+                rows = db.execute(
+                    """
+                    SELECT * FROM cognitive_causal_links
+                    WHERE task_id = ?
+                    ORDER BY created_at DESC
+                    LIMIT ?
+                    """,
+                    (task_id, safe_limit),
+                ).fetchall()
+            else:
+                rows = db.execute(
+                    """
+                    SELECT * FROM cognitive_causal_links
+                    ORDER BY created_at DESC
+                    LIMIT ?
+                    """,
+                    (safe_limit,),
+                ).fetchall()
+        return [
+            {
+                "id": row["id"],
+                "task_id": row["task_id"],
+                "source_type": row["source_type"],
+                "source_id": row["source_id"],
+                "effect_type": row["effect_type"],
+                "effect_id": row["effect_id"],
+                "relation": row["relation"],
+                "evidence_ref": row["evidence_ref"],
+                "confidence": row["confidence"],
+            }
+            for row in rows
+        ]
 
     def observe_action(
         self,
@@ -1055,6 +1401,21 @@ class CognitiveProjectBrain:
 
         replan = None
         uncertainty = None
+        causal_links: list[dict[str, Any]] = []
+        action_id = str(action.get("id") or "")
+        if status == "completed" and task_id and isinstance(checkpoint, dict) and checkpoint.get("id"):
+            causal_links.append(
+                self._record_causal_link(
+                    task_id=task_id,
+                    source_type="confirmed_action",
+                    source_id=action_id,
+                    effect_type="task_checkpoint",
+                    effect_id=str(checkpoint["id"]),
+                    relation="confirmed_result_recorded_as",
+                    evidence_ref="action:" + action_id[:160],
+                    confidence=1.0,
+                )
+            )
         if status == "failed" and task_id:
             error = " ".join(str(action.get("error") or "неизвестная ошибка").split())[:700]
             replan = self._record_replan_proposal(
@@ -1070,8 +1431,30 @@ class CognitiveProjectBrain:
                 module_id=module_id,
                 severity="high",
                 evidence_needed=error,
-                source_ref="action:" + str(action.get("id") or "")[:160],
+                source_ref="action:" + action_id[:160],
             )
+            causal_links.extend([
+                self._record_causal_link(
+                    task_id=task_id,
+                    source_type="confirmed_action_failure",
+                    source_id=action_id,
+                    effect_type="replan_proposal",
+                    effect_id=str(replan["id"]),
+                    relation="triggered_replan",
+                    evidence_ref="action:" + action_id[:160],
+                    confidence=1.0,
+                ),
+                self._record_causal_link(
+                    task_id=task_id,
+                    source_type="confirmed_action_failure",
+                    source_id=action_id,
+                    effect_type="uncertainty",
+                    effect_id=str(uncertainty["id"]),
+                    relation="raised_uncertainty",
+                    evidence_ref="action:" + action_id[:160],
+                    confidence=1.0,
+                ),
+            ])
         return {
             "strategy": {
                 "pattern": "tool:" + tool,
@@ -1083,29 +1466,36 @@ class CognitiveProjectBrain:
             "checkpoint_id": checkpoint.get("id") if isinstance(checkpoint, dict) else None,
             "replan": replan,
             "uncertainty": uncertainty,
+            "causal_links": causal_links,
         }
 
-    def strategies(self, *, project_id: str | None = None, limit: int = 20) -> list[dict[str, Any]]:
+    def strategies(
+        self,
+        *,
+        project_id: str | None = None,
+        module_id: str | None = None,
+        limit: int = 20,
+    ) -> list[dict[str, Any]]:
+        clauses: list[str] = []
+        params: list[Any] = []
+        if project_id:
+            clauses.append("project_id = ?")
+            params.append(project_id)
+        if module_id:
+            clauses.append("module_id = ?")
+            params.append(module_id)
+        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+        params.append(min(max(int(limit), 1), 100))
         with self._connect() as db:
-            if project_id:
-                rows = db.execute(
-                    """
-                    SELECT * FROM cognitive_strategies
-                    WHERE project_id = ?
-                    ORDER BY confidence DESC, updated_at DESC
-                    LIMIT ?
-                    """,
-                    (project_id, min(max(int(limit), 1), 100)),
-                ).fetchall()
-            else:
-                rows = db.execute(
-                    """
-                    SELECT * FROM cognitive_strategies
-                    ORDER BY confidence DESC, updated_at DESC
-                    LIMIT ?
-                    """,
-                    (min(max(int(limit), 1), 100),),
-                ).fetchall()
+            rows = db.execute(
+                f"""
+                SELECT * FROM cognitive_strategies
+                {where}
+                ORDER BY confidence DESC, updated_at DESC
+                LIMIT ?
+                """,
+                params,
+            ).fetchall()
         return [
             {
                 "id": row["id"],
@@ -1158,7 +1548,7 @@ class CognitiveProjectBrain:
         ]
         query_tokens = self._tokens(query)
         context_project = self._key(self._context_key(context, "project"))
-        context_module = self._key(self._context_key(context, "module"))
+        context_module = self.module_key_from_context(context)
         candidates: list[tuple[int, str, dict[str, Any]]] = []
         for task in raw_tasks:
             if for_cloud and not self.memory_v4._cloud_text_allowed(
@@ -1169,6 +1559,32 @@ class CognitiveProjectBrain:
             if not scope:
                 continue
             project, module = self._task_project_module(task["id"])
+            if for_cloud:
+                project_view = None
+                if project:
+                    project_view = {
+                        "id": project.get("id"),
+                        "key": project.get("key"),
+                        "title": (
+                            project.get("title")
+                            if self.memory_v4._cloud_text_allowed(project.get("title"))
+                            else None
+                        ),
+                    }
+                module_view = None
+                if module:
+                    module_view = {
+                        "id": module.get("id"),
+                        "key": module.get("key"),
+                        "title": (
+                            module.get("title")
+                            if self.memory_v4._cloud_text_allowed(module.get("title"))
+                            else None
+                        ),
+                    }
+            else:
+                project_view = project
+                module_view = module
             blockers = self.blockers(task["id"])
             open_uncertainty = self.uncertainties(task_id=task["id"], limit=20)
             assessment = self.completion_assessment(task["id"])
@@ -1193,8 +1609,8 @@ class CognitiveProjectBrain:
                 "priority": task.get("priority"),
                 "next_action": task.get("next_action"),
                 "blocked_reason": task.get("blocked_reason"),
-                "project": project,
-                "module": module,
+                "project": project_view,
+                "module": module_view,
                 "blockers": blockers,
                 "uncertainty_count": len(open_uncertainty),
                 "completion": {
@@ -1284,6 +1700,7 @@ class CognitiveProjectBrain:
             "replan_required": state == "replan_required",
             "completion": assessment,
             "latest_replan": replans[0] if replans else None,
+            "causal_trace": self.causal_links(task_id=task_id, limit=5),
         }
 
     def self_evaluation(
@@ -1313,7 +1730,11 @@ class CognitiveProjectBrain:
             for item in open_tasks
             if self.completion_assessment(item["id"])["status"] == "ready_for_confirmation"
         )
-        uncertainties = self.uncertainties(project_id=project["id"], limit=200)
+        uncertainties = self.uncertainties(
+            project_id=project["id"],
+            module_id=module["id"] if module else None,
+            limit=200,
+        )
         checks = {
             "tasks_total": len(tasks),
             "tasks_open": len(open_tasks),
@@ -1381,8 +1802,24 @@ class CognitiveProjectBrain:
         task_id = str(selected.get("id") or "") if selected else ""
         meta = self.metacognition(task_id or None)
         project = selected.get("project") if selected else self.project_by_key(self.PROJECT_KEY)
+        module = selected.get("module") if selected else None
+        if for_cloud and not selected and isinstance(project, dict):
+            project = {
+                "id": project.get("id"),
+                "key": project.get("key"),
+                "title": (
+                    project.get("title")
+                    if self.memory_v4._cloud_text_allowed(project.get("title"))
+                    else None
+                ),
+            }
         project_id = project.get("id") if isinstance(project, dict) else None
-        strategies = self.strategies(project_id=project_id, limit=5) if project_id else []
+        module_id = module.get("id") if isinstance(module, dict) else None
+        strategies = (
+            self.strategies(project_id=project_id, module_id=module_id, limit=5)
+            if project_id
+            else []
+        )
         if for_cloud:
             strategies = [
                 item
@@ -1407,7 +1844,7 @@ class CognitiveProjectBrain:
                 "projects": len(self.projects()),
                 "modules": len(self.modules()),
                 "project": project,
-                "module": selected.get("module") if selected else None,
+                "module": module,
             },
             "mutation_policy": "read_only_for_llm",
         }
@@ -1427,6 +1864,7 @@ class CognitiveProjectBrain:
                     "SELECT COUNT(*) FROM cognitive_plan_revisions WHERE status='proposed'"
                 ).fetchone()[0],
                 "evaluations": db.execute("SELECT COUNT(*) FROM cognitive_evaluations").fetchone()[0],
+                "causal_links": db.execute("SELECT COUNT(*) FROM cognitive_causal_links").fetchone()[0],
             }
         return {
             "version": self.VERSION,
@@ -1439,7 +1877,7 @@ class CognitiveProjectBrain:
                 "cognitive_scheduler": True,
                 "uncertainty": True,
                 "strategy_memory": True,
-                "causal_reasoning": True,
+                "causal_reasoning": "conservative_evidence_links",
                 "replanning": True,
                 "self_evaluation": True,
                 "metacognition": True,

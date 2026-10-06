@@ -479,3 +479,43 @@
   - blocked task не получает lifecycle linkage;
   - completion confirmation остаётся человеческой.
 - Версии: Project `0.2.0`, App `0.1.49`, Agent `0.14.0`, Reasoning `1.0`, Cognitive Brain `1.0`, Tool Planner `0.4`.
+
+
+## AI-012 — Cognitive Brain Hardening 1.1
+
+- Статус: `implemented in target 0.2.1`; релиз принимается только после зелёного branch/PR/main CI.
+- База: `main 0.2.0`, commit `8cc0df75a01924cbaf91001387cdadfee817774f`, Versions #37410683454 success.
+- Цель: укрепить Cognitive Project Brain перед подключением большого числа прикладных модулей.
+- Scope preservation:
+  - `sync_tasks()` регистрирует только новые task scopes;
+  - существующие attention/confidence/criteria не перезаписываются derived sync.
+- Context contract:
+  - единый `project_key/module_key`;
+  - UI aliases для существующих разделов;
+  - новый модуль не создаёт собственный Planner/Scheduler.
+- Task Graph safety:
+  - reject self/cycle dependencies;
+  - reject direct cross-project task edges;
+  - only confirmed edges block scheduler.
+- Completion safety:
+  - учитывать только `applied` checkpoints;
+  - unresolved dependencies => `blocked_by_dependencies`;
+  - explicit `done` блокируется при невыполненных configured criteria;
+  - criteria никогда не закрывают task автоматически.
+- Replanning/uncertainty:
+  - failed action => proposed replan + uncertainty;
+  - apply replan требует `APPLY_REPLAN`;
+  - stale next_action запрещает применение старого proposal;
+  - uncertainty разрешается отдельным explicit local action.
+- Causal evidence:
+  - хранить только conservative lineage `confirmed action -> checkpoint/replan/uncertainty`;
+  - не выводить свободную причинность из текста LLM.
+- Multi-module isolation:
+  - strategies и uncertainty/self-evaluation фильтруются по module scope;
+  - Cloud projection не содержит local path/manifest metadata.
+- Public/local API:
+  - scoped read-only `GET /api/sayuri/cognition`;
+  - explicit local POST API для project/module/dependency/criteria/uncertainty/replan;
+  - mutation API не добавляется в LLM tool catalog.
+- Versions: project `0.2.1`, App/Core `0.1.50`, Agent Core `0.14.1`, Cognitive Brain `1.1`.
+- Acceptance: full Python suite, JS syntax, app preflight, version each-commit, Windows launcher, PR CI, squash merge и зелёный final `main` workflow.

@@ -2,6 +2,24 @@
 
 ## Невыпущенные изменения
 
+### 0.2.1 — 2026-10-06 — Cognitive Brain Hardening
+
+- Cognitive Project Brain обновлён до `1.1`: hardening существующей multi-project/multi-module архитектуры без добавления второй LLM или автономного mutation loop.
+- `sync_tasks()` стал идемпотентным для уже управляемых task scope: повторная синхронизация больше не перезаписывает attention state, confidence или вручную уточнённые completion criteria.
+- Добавлен единый normalizer project/module context и безопасные aliases текущего UI (`disk/dna → sayuri-disk`, `chat/sayuri → agent-core`, системные экраны → `sayuri-core`).
+- Task Graph защищён от циклов и прямых межпроектных task dependencies; неподтверждённые edges больше не блокируют scheduler.
+- Completion criteria считают только `applied` checkpoints; unresolved dependency имеет приоритет и переводит assessment в `blocked_by_dependencies`.
+- Явное завершение task через локальный API теперь отклоняется, если для неё заданы criteria и они ещё не достигли `ready_for_confirmation`.
+- Failure lineage стал консервативно причинным: подтверждённый failed action связывается с replan proposal и uncertainty как evidence lineage, без заявления недоказанной причинности.
+- Replan по-прежнему создаётся только как `proposed`; применение требует явного `APPLY_REPLAN` и stale-state guard по актуальному `next_action`.
+- Добавлено явное разрешение uncertainty; ни uncertainty, ни replan не исчезают автоматически по тексту модели.
+- Strategy Memory и Self-Evaluation теперь корректно изолируются по module scope, а не только по project scope.
+- Cloud projection сокращён: project/module path, metadata и локальные manifest details не отправляются DeepSeek; остаются безопасные key/title и релевантная task-state.
+- Добавлены explicit local API для регистрации project/module, task dependencies, completion criteria, resolution uncertainty и подтверждённого применения replan; ни один из этих mutation endpoints не добавлен в LLM tool catalog.
+- `GET /api/sayuri/cognition` принимает `project_key/module_key` для диагностики конкретного проекта/модуля.
+- Добавлены regressions на cycle/cross-project guards, unconfirmed edges, managed-scope preservation, unapplied checkpoints, stale replan, causal lineage, explicit confirmation и Cloud metadata boundary.
+- Проект: `0.2.1`; App/Core: `0.1.50`; Agent Core: `0.14.1`; Cognitive Project Brain: `1.1`. Reasoning Planner, Web UI, Disk и dev-tools без изменений.
+
 ### 0.2.0 — 2026-10-06 — Cognitive Project Brain
 
 - Sayuri получила отдельный `CognitiveProjectBrain 1.0` поверх Memory 4.x и Task Lifecycle; это единая модель управления множеством проектов и модулей.
