@@ -1314,3 +1314,73 @@ UI 0.27 расширяет существующий UI 0.12:
 - focus-visible для button/a/input/select/textarea/summary;
 - `prefers-reduced-motion: reduce`;
 - fullscreen и palette работают без декоративной animation dependency.
+
+
+## Rich Answer UX & Lazy Diagnostics 0.28
+
+Релиз проекта: `0.1.52`.
+
+### Safe rich renderer
+
+Основные функции Web UI:
+
+- `appendSayuriInline()`;
+- `renderSayuriRichText()`;
+- `createSayuriCodeBlock()`;
+- `createSayuriEvidenceSummary()`.
+
+Renderer строит DOM через `createElement`, `createTextNode` и `textContent`. Не заменять его на `innerHTML` без отдельной security-модели и sanitizer.
+
+Поддерживаются:
+
+- paragraphs и line breaks;
+- `#..####` headings, визуально маппятся внутрь chat hierarchy;
+- unordered/ordered lists;
+- blockquotes;
+- inline code;
+- fenced code + language label + copy;
+- Markdown tables;
+- bold/emphasis/strike;
+- Markdown links только `http://` / `https://`;
+- horizontal rules.
+
+### Public evidence
+
+`SayuriAgent._public_evidence()` строит пользовательский evidence projection из технического контекста.
+
+Document evidence создаётся только из completed receipt `context.current_document`, но UI не получает имя инструмента/receipt/hash.
+
+Schema:
+
+```json
+{
+  "kind": "document",
+  "label": "Договор.pdf",
+  "ref": "ui:current-document:<id>",
+  "target": {"type": "disk_item", "kind": "file", "id": "<id>"}
+}
+```
+
+Memory evidence агрегируется по scope и содержит только label/count/ref scope.
+
+### Lazy memory loading
+
+Runtime state Web UI:
+
+- `sayuriState.loadedSections`;
+- `sayuriState.loadingSections`.
+
+`ensureSayuriMemoryTabLoaded()` предотвращает повторный initial fetch и сопоставляет вкладки:
+
+- overview → memory + candidates;
+- architecture → Memory V3;
+- quality → Memory V4;
+- experience → Experience.
+
+`refreshLoadedSayuriDiagnostics()` используется после mutations и не активирует ранее не открытые тяжёлые панели.
+
+Skeleton state: `.sayuri-lazy-loading`, `aria-busy`.
+
+### Security regression
+
+Web contract должен проверять, что участок `renderSayuriRichText` не содержит `innerHTML`. Backend regression должен проверять, что public evidence не содержит `receipt:` и `sha256:`.

@@ -187,6 +187,37 @@ class WebContractTests(unittest.TestCase):
         self.assertIn('--ui-space-4: 16px', css)
         self.assertIn('--ui-shadow-md:', css)
 
+    def test_rich_answer_ux_is_safe_and_memory_diagnostics_are_lazy(self):
+        script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+        css = (ROOT / "web" / "styles.css").read_text(encoding="utf-8")
+
+        self.assertIn("renderSayuriRichText", script)
+        self.assertIn("appendSayuriInline", script)
+        self.assertIn("createSayuriCodeBlock", script)
+        self.assertIn("createSayuriEvidenceSummary", script)
+        self.assertIn("navigator.clipboard.writeText(codeText)", script)
+        self.assertIn("openViewer(", script)
+        self.assertIn("ensureSayuriMemoryTabLoaded", script)
+        self.assertIn("refreshLoadedSayuriDiagnostics", script)
+        self.assertIn("sayuriState.loadedSections", script)
+        self.assertIn("sayuri-lazy-loading", script)
+
+        rich_start = script.index("function renderSayuriRichText")
+        rich_end = script.index("function createSayuriEvidenceSummary")
+        rich_renderer = script[rich_start:rich_end]
+        self.assertNotIn("innerHTML", rich_renderer)
+        self.assertIn("textContent", rich_renderer)
+        self.assertIn("createElement('table')", rich_renderer)
+        self.assertIn("createElement('blockquote')", rich_renderer)
+
+        self.assertIn("SAYURI UI 0.28 — Rich Answer UX & Lazy Diagnostics", css)
+        self.assertIn(".sayuri-rich-text", css)
+        self.assertIn(".sayuri-code-block", css)
+        self.assertIn(".sayuri-rich-table-wrap", css)
+        self.assertIn(".sayuri-evidence-summary", css)
+        self.assertIn("[data-sayuri-memory-panel].sayuri-lazy-loading", css)
+        self.assertIn("@keyframes sayuriSkeletonSweep", css)
+
     def test_personal_cabinet_has_memory_and_avatar_studio(self):
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")

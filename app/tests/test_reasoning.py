@@ -118,6 +118,46 @@ class ReasoningEngineTests(unittest.TestCase):
             self.assertIn("tool_receipts", calls[2][1]["content"])
             self.assertEqual(result["usage"]["total_tokens"], 6)
 
+    def test_public_evidence_hides_receipts_and_exposes_openable_document(self):
+        evidence = SayuriAgent._public_evidence(
+            {
+                "receipts": [
+                    {
+                        "status": "completed",
+                        "tool": "context.current_document",
+                        "output_preview": {
+                            "available": True,
+                            "id": "doc-123",
+                            "name": "Договор.pdf",
+                            "kind": "file",
+                            "category": "documents",
+                        },
+                        "evidence_refs": [
+                            "receipt:internal-secret",
+                            "ui:current-document:doc-123",
+                            "sha256:deadbeef",
+                        ],
+                    }
+                ]
+            },
+            {
+                "project": [{"memory_id": "m-project"}],
+                "personal": [],
+            },
+        )
+
+        self.assertEqual(evidence[0]["kind"], "document")
+        self.assertEqual(evidence[0]["label"], "Договор.pdf")
+        self.assertEqual(evidence[0]["target"], {
+            "type": "disk_item",
+            "kind": "file",
+            "id": "doc-123",
+        })
+        self.assertEqual(evidence[1]["kind"], "memory")
+        self.assertEqual(evidence[1]["label"], "Проектная память Sayuri")
+        self.assertNotIn("receipt:", str(evidence))
+        self.assertNotIn("sha256:", str(evidence))
+
     def test_simple_chat_uses_one_model_call(self):
         with tempfile.TemporaryDirectory() as tmp:
             agent = SayuriAgent(Path(tmp))
@@ -141,6 +181,7 @@ class ReasoningEngineTests(unittest.TestCase):
             self.assertEqual(result["reasoning"]["model_calls"], 1)
             self.assertEqual(result["reasoning"]["verification"]["status"], "skipped")
             self.assertEqual(result["reasoning"]["automation"]["status"], "skipped")
+            self.assertIn("evidence", result)
 
     def test_web_chat_exposes_structured_reasoning_summary(self):
         script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
