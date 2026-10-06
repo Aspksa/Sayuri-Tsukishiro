@@ -497,3 +497,27 @@
 - Verifier проверяет ответ против исходной задачи, structured plan, ограничений и доступных evidence blocks.
 - Если требуется исправление, Verifier возвращает complete `revised_answer` в своём JSON, чтобы не выполнять четвёртый Cloud-вызов.
 - Сбой Verifier не должен ложно маркировать ответ как проверенный.
+
+## D-053 — LLM предлагает tool intent, но не получает право исполнения
+
+- Дата: 2026-10-06.
+- Статус: принято.
+- Reasoning Planner может вернуть только структурированный `tool_intent`: шаг, ID инструмента, безопасные аргументы и цель вызова.
+- Исполнение определяется локальным deterministic allowlist, а не текстом модели.
+- Unknown tool всегда отклоняется.
+- Read-only tool может выполняться автоматически в пределах лимита.
+- Любой инструмент, меняющий состояние, не выполняется Evidence Tool Planner и получает `requires_action_broker`.
+- Mutation payload от LLM не считается разрешённым и не передаётся исполнителю.
+- Единственный путь изменения состояния остаётся существующий SayuriActionBroker с явным подтверждением пользователя.
+
+## D-054 — Execution receipt является доказательством выполнения инструмента, но не абсолютной истинности вывода
+
+- Дата: 2026-10-06.
+- Статус: принято.
+- Каждый tool call получает локальный receipt: request/step/tool, нормализованные args, status, timestamps/duration, evidence refs, output SHA-256, sanitized preview и ошибку.
+- `completed` подтверждает, что конкретный локальный инструмент выполнился и вернул зафиксированный output.
+- Receipt не превращает интерпретацию модели в факт; Result Verifier должен проверять claim против actual output/evidence.
+- `requires_action_broker` явно означает, что mutation не выполнена.
+- Tool evidence перед Cloud.ru ограничивается отдельным budget и проходит secret sanitization.
+- Memory tool может отдавать только Cloud-safe Memory 4.1; attribution commit выполняется после успешного полного ответа.
+

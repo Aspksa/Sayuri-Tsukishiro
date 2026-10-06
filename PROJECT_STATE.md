@@ -4,78 +4,74 @@
 
 - Дата: 2026-10-06.
 - Репозиторий: https://github.com/Aspksa/Sayuri-Tsukishiro
-- Проверенная исходная ревизия: `32761c2e1d56f2e824a6d5a8c266245bab436c3f` — проект `0.1.46`, финальный main workflow Versions #467 успешен.
-- Целевая версия: `0.1.47`.
-- Текущая задача: **AI-005 — Reasoning Planner + Result Verifier**.
-- Статус целевого дерева: функциональная реализация подготовлена; атомарный release CI/merge требуется подтвердить.
+- Проверенная исходная ревизия: `0fdb2512fc8d6595774c322a41c2c5c6ee7867a8` — проект `0.1.47`, Reasoning Planner + Result Verifier.
+- Целевая версия: `0.1.48`.
+- Текущая задача: **AI-006 — Evidence-aware Tool Planner**.
+- Целевое дерево содержит реализацию; релиз подтверждается только PR CI и финальным workflow на `main`.
 
 ## Версии целевого дерева
 
-- Проект: `0.1.47`.
-- Ядро Саюри: `0.1.39`.
-- Agent Core: `0.9.0`.
+- Проект: `0.1.48`.
+- Ядро Саюри: `0.1.40`.
+- Agent Core: `0.10.0`.
+- Web UI: `0.24.0`.
 - Диск Sayuri: `0.7.1` — не изменялся.
-- Web UI: `0.23.0`.
 - Dev tools: `0.1.6` — не изменялись.
 
-## Reasoning architecture
-
-Новый слой использует стабильную Memory 4.1 как входной контур и не создаёт вторую память или вторую LLM.
+## Evidence-aware Tool Planner
 
 ```text
 user task
-→ deterministic complexity gate
-→ direct answer
-  или
-→ Reasoning Planner
-→ structured task-plan
+→ complexity gate
+→ Planner
+→ structured steps + tool_intents
+→ deterministic allowlist
+→ read-only tools execute / mutations blocked
+→ execution receipts + evidence
 → answer
 → Result Verifier
-→ optional revised_answer
-→ final response
+→ post-success memory attribution
 ```
 
-### Planner
+### Security boundary
 
-Structured plan содержит только goal, steps, constraints, evidence_needed, done_when и risk_level. Planner не просит и не хранит chain-of-thought.
+- DeepSeek не исполняет инструменты напрямую.
+- Unknown tool отклоняется.
+- Read-only инструменты ограничены allowlist и максимум четырьмя вызовами.
+- Duplicate tool+args не выполняется повторно.
+- Mutation intent не получает исполняемый payload от модели и возвращает `requires_action_broker`.
+- Existing SayuriActionBroker остаётся единственным путём изменения данных после явного подтверждения пользователя.
 
-### Adaptive gate
+### Evidence
 
-Простые сообщения остаются в `direct` mode и используют один запрос к Cloud.ru. Сложные архитектурные, многошаговые, аналитические и verification-oriented задачи переходят в `planned` mode.
+Receipts хранятся локально в `data/sayuri-tool-receipts.db` и содержат tool, step, args, status, timestamps, duration, evidence refs, output SHA-256 и sanitized preview.
 
-### Result Verifier
+Result Verifier получает фактические receipts. `completed` доказывает выполнение локального tool call, но не делает любую интерпретацию модели истинной.
 
-Verifier отдельным вызовом той же `deepseek-ai/DeepSeek-V4-Flash` проверяет цель, constraints, evidence и unsupported claims. При `revise` полный исправленный ответ возвращается прямо из verifier call; четвёртый модельный вызов не требуется.
+### Privacy
 
-### Failure policy
+- tool output проходит secret sanitization;
+- Cloud evidence budget: 9000 chars;
+- `memory.search` использует Memory 4.1 `for_cloud=True`;
+- tool-memory IDs добавляются в prepared recall;
+- recall usage фиксируется только после успешного reasoning pipeline.
 
-- Planner unavailable / invalid JSON -> deterministic fallback-plan.
-- Verifier unavailable / invalid JSON -> основной answer сохраняется, status = `unavailable`.
-- Planner/Verifier не расширяют Safe Action permissions.
-- UI не показывает unavailable verifier как успешно пройденную проверку.
+### UI
 
-## Memory integration
+В reasoning summary добавлены строки инструментов и их статусы. Меню проекта не изменялось.
 
-Planner и Verifier получают только уже отфильтрованные Memory 4.1, Memory 3.0, Experience и UI context. Instruction-risk/local-only память не получает обходной путь через reasoning layer. Memory usage commit остаётся post-budget и выполняется после reasoning pipeline.
+## Релизный критерий 0.1.48
 
-## Observability
-
-Ответ API содержит `reasoning`: mode, complexity_score/reasons, planner_status, structured plan, verification, revised, model_calls и `chain_of_thought_stored=false`.
-
-Web chat показывает компактный details-блок: `План · N шагов · проверено/исправлено/проверка недоступна`.
-
-## Релизный критерий 0.1.47
-
-1. Один атомарный commit от `main 0.1.46`.
-2. Python scripts tests — success.
-3. App/core tests включая `test_reasoning.py` — success.
+1. Один атомарный commit от `main 0.1.47`.
+2. App/core tests включая `test_reasoning.py` и `test_tool_planner.py` — success.
+3. Scripts/versioning tests — success.
 4. JavaScript syntax — success.
 5. Preflight — success.
 6. `versioning.py check --each-commit` — success.
-7. Windows launcher — success.
+7. Windows launcher checks — success.
 8. Merge через PR.
-9. Финальный main push workflow — success.
+9. Финальный `main` workflow — success.
 
 ## Следующий рациональный этап
 
-После стабилизации Planner/Verifier следующий шаг — **Evidence-aware Tool Planner**: связывать structured steps с разрешёнными read-only/confirmation-gated инструментами, сохраняя execution receipts и не позволяя LLM напрямую обходить Action Broker.
+После стабилизации v0.1.48 расширять evidence tools на документные read-only операции Диска/ДНК: безопасное чтение preview/DNA evidence, ссылки page/line/bbox и claim-to-evidence mapping, не меняя mutation boundary.

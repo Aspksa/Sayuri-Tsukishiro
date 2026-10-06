@@ -12,6 +12,7 @@ from .runtime import (
 from .memory_v4 import MemorySystemV4, MemorySystemV4Error
 from .reasoning import ReasoningDecision, ReasoningEngine, ReasoningError
 from .semantic_memory import SemanticMemoryIndex
+from .tool_planner import EvidenceToolPlanner, ToolPlannerError
 
 __all__ = [
     "AgentCoreContract",
@@ -22,6 +23,7 @@ __all__ = [
     "CLOUDRU_MODEL_ID",
     "ExperienceError",
     "ExperienceStore",
+    "EvidenceToolPlanner",
     "MemorySystemError",
     "MemorySystemV3",
     "MemorySystemV4",
@@ -30,5 +32,6 @@ __all__ = [
     "ReasoningEngine",
     "ReasoningError",
     "SemanticMemoryIndex",
+    "ToolPlannerError",
     "SayuriAgent",
 ]
