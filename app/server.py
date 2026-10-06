@@ -282,10 +282,14 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
                 self._json(self.server.core.sayuri_actions(limit))
                 return
             if parsed.path == "/api/sayuri/cognition":
+                context = {
+                    "project_key": query.get("project_key", [""])[0],
+                    "module_key": query.get("module_key", [""])[0],
+                }
                 self._json(
                     self.server.core.sayuri_cognition(
                         query=query.get("q", [""])[0],
-                        context=None,
+                        context=context,
                     )
                 )
                 return
@@ -545,6 +549,121 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
                     self.server.core.plan_sayuri_action(
                         text=text,
                         context=payload.get("context"),
+                    )
+                )
+                return
+
+            if parsed.path == "/api/sayuri/cognition/projects":
+                payload = self._read_json()
+                project_key = payload.get("project_key")
+                title = payload.get("title", "")
+                description = payload.get("description", "")
+                priority = payload.get("priority")
+                if not isinstance(project_key, str) or not project_key.strip():
+                    raise BadRequestError("Поле project_key должно быть непустой строкой.")
+                if not isinstance(title, str) or not isinstance(description, str):
+                    raise BadRequestError("Поля title и description должны быть строками.")
+                if priority is not None and not isinstance(priority, int):
+                    raise BadRequestError("Поле priority должно быть целым числом или null.")
+                self._json(
+                    self.server.core.register_sayuri_cognitive_project(
+                        project_key,
+                        title=title,
+                        description=description,
+                        priority=priority,
+                    ),
+                    HTTPStatus.CREATED,
+                )
+                return
+
+            if parsed.path == "/api/sayuri/cognition/modules":
+                payload = self._read_json()
+                project_key = payload.get("project_key")
+                module_key = payload.get("module_key")
+                title = payload.get("title", "")
+                path = payload.get("path", "")
+                if not isinstance(project_key, str) or not project_key.strip():
+                    raise BadRequestError("Поле project_key должно быть непустой строкой.")
+                if not isinstance(module_key, str) or not module_key.strip():
+                    raise BadRequestError("Поле module_key должно быть непустой строкой.")
+                if not isinstance(title, str) or not isinstance(path, str):
+                    raise BadRequestError("Поля title и path должны быть строками.")
+                self._json(
+                    self.server.core.register_sayuri_cognitive_module(
+                        project_key,
+                        module_key,
+                        title=title,
+                        path=path,
+                    ),
+                    HTTPStatus.CREATED,
+                )
+                return
+
+            if parsed.path == "/api/sayuri/cognition/dependencies":
+                payload = self._read_json()
+                task_id = payload.get("task_id")
+                dependency_task_id = payload.get("dependency_task_id")
+                relation = payload.get("relation", "requires")
+                if not isinstance(task_id, str) or not task_id.strip():
+                    raise BadRequestError("Поле task_id должно быть непустой строкой.")
+                if not isinstance(dependency_task_id, str) or not dependency_task_id.strip():
+                    raise BadRequestError("Поле dependency_task_id должно быть непустой строкой.")
+                if not isinstance(relation, str):
+                    raise BadRequestError("Поле relation должно быть строкой.")
+                self._json(
+                    self.server.core.add_sayuri_cognitive_dependency(
+                        task_id,
+                        dependency_task_id,
+                        relation=relation,
+                    ),
+                    HTTPStatus.CREATED,
+                )
+                return
+
+            if parsed.path.startswith("/api/sayuri/cognition/tasks/") and parsed.path.endswith("/criteria"):
+                task_id = parsed.path[len("/api/sayuri/cognition/tasks/"):-len("/criteria")].strip("/")
+                if not task_id:
+                    raise BadRequestError("Не указана задача.")
+                payload = self._read_json()
+                criteria = payload.get("criteria")
+                if not isinstance(criteria, list):
+                    raise BadRequestError("Поле criteria должно быть массивом.")
+                self._json(
+                    self.server.core.set_sayuri_cognitive_completion_criteria(
+                        task_id,
+                        criteria,
+                    )
+                )
+                return
+
+            if parsed.path.startswith("/api/sayuri/cognition/uncertainties/") and parsed.path.endswith("/resolve"):
+                uncertainty_id = parsed.path[len("/api/sayuri/cognition/uncertainties/"):-len("/resolve")].strip("/")
+                if not uncertainty_id:
+                    raise BadRequestError("Не указана uncertainty.")
+                payload = self._read_json()
+                resolution = payload.get("resolution")
+                if not isinstance(resolution, str):
+                    raise BadRequestError("Поле resolution должно быть строкой.")
+                self._json(
+                    self.server.core.resolve_sayuri_cognitive_uncertainty(
+                        uncertainty_id,
+                        resolution,
+                    )
+                )
+                return
+
+            if parsed.path.startswith("/api/sayuri/cognition/replans/") and parsed.path.endswith("/apply"):
+                revision_id = parsed.path[len("/api/sayuri/cognition/replans/"):-len("/apply")].strip("/")
+                if not revision_id:
+                    raise BadRequestError("Не указан replan.")
+                payload = self._read_json()
+                confirmation = payload.get("confirmation")
+                if confirmation != "APPLY_REPLAN":
+                    raise BadRequestError("Для применения replanning требуется явное confirmation=APPLY_REPLAN.")
+                self._json(
+                    self.server.core.apply_sayuri_cognitive_replan(
+                        revision_id,
+                        confirmation=confirmation,
                     )
                 )
                 return

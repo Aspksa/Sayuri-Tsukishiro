@@ -5,7 +5,7 @@ import json
 import tempfile
 import unittest
 
-from agent.cognition import CognitiveProjectBrain
+from agent.cognition import CognitiveBrainError, CognitiveProjectBrain
 from agent.memory import SayuriMemory
 from agent.memory_v3 import MemorySystemV3
 from agent.memory_v4 import MemorySystemV4
@@ -14,7 +14,7 @@ from agent.semantic_memory import SemanticMemoryIndex
 
 class CognitiveProjectBrainTests(unittest.TestCase):
     def _build(self, root: Path):
-        (root / "VERSION").write_text("0.2.0\n", encoding="utf-8")
+        (root / "VERSION").write_text("0.2.1\n", encoding="utf-8")
         (root / "MODULES.json").write_text(
             json.dumps(
                 {
@@ -87,6 +87,49 @@ class CognitiveProjectBrainTests(unittest.TestCase):
             self.assertTrue(status["capabilities"]["multi_project"])
             self.assertTrue(status["capabilities"]["multi_module"])
 
+    def test_manifest_registration_preserves_project_priority_and_view_aliases(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _, _, _, _, brain = self._build(root)
+
+            project = brain.project_by_key("sayuri-tsukishiro")
+            self.assertEqual(project["priority"], 5)
+            self.assertEqual(
+                brain.normalize_task_context({"view": "disk"})["module_key"],
+                "sayuri-disk",
+            )
+
+    def test_sync_does_not_overwrite_managed_cognitive_state(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _, _, _, v4, brain = self._build(root)
+            task = v4.create_task(
+                "Долгая задача",
+                next_action="Продолжить позже.",
+                context={
+                    "project_key": "sayuri-tsukishiro",
+                    "module_key": "agent-core",
+                    "completion_criteria": [{"type": "checkpoint_count", "min": 1}],
+                },
+            )
+            brain.sync_tasks()
+            brain.bind_task(
+                task["id"],
+                attention_state="later",
+                confidence=0.91,
+            )
+            brain.set_completion_criteria(
+                task["id"],
+                [{"type": "checkpoint_count", "min": 3}],
+            )
+
+            brain.sync_tasks()
+            scope = brain.task_scope(task["id"])
+
+            self.assertEqual(scope["attention_state"], "later")
+            self.assertAlmostEqual(scope["confidence"], 0.91)
+            self.assertEqual(scope["completion_criteria"][0]["min"], 3)
+
     def test_dependency_graph_blocks_then_unlocks_scheduler(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -121,6 +164,47 @@ class CognitiveProjectBrainTests(unittest.TestCase):
             after = brain.scheduler("Опубликовать материал VK")
             self.assertEqual(brain.blockers(publish["id"]), [])
             self.assertEqual(after["selected"]["id"], publish["id"])
+
+    def test_dependency_graph_rejects_cycles_and_cross_project_edges(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _, _, _, v4, brain = self._build(root)
+            first = v4.create_task(
+                "Первая задача",
+                context={"project_key": "sayuri-tsukishiro"},
+            )
+            second = v4.create_task(
+                "Вторая задача",
+                context={"project_key": "sayuri-tsukishiro"},
+            )
+            external = v4.create_task(
+                "Внешняя задача",
+                context={"project_key": "external-project"},
+            )
+            brain.sync_tasks()
+            brain.add_dependency(second["id"], first["id"], relation="requires")
+
+            with self.assertRaises(CognitiveBrainError):
+                brain.add_dependency(first["id"], second["id"], relation="requires")
+            with self.assertRaises(CognitiveBrainError):
+                brain.add_dependency(first["id"], external["id"], relation="requires")
+
+    def test_unconfirmed_dependency_does_not_block_scheduler(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _, _, _, v4, brain = self._build(root)
+            prerequisite = v4.create_task("Черновой prerequisite", priority=1)
+            target = v4.create_task("Главная задача", priority=5)
+            brain.sync_tasks()
+            brain.add_dependency(
+                target["id"],
+                prerequisite["id"],
+                relation="requires",
+                confirmed=False,
+            )
+
+            self.assertEqual(brain.blockers(target["id"]), [])
+            self.assertEqual(brain.scheduler("Главная задача")["selected"]["id"], target["id"])
 
     def test_completion_criteria_become_ready_but_never_auto_complete_task(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -181,6 +265,44 @@ class CognitiveProjectBrainTests(unittest.TestCase):
                 "ready_for_completion_confirmation",
             )
 
+    def test_stale_unapplied_checkpoint_does_not_satisfy_completion(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _, _, _, v4, brain = self._build(root)
+            task = v4.create_task(
+                "Проверить структуру",
+                next_action="Создать папку Проверка.",
+                context={
+                    "completion_criteria": [
+                        {"type": "checkpoint_count", "min": 1},
+                    ]
+                },
+            )
+            brain.sync_tasks()
+            snapshot = {
+                "_task_lifecycle": {
+                    "task_id": task["id"],
+                    "task_updated_at": task["updated_at"],
+                    "next_action_before": task["next_action"],
+                }
+            }
+            v4.update_task(task["id"], next_action="Сначала проверить конфигурацию.")
+            checkpoint = v4.checkpoint_confirmed_action(
+                {
+                    "id": "stale-checkpoint",
+                    "tool": "disk.create_folder",
+                    "title": "Создать папку Проверка",
+                    "status": "completed",
+                    "result": {"status": "выполнено"},
+                },
+                context=snapshot,
+            )
+            assessment = brain.completion_assessment(task["id"])
+
+            self.assertFalse(checkpoint["applied"])
+            self.assertEqual(assessment["status"], "incomplete")
+            self.assertEqual(assessment["satisfied"], 0)
+
     def test_failure_creates_strategy_uncertainty_and_replan_without_mutating_next_action(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -209,7 +331,39 @@ class CognitiveProjectBrainTests(unittest.TestCase):
             self.assertEqual(result["uncertainty"]["severity"], "high")
             self.assertEqual(result["replan"]["status"], "proposed")
             self.assertFalse(result["replan"]["automatic_apply"])
+            self.assertEqual(len(result["causal_links"]), 2)
             self.assertEqual(brain.metacognition(task["id"])["state"], "uncertain")
+            self.assertTrue(brain.metacognition(task["id"])["causal_trace"])
+
+            applied = brain.apply_replan(result["replan"]["id"])
+            resolved = brain.resolve_uncertainty(
+                result["uncertainty"]["id"],
+                "Выбрать существующую папку назначения.",
+            )
+            current_after = next(item for item in v4.tasks() if item["id"] == task["id"])
+            self.assertTrue(applied["applied"])
+            self.assertIn("Проверить причину ошибки", current_after["next_action"])
+            self.assertEqual(resolved["status"], "resolved")
+
+    def test_replan_is_rejected_after_next_action_changes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _, _, _, v4, brain = self._build(root)
+            task = v4.create_task("Проверить импорт", next_action="Запустить импорт.")
+            brain.sync_tasks()
+            result = brain.observe_action(
+                {
+                    "id": "failed-import",
+                    "tool": "disk.move_current",
+                    "status": "failed",
+                    "error": "Ошибка",
+                },
+                context={"_task_lifecycle": {"task_id": task["id"]}},
+            )
+            v4.update_task(task["id"], next_action="Сначала проверить конфигурацию.")
+
+            with self.assertRaises(CognitiveBrainError):
+                brain.apply_replan(result["replan"]["id"])
 
     def test_restart_restores_portfolio_graph_strategy_and_replan_state(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -284,7 +438,10 @@ class CognitiveProjectBrainTests(unittest.TestCase):
             )
 
             self.assertEqual(context["mutation_policy"], "read_only_for_llm")
-            self.assertEqual(context["scheduler"]["selected"]["module"]["key"], "vk-automation")
+            module = context["scheduler"]["selected"]["module"]
+            self.assertEqual(module["key"], "vk-automation")
+            self.assertNotIn("path", module)
+            self.assertNotIn("metadata", module)
             self.assertIn(
                 context["metacognition"]["state"],
                 {"actionable", "criteria_missing", "ready_for_completion_confirmation"},

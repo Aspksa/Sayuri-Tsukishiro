@@ -121,6 +121,11 @@ class SayuriActionBrokerTests(unittest.TestCase):
                 completed["cognition_observation"]["strategy"]["last_outcome"],
                 "completed",
             )
+            self.assertTrue(completed["cognition_observation"]["causal_links"])
+            self.assertEqual(
+                completed["cognition_observation"]["causal_links"][0]["effect_type"],
+                "task_checkpoint",
+            )
             self.assertEqual(updated["status"], "in_progress")
             self.assertIn("Проверить созданную папку", updated["next_action"])
             self.assertEqual(

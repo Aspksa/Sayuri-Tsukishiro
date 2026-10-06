@@ -509,6 +509,9 @@ class SayuriAgent:
         context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         try:
+            normalized_context = self.cognition.normalize_task_context(context)
+            task_context = dict(context) if isinstance(context, dict) else {}
+            task_context.update(normalized_context)
             task = self.memory_v4.create_task(
                 title,
                 scope=scope,
@@ -516,12 +519,19 @@ class SayuriAgent:
                 priority=priority,
                 next_action=next_action,
                 source="personal_cabinet",
-                context=context,
+                context=task_context,
             )
-            self.cognition.sync_tasks()
+            cognitive_scope = self.cognition.bind_task(
+                task["id"],
+                project_key=normalized_context["project_key"],
+                module_key=normalized_context.get("module_key"),
+                completion_criteria=normalized_context.get("completion_criteria"),
+                confidence=0.95,
+            )
             return {
                 "status": "создано",
                 "task": task,
+                "cognitive_scope": cognitive_scope,
                 "dashboard": self.memory_v4.dashboard(),
                 "cognition": self.cognition.status(),
             }
@@ -537,16 +547,30 @@ class SayuriAgent:
         blocked_reason: str | None = None,
     ) -> dict[str, Any]:
         try:
+            cognitive_scope = self.cognition.task_scope(task_id)
+            if cognitive_scope is None:
+                self.cognition.sync_tasks()
+                cognitive_scope = self.cognition.task_scope(task_id)
+            if (
+                status == "done"
+                and cognitive_scope
+                and cognitive_scope.get("completion_criteria")
+            ):
+                assessment = self.cognition.completion_assessment(task_id)
+                if assessment.get("status") != "ready_for_confirmation":
+                    raise CognitiveBrainError(
+                        "Нельзя завершить задачу: подтверждённые критерии готовности ещё не выполнены."
+                    )
             task = self.memory_v4.update_task(
                 task_id,
                 status=status,
                 next_action=next_action,
                 blocked_reason=blocked_reason,
             )
-            self.cognition.sync_tasks()
             return {
                 "status": "обновлено",
                 "task": task,
+                "cognitive_scope": self.cognition.task_scope(task_id),
                 "dashboard": self.memory_v4.dashboard(),
                 "cognition": self.cognition.status(),
             }
@@ -949,10 +973,124 @@ class SayuriAgent:
         context: Any = None,
     ) -> dict[str, Any]:
         try:
+            cognitive_context = self.cognition.context(
+                query,
+                ui_context=context,
+                for_cloud=False,
+            )
+            portfolio = cognitive_context.get("portfolio")
+            portfolio = portfolio if isinstance(portfolio, dict) else {}
+            project = portfolio.get("project") if isinstance(portfolio.get("project"), dict) else {}
+            module = portfolio.get("module") if isinstance(portfolio.get("module"), dict) else {}
             return {
                 "status": self.cognition.status(),
-                "context": self.cognition.context(query, ui_context=context, for_cloud=False),
-                "self_evaluation": self.cognition.self_evaluation(),
+                "context": cognitive_context,
+                "self_evaluation": self.cognition.self_evaluation(
+                    project_key=str(project.get("key") or self.cognition.PROJECT_KEY),
+                    module_key=str(module.get("key") or "") or None,
+                ),
+            }
+        except CognitiveBrainError as exc:
+            raise AgentRuntimeError(str(exc)) from exc
+
+    def register_cognitive_project(
+        self,
+        project_key: str,
+        *,
+        title: str = "",
+        description: str = "",
+        priority: int | None = None,
+    ) -> dict[str, Any]:
+        try:
+            project = self.cognition.register_project(
+                project_key,
+                title=title or None,
+                description=description,
+                priority=priority,
+            )
+            return {"status": "сохранено", "project": project}
+        except CognitiveBrainError as exc:
+            raise AgentRuntimeError(str(exc)) from exc
+
+    def register_cognitive_module(
+        self,
+        project_key: str,
+        module_key: str,
+        *,
+        title: str = "",
+        path: str = "",
+    ) -> dict[str, Any]:
+        try:
+            module = self.cognition.register_module(
+                project_key,
+                module_key,
+                title=title or None,
+                path=path,
+                metadata={"source": "explicit_local_api"},
+            )
+            return {"status": "сохранено", "module": module}
+        except CognitiveBrainError as exc:
+            raise AgentRuntimeError(str(exc)) from exc
+
+    def add_cognitive_dependency(
+        self,
+        task_id: str,
+        dependency_task_id: str,
+        *,
+        relation: str = "requires",
+    ) -> dict[str, Any]:
+        try:
+            edge = self.cognition.add_dependency(
+                task_id,
+                dependency_task_id,
+                relation=relation,
+                evidence_ref="explicit_local_api",
+                confirmed=True,
+            )
+            return {"status": "сохранено", "dependency": edge}
+        except CognitiveBrainError as exc:
+            raise AgentRuntimeError(str(exc)) from exc
+
+    def set_cognitive_completion_criteria(
+        self,
+        task_id: str,
+        criteria: Any,
+    ) -> dict[str, Any]:
+        try:
+            scope = self.cognition.set_completion_criteria(task_id, criteria)
+            return {
+                "status": "сохранено",
+                "scope": scope,
+                "assessment": self.cognition.completion_assessment(task_id),
+            }
+        except CognitiveBrainError as exc:
+            raise AgentRuntimeError(str(exc)) from exc
+
+    def resolve_cognitive_uncertainty(
+        self,
+        uncertainty_id: str,
+        resolution: str,
+    ) -> dict[str, Any]:
+        try:
+            return {
+                "status": "разрешено",
+                "uncertainty": self.cognition.resolve_uncertainty(uncertainty_id, resolution),
+            }
+        except CognitiveBrainError as exc:
+            raise AgentRuntimeError(str(exc)) from exc
+
+    def apply_cognitive_replan(
+        self,
+        revision_id: str,
+        *,
+        confirmation: str,
+    ) -> dict[str, Any]:
+        if confirmation != "APPLY_REPLAN":
+            raise AgentRuntimeError("Для применения replanning требуется явное подтверждение.")
+        try:
+            return {
+                "status": "применено",
+                "replan": self.cognition.apply_replan(revision_id),
             }
         except CognitiveBrainError as exc:
             raise AgentRuntimeError(str(exc)) from exc
@@ -1411,9 +1549,19 @@ class SayuriAgent:
             if memory_saved is not None:
                 self.memory_v3.ingest_memory(memory_saved, event_type="memory_explicit")
                 self.memory_v4.ingest_memory(memory_saved)
+            memory_candidates = self.memory_intelligence.analyze_message(text, context)
+            for candidate in memory_candidates:
+                if candidate.get("status") != "auto_saved" or not candidate.get("related_memory_id"):
+                    continue
+                entry = self.memory.get(candidate["related_memory_id"])
+                if entry:
+                    self.memory_v3.ingest_memory(entry, event_type="memory_auto_saved")
+                    self.memory_v4.ingest_memory(entry)
+            # Synchronize derived scope only after all new task memories from this request are ingested.
+            # Existing cognitive state is preserved by sync_tasks().
+            self.cognition.sync_tasks()
             memory_v4_context = self.memory_v4.context(text, record_usage=False)
             continuity_context = self.memory_v4.continuity_context(text, limit=6)
-            self.cognition.sync_tasks()
             cognitive_context = self.cognition.context(
                 text,
                 ui_context=context,
@@ -1428,14 +1576,6 @@ class SayuriAgent:
             experience_context = self.memory_v4.sanitize_experience_context(
                 self.experience.context(text, limit=6)
             )
-            memory_candidates = self.memory_intelligence.analyze_message(text, context)
-            for candidate in memory_candidates:
-                if candidate.get("status") != "auto_saved" or not candidate.get("related_memory_id"):
-                    continue
-                entry = self.memory.get(candidate["related_memory_id"])
-                if entry:
-                    self.memory_v3.ingest_memory(entry, event_type="memory_auto_saved")
-                    self.memory_v4.ingest_memory(entry)
         except (
             MemoryError,
             MemoryIntelligenceError,

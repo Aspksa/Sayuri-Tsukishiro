@@ -4,76 +4,79 @@
 
 - Дата: 2026-10-06.
 - Репозиторий: https://github.com/Aspksa/Sayuri-Tsukishiro
-- Проверенная исходная ревизия: `35bb9e6d5ab9e5b51075c28461b8e862f70a74e7` — опубликованный `main 0.1.56`.
-- Рабочая ветка этапа: `cognitive-project-brain-v020`.
-- Текущий целевой результат: **0.2.0 — Cognitive Project Brain**.
-- Задача: **AI-011 — Global Multi-Module Cognitive Architecture**.
+- Проверенная исходная ревизия: `8cc0df75a01924cbaf91001387cdadfee817774f` — опубликованный `main 0.2.0`, Versions #37410683454 success.
+- Рабочая ветка этапа: `cognitive-brain-hardening-v0201`.
+- Текущий целевой результат: **0.2.1 — Cognitive Brain Hardening 1.1**.
+- Задача: **AI-012**.
 
 ## Версии результата
 
-- Project: `0.2.0`.
-- App/Core: `0.1.49`.
-- Agent Core: `0.14.0`.
-- Reasoning Planner: `1.0`.
-- Cognitive Project Brain: `1.0`.
-- Evidence Tool Planner: `0.4`.
+- Project: `0.2.1`.
+- App/Core: `0.1.50`.
+- Agent Core: `0.14.1`.
+- Cognitive Project Brain: `1.1`.
+- Reasoning Planner: `1.0` — без изменений.
+- Evidence Tool Planner: `0.4` — без изменений.
 - Web UI: `0.31.0` — без изменений.
 - Disk: `0.8.0` — без изменений.
 - dev-tools: `0.1.6` — без изменений.
 
-## Мозг
+## Что усиливается
 
-Sayuri теперь использует единый стек:
+### State ownership
+- repeat sync не перезаписывает managed cognitive task scope;
+- explicit task creation сразу нормализует project/module context и bind-ит scope.
 
-`Memory 4.x → Goal/Task Lifecycle → Cognitive Project Brain → Reasoning Planner → Evidence Tools → Result Verifier → Action Broker → Checkpoint/Strategy feedback`
+### Graph safety
+- confirmed cycles запрещены;
+- direct cross-project task edges запрещены;
+- unconfirmed edges не блокируют scheduler;
+- unresolved dependency имеет приоритет над completion readiness.
 
-Cognitive Project Brain включает:
-- multi-project portfolio;
-- multi-module registry;
-- task graph `requires / blocks / unlocks / follows`;
-- explicit completion criteria;
-- dependency-aware cognitive scheduler;
-- confidence + uncertainty ledger;
-- existing causal/failure reasoning from Memory 4.x;
-- strategy memory from confirmed action outcomes;
-- persistent replan proposals;
-- deterministic self-evaluation;
-- metacognitive states;
-- long-horizon restart restoration.
+### Evidence-based completion
+- criteria учитывают только applied checkpoints;
+- configured criteria guard запрещает преждевременный `done`;
+- automatic completion отсутствует.
 
-## Контракт будущих модулей
+### Replanning / uncertainty
+- failure создаёт proposal/uncertainty, но не применяет их;
+- apply требует `APPLY_REPLAN` и актуального `next_action`;
+- uncertainty закрывается только explicit resolution.
 
-1. Новый модуль добавляется в `MODULES.json` и имеет собственный каталог/`VERSION` согласно общему versioning contract.
-2. `project_key` определяет проект портфеля; без него используется `sayuri-tsukishiro`.
-3. Task-producing module передаёт `project_key/module_key` в task context.
-4. Cognitive Brain автоматически scope-ит задачу при trusted synchronization.
-5. Модулю не нужно реализовывать отдельный Planner, scheduler, uncertainty или strategy memory.
-6. Модуль может использовать общий read-only `/api/sayuri/cognition` для диагностики.
+### Causal evidence
+- observed completed action -> checkpoint;
+- observed failed action -> replan/uncertainty;
+- causal trace является provenance lineage, не свободной гипотезой LLM.
 
-## Жёсткие инварианты
+### Multi-module scaling
+- scheduler понимает stable UI/module aliases;
+- strategy/uncertainty/self-evaluation изолируются по module scope;
+- cloud context не содержит module path/metadata;
+- explicit local cognition API позволяет будущим модулям регистрироваться и строить dependencies без собственного Planner.
+
+## Инварианты
 
 1. Единственная внешняя LLM — `deepseek-ai/DeepSeek-V4-Flash` через Cloud.ru.
-2. LLM не меняет cognitive/task state напрямую.
-3. Real mutations остаются confirmation-gated через Action Broker.
-4. Read-only cognition tools не имеют скрытых write side-effects.
-5. Dependency-blocked task не выбирается scheduler как actionable.
-6. Completion criteria никогда автоматически не выставляют `done`.
-7. Failure создаёт replan proposal/uncertainty, а не самовольную mutation.
-8. Sensitive/local-only memory продолжает фильтроваться перед Cloud.
-9. Chain-of-thought не сохраняется.
+2. LLM имеет только read-only cognition tools.
+3. Реальные project mutations остаются за Action Broker; cognitive mutation API является explicit local API.
+4. Replan application требует отдельного подтверждения.
+5. Completion criteria не выставляют `done` автоматически.
+6. Старый checkpoint/replan не может перезаписать более новое task state.
+7. Sensitive/local module metadata не отправляется в Cloud projection.
+8. Chain-of-thought не сохраняется.
 
 ## Приёмка
 
-Для публикации `0.2.0` обязательны:
-- новый cognitive regression suite;
-- весь существующий Python core suite;
+Для публикации `0.2.1` обязательны:
+- полный Python regression suite;
 - JavaScript syntax;
 - app preflight;
 - version check `--each-commit`;
 - Windows launcher checks;
 - PR CI;
-- merge и зелёный final workflow на `main`.
+- squash merge;
+- зелёный финальный workflow на `main`.
 
-## Следующая точка после 0.2.0
+## Следующий этап после 0.2.1
 
-Не расширять мозг количеством новых концепций. Следующий этап — подключать реальные новые проектные модули к общему Cognitive Brain и измерять качество scheduler/criteria/strategy на настоящих многошаговых workflow.
+Подключать реальные новые прикладные модули к общему Cognitive Brain через `project_key/module_key`, а не добавлять новый тип памяти/Planner. Первые хорошие кандидаты: Лаборатория Sayuri и VK-модуль. На их реальных workflow измерять scheduler accuracy, blocker handling, criteria quality и strategy transfer.

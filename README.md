@@ -35,6 +35,23 @@
 Для диагностики доступен локальный read-only endpoint `GET /api/sayuri/cognition?q=...`.
 
 
+## Cognitive Brain Hardening 1.1
+
+`0.2.1` укрепляет Cognitive Project Brain перед подключением большого числа будущих модулей.
+
+- повторная синхронизация задач не затирает уже управляемый cognitive state;
+- task graph отклоняет циклы и прямые межпроектные зависимости;
+- неподтверждённые dependency edges не влияют на scheduler;
+- completion criteria учитывают только реально применённые checkpoints и не обходят blockers;
+- strategy/uncertainty/self-evaluation изолируются по module scope;
+- failed Action Broker outcome создаёт доказательный causal trace к uncertainty/replan, но не объявляется полной причиной всей проблемы;
+- replan применяется только отдельным явным действием с `APPLY_REPLAN` и stale-state guard;
+- Cloud получает компактный project/module scope без локальных путей и manifest metadata;
+- будущие модули используют общий context contract вместо собственного Planner/Scheduler.
+
+Технический контракт и правила интеграции модулей описаны в [COGNITIVE_BRAIN.md](COGNITIVE_BRAIN.md).
+
+
 ## Task Lifecycle & Checkpoints
 
 С `0.1.56` Goal Continuity получила устойчивый жизненный цикл многошаговых задач:

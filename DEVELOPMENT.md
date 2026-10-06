@@ -1730,3 +1730,91 @@ Metacognitive states are: `idle`, `actionable`, `blocked`, `uncertain`, `replan_
 ### Regression coverage
 
 `app/tests/test_cognition.py` covers manifest scoping, multiple projects/modules, dependencies, completion criteria, failure replanning, strategy memory, restart persistence and read-only status behavior.
+
+
+## Sayuri 0.2.1 — Cognitive Brain Hardening 1.1
+
+### Stable project/module context
+
+Все task-producing модули используют единый bounded context contract:
+
+```json
+{
+  "project_key": "sayuri-tsukishiro",
+  "module_key": "sayuri-disk",
+  "milestone": "optional",
+  "labels": ["optional"],
+  "completion_criteria": []
+}
+```
+
+`normalize_task_context()` нормализует ключи. Для существующего UI используются только локальные aliases: `disk/drive/dna -> sayuri-disk`, `sayuri/chat -> agent-core`, `home/settings/system -> sayuri-core`.
+
+### Synchronization ownership
+
+`sync_tasks()` является registration sync, а не reconciliation writer. Если `cognitive_task_scope` уже существует, sync не меняет `attention_state`, `confidence`, `completion_criteria` или `plan_revision`. Управляемое состояние меняется только explicit local API или подтверждённым lifecycle.
+
+### Task Graph invariants
+
+- direct task edge разрешён только внутри одного project scope;
+- confirmed edge не может создавать dependency cycle;
+- `confirmed=false` edge хранится как гипотеза/черновик, но не блокирует scheduler;
+- legacy invalid graph не исправляется молча.
+
+### Completion and checkpoints
+
+`completion_assessment()` считает только checkpoints с `applied=true`. Неактуальный/stale checkpoint остаётся evidence прошлого action, но не засчитывается как прогресс criteria. Наличие unresolved dependency имеет приоритет над fulfilled criteria.
+
+Если configured criteria ещё не дали `ready_for_confirmation`, explicit local попытка `status=done` отклоняется. Даже `ready_for_confirmation` не выставляет `done` автоматически.
+
+### Replan application
+
+Failure создаёт `cognitive_plan_revisions.status=proposed`. Применение требует:
+
+1. явного local confirmation `APPLY_REPLAN`;
+2. status proposal всё ещё `proposed`;
+3. текущий Memory 4 `next_action` равен `previous_next_action` proposal.
+
+После успешного apply proposal становится `accepted`. LLM tools для apply отсутствуют.
+
+### Conservative causal lineage
+
+`cognitive_causal_links` хранит только локально наблюдаемые связи:
+- confirmed completed action -> task checkpoint;
+- confirmed failed action -> replan proposal;
+- confirmed failed action -> uncertainty.
+
+Эти edges означают provenance/trigger lineage, а не доказательство общей причинности проблемы.
+
+### Multi-module isolation
+
+`uncertainties()` и `strategies()` поддерживают `module_id` filter. Module-scoped self-evaluation не смешивает uncertainty другого модуля того же проекта. Cognitive cloud context получает только компактные project/module identifiers и безопасные titles; path/metadata остаются локальными.
+
+### Local cognition API
+
+Read-only:
+- `GET /api/sayuri/cognition?q=...&project_key=...&module_key=...`.
+
+Explicit local mutations:
+- `POST /api/sayuri/cognition/projects`;
+- `POST /api/sayuri/cognition/modules`;
+- `POST /api/sayuri/cognition/dependencies`;
+- `POST /api/sayuri/cognition/tasks/{task_id}/criteria`;
+- `POST /api/sayuri/cognition/uncertainties/{id}/resolve`;
+- `POST /api/sayuri/cognition/replans/{id}/apply` with `confirmation=APPLY_REPLAN`.
+
+Эти endpoints не входят в Evidence Tool Planner catalog и не доступны модели как direct tools.
+
+### Regression coverage
+
+- managed scope preservation;
+- cycle/cross-project guards;
+- unconfirmed dependency behavior;
+- applied checkpoint criteria;
+- explicit completion guard;
+- replan confirmation + stale state;
+- uncertainty resolution;
+- conservative causal lineage;
+- module-scoped evaluation;
+- Cloud metadata boundary;
+- runtime/API contract.
