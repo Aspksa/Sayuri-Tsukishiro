@@ -597,9 +597,97 @@ class SayuriCore:
         )
         return result
 
+    def _sayuri_document_evidence_handlers(self, context: Any) -> dict[str, Any]:
+        safe_context = context if isinstance(context, dict) else {}
+        current = safe_context.get("current_document")
+        current_file_id = (
+            str(current.get("id") or "")
+            if isinstance(current, dict) and current.get("kind") == "file"
+            else ""
+        )
+
+        def evidence_search(args: dict[str, Any]) -> dict[str, Any]:
+            if not current_file_id:
+                return {
+                    "data": {
+                        "available": False,
+                        "reason": "no_current_document",
+                        "document": None,
+                        "items": [],
+                    },
+                    "evidence_refs": ["dna-spatial:current-document:none"],
+                }
+
+            result = self.disk.search_cached_evidence(
+                current_file_id,
+                str(args.get("query") or ""),
+                limit=int(args.get("limit") or 6),
+            )
+            document = result.get("document") if isinstance(result.get("document"), dict) else {}
+            safe_items = []
+            for item in result.get("items", []):
+                if not isinstance(item, dict):
+                    continue
+                if not self.agent.cloud_text_allowed(
+                    item.get("label"),
+                    item.get("role"),
+                    item.get("value"),
+                    item.get("canonical"),
+                    item.get("excerpt"),
+                ):
+                    continue
+                locator = item.get("locator") if isinstance(item.get("locator"), dict) else {}
+                safe_items.append({
+                    **{
+                        key: value
+                        for key, value in item.items()
+                        if key != "locator"
+                    },
+                    "locator": {
+                        "page": locator.get("page"),
+                        "line": locator.get("line"),
+                        "line_id": locator.get("line_id"),
+                        "extraction_method": locator.get("extraction_method"),
+                        "coordinate_status": locator.get("coordinate_status"),
+                    },
+                })
+
+            data = {
+                "available": bool(safe_items),
+                "reason": result.get("reason") if safe_items else (
+                    "filtered_by_privacy_gate" if result.get("items") else result.get("reason")
+                ),
+                "document": {
+                    "id": str(document.get("id") or "")[:220],
+                    "name": str(document.get("name") or "")[:220],
+                    "content_type": str(document.get("content_type") or "")[:120],
+                },
+                "query": str(result.get("query") or "")[:1600],
+                "items": safe_items[:6],
+                "spatial_engine_version": result.get("spatial_engine_version"),
+            }
+            return {
+                "data": data,
+                "evidence_refs": [
+                    "dna-spatial:"
+                    + str(document.get("id") or current_file_id)[:120]
+                    + ":"
+                    + str(item.get("fact_id") or "")[:120]
+                    for item in safe_items[:6]
+                    if item.get("fact_id")
+                ],
+            }
+
+        return {"document.evidence_search": evidence_search}
+
     def sayuri_chat(self, *, message: str, history: Any = None, context: Any = None) -> dict[str, Any]:
         try:
-            result = self.agent.chat(message=message, history=history, context=context)
+            result = self.agent.chat(
+                message=message,
+                history=history,
+                context=context,
+                external_tool_handlers=self._sayuri_document_evidence_handlers(context),
+            )
         except AgentRuntimeError as exc:
             raise ProviderError(str(exc), status=502) from exc
         self.database.record_event(
@@ -616,6 +704,11 @@ class SayuriCore:
                     "evidence": (((result.get("reasoning") or {}).get("automation") or {}).get("evidence_receipts", 0)),
                     "blocked_mutations": (((result.get("reasoning") or {}).get("automation") or {}).get("blocked_mutations", 0)),
                 },
+                "spatial_citations": sum(
+                    1
+                    for item in (result.get("evidence") or [])
+                    if isinstance(item, dict) and item.get("kind") == "spatial_document"
+                ),
             },
         )
         return result

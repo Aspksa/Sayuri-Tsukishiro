@@ -398,6 +398,24 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
                     raise FileNotFoundError("Файл не найден.")
                 self._json(self.server.core.disk.document_dna(file_id))
                 return
+            if parsed.path.startswith("/api/disk/files/") and parsed.path.endswith("/evidence-focus"):
+                file_id = parsed.path[len("/api/disk/files/"):-len("/evidence-focus")].strip("/")
+                if not file_id:
+                    raise FileNotFoundError("Файл не найден.")
+                fact_id = query.get("fact_id", [""])[0].strip()
+                if not fact_id:
+                    raise BadRequestError("Не указан fact_id evidence.")
+                rendered = self.server.core.disk.render_evidence_focus(file_id, fact_id)
+                self._send(
+                    rendered["body"],
+                    rendered["content_type"],
+                    extra_headers={
+                        "Cache-Control": "no-store",
+                        "X-Sayuri-Evidence-Page": str(rendered.get("page") or ""),
+                        "X-Sayuri-Evidence-Line": str(rendered.get("line") or ""),
+                    },
+                )
+                return
             if parsed.path.startswith("/api/disk/files/") and parsed.path.endswith("/preview"):
                 file_id = parsed.path[len("/api/disk/files/"):-len("/preview")].strip("/")
                 if not file_id:

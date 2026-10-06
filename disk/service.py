@@ -1601,6 +1601,221 @@ class DiskService:
             force_ocr=force_ocr,
         )
 
+    @staticmethod
+    def _evidence_tokens(value: Any) -> set[str]:
+        normalized = str(value or "").casefold().replace("ё", "е")
+        return {
+            token
+            for token in re.findall(r"[a-zа-я0-9]{2,}", normalized)
+            if token not in {"документ", "файл", "этот", "текущий", "покажи", "скажи", "найди"}
+        }
+
+    def _cached_dna_snapshot(self, file_id: str) -> dict[str, Any] | None:
+        with self._session() as db:
+            row = db.execute(
+                "SELECT dna_json FROM disk_dna WHERE file_id = ?",
+                (file_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        try:
+            payload = json.loads(row["dna_json"])
+        except (TypeError, json.JSONDecodeError):
+            return None
+        return payload if isinstance(payload, dict) else None
+
+    def search_cached_evidence(
+        self,
+        file_id: str,
+        query: str,
+        *,
+        limit: int = 6,
+    ) -> dict[str, Any]:
+        """Search already-built DNA facts without triggering analysis or writes."""
+        item = self.get_file(file_id)
+        dna = self._cached_dna_snapshot(file_id)
+        safe_limit = min(max(int(limit), 1), 6)
+        if dna is None:
+            return {
+                "available": False,
+                "reason": "dna_not_cached",
+                "document": {"id": item["id"], "name": item["name"]},
+                "items": [],
+            }
+
+        query_text = " ".join(str(query or "").strip().split())[:1600]
+        query_tokens = self._evidence_tokens(query_text)
+        broad_markers = (
+            "анализ", "содерж", "основн", "факт", "реквизит", "услов", "кратк",
+            "что в", "о чем", "о чём", "провер",
+        )
+        broad = not query_tokens or any(marker in query_text.casefold().replace("ё", "е") for marker in broad_markers)
+
+        candidates: list[tuple[float, dict[str, Any]]] = []
+        for fact in dna.get("molecules", {}).get("facts", []):
+            if not isinstance(fact, dict):
+                continue
+            gate = str(fact.get("quality_gate") or "review")
+            if gate == "rejected":
+                continue
+            source = fact.get("source") if isinstance(fact.get("source"), dict) else {}
+            locator = source.get("locator") if isinstance(source.get("locator"), dict) else {}
+            if locator.get("coordinate_status") != "exact_from_document_engine":
+                continue
+            bbox = locator.get("bbox")
+            normalized_bbox = bbox.get("normalized") if isinstance(bbox, dict) else None
+            if not isinstance(normalized_bbox, list) or len(normalized_bbox) != 4:
+                continue
+            try:
+                page = int(locator.get("page") or 0)
+                line = int(locator.get("line") or source.get("line") or 0)
+            except (TypeError, ValueError):
+                continue
+            if page < 1:
+                continue
+
+            normalized = fact.get("normalized") if isinstance(fact.get("normalized"), dict) else {}
+            canonical = normalized.get("canonical")
+            excerpt = str(source.get("excerpt") or "")[:420]
+            value = str(fact.get("value") or "")[:320]
+            material = " ".join(
+                str(part or "")
+                for part in (
+                    fact.get("type"),
+                    fact.get("label"),
+                    fact.get("role"),
+                    value,
+                    canonical,
+                    excerpt,
+                )
+            )
+            material_folded = material.casefold().replace("ё", "е")
+            fact_tokens = self._evidence_tokens(material)
+            overlap = len(query_tokens & fact_tokens)
+            phrase_bonus = 0.0
+            compact_query = query_text.casefold().replace("ё", "е")
+            if compact_query and len(compact_query) >= 4 and compact_query in material_folded:
+                phrase_bonus = 4.0
+            if not broad and overlap == 0 and phrase_bonus == 0:
+                continue
+
+            try:
+                confidence = float(fact.get("calibrated_confidence", fact.get("confidence") or 0.0))
+            except (TypeError, ValueError):
+                confidence = 0.0
+            gate_bonus = 1.2 if gate == "accepted" else 0.0
+            role_bonus = 0.4 if fact.get("role") else 0.0
+            score = overlap * 3.0 + phrase_bonus + gate_bonus + role_bonus + max(0.0, min(1.0, confidence))
+            candidates.append(
+                (
+                    score,
+                    {
+                        "fact_id": str(fact.get("id") or "")[:180],
+                        "type": str(fact.get("type") or "fact")[:80],
+                        "label": str(fact.get("label") or fact.get("type") or "Факт")[:120],
+                        "role": str(fact.get("role") or "")[:120],
+                        "value": value,
+                        "canonical": str(canonical or "")[:320],
+                        "confidence": round(max(0.0, min(1.0, confidence)), 4),
+                        "quality_gate": gate,
+                        "excerpt": excerpt,
+                        "locator": {
+                            "page": page,
+                            "line": line,
+                            "line_id": str(locator.get("line_id") or "")[:180],
+                            "bbox": {
+                                "normalized": [
+                                    round(max(0.0, min(1.0, float(value))), 6)
+                                    for value in normalized_bbox
+                                ],
+                            },
+                            "extraction_method": str(locator.get("extraction_method") or "")[:40],
+                            "coordinate_status": "exact_from_document_engine",
+                        },
+                    },
+                )
+            )
+
+        candidates.sort(
+            key=lambda pair: (
+                -pair[0],
+                -float(pair[1].get("confidence") or 0.0),
+                int((pair[1].get("locator") or {}).get("page") or 0),
+                int((pair[1].get("locator") or {}).get("line") or 0),
+                pair[1].get("fact_id") or "",
+            )
+        )
+        items = []
+        for index, (_score, evidence) in enumerate(candidates[:safe_limit], start=1):
+            if not evidence["fact_id"]:
+                continue
+            items.append({"citation_id": f"D{index}", **evidence})
+        return {
+            "available": bool(items),
+            "reason": "ready" if items else "no_exact_match",
+            "document": {
+                "id": item["id"],
+                "name": item["name"],
+                "content_type": item["content_type"],
+            },
+            "query": query_text,
+            "items": items,
+            "spatial_engine_version": dna.get("spatial", {}).get("engine_version"),
+        }
+
+    def render_evidence_focus(self, file_id: str, fact_id: str) -> dict[str, Any]:
+        """Render only a stored fact locator; caller cannot supply arbitrary bbox."""
+        clean_fact_id = str(fact_id or "").strip()
+        if not clean_fact_id:
+            raise ValueError("Не указан fact_id evidence.")
+        item = self.get_file(file_id)
+        dna = self._cached_dna_snapshot(file_id)
+        if dna is None:
+            raise FileNotFoundError("ДНК документа ещё не построена.")
+
+        fact = next(
+            (
+                value
+                for value in dna.get("molecules", {}).get("facts", [])
+                if isinstance(value, dict) and str(value.get("id") or "") == clean_fact_id
+            ),
+            None,
+        )
+        if fact is None or fact.get("quality_gate") == "rejected":
+            raise FileNotFoundError("Evidence-факт не найден.")
+        source = fact.get("source") if isinstance(fact.get("source"), dict) else {}
+        locator = source.get("locator") if isinstance(source.get("locator"), dict) else {}
+        if locator.get("coordinate_status") != "exact_from_document_engine":
+            raise ValueError("У evidence-факта нет точных координат Spatial Engine.")
+        bbox = locator.get("bbox")
+        try:
+            page = int(locator.get("page") or 0)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("У evidence-факта нет корректной страницы.") from exc
+        if page < 1:
+            raise ValueError("У evidence-факта нет корректной страницы.")
+
+        path: Path = item["path"]
+        suffix = path.suffix.lower() if path.suffix else Path(item["name"]).suffix.lower()
+        rendered = self.spatial_dna.render_evidence_focus(
+            path,
+            content_type=item["content_type"],
+            suffix=suffix,
+            page_number=page,
+            bbox=bbox,
+        )
+        return {
+            **rendered,
+            "file_id": item["id"],
+            "fact_id": clean_fact_id,
+            "name": item["name"],
+            "label": str(fact.get("label") or fact.get("type") or "Факт")[:120],
+            "value": str(fact.get("value") or "")[:320],
+            "excerpt": str(source.get("excerpt") or "")[:420],
+            "line": int(locator.get("line") or source.get("line") or 0),
+            "coordinate_status": "exact_from_document_engine",
+        }
+
     def spatial_status(self) -> dict[str, Any]:
         capabilities = self.spatial_dna.capabilities()
         with self._session() as db:

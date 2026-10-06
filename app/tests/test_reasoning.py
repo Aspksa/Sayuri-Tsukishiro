@@ -158,6 +158,108 @@ class ReasoningEngineTests(unittest.TestCase):
         self.assertNotIn("receipt:", str(evidence))
         self.assertNotIn("sha256:", str(evidence))
 
+    def test_spatial_citations_are_allowlisted_and_public_projection_hides_geometry(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            agent = SayuriAgent(Path(tmp))
+            calls = []
+
+            def fake_chat(self, messages, **kwargs):
+                calls.append(messages)
+                system = messages[0]["content"]
+                usage = {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}
+                if "Reasoning Planner" in system:
+                    return {
+                        "answer": (
+                            '{"goal":"Проверить сумму договора","steps":["Сверить факт"],'
+                            '"constraints":[],"evidence_needed":["Spatial Evidence"],'
+                            '"done_when":["Источник указан"],"risk_level":"low",'
+                            '"tool_intents":[{"step":1,"tool":"document.evidence_search",'
+                            '"args":{"query":"сумма договора","limit":3},'
+                            '"purpose":"Найти точное доказательство"}]}'
+                        ),
+                        "usage": usage,
+                        "model": "deepseek-ai/DeepSeek-V4-Flash",
+                    }
+                if "Result Verifier" in system:
+                    return {
+                        "answer": (
+                            '{"status":"pass","score":1.0,'
+                            '"checks":{"goal":true,"constraints":true,"evidence":true},'
+                            '"issues":[],"unsupported_claims":[],"revised_answer":null}'
+                        ),
+                        "usage": usage,
+                        "model": "deepseek-ai/DeepSeek-V4-Flash",
+                    }
+                return {
+                    "answer": "Сумма договора — 25 000 руб. [D1]. Лишний маркер [D9].",
+                    "usage": usage,
+                    "model": "deepseek-ai/DeepSeek-V4-Flash",
+                }
+
+            def evidence_handler(args):
+                self.assertEqual(args["query"], "сумма договора")
+                return {
+                    "data": {
+                        "available": True,
+                        "document": {
+                            "id": "doc-1",
+                            "name": "Договор.pdf",
+                            "content_type": "application/pdf",
+                        },
+                        "items": [
+                            {
+                                "citation_id": "D1",
+                                "fact_id": "fact-amount",
+                                "label": "Сумма",
+                                "role": "amount",
+                                "value": "25 000 руб.",
+                                "excerpt": "Итого к оплате 25 000 руб.",
+                                "confidence": 0.98,
+                                "quality_gate": "accepted",
+                                "locator": {
+                                    "page": 2,
+                                    "line": 18,
+                                    "line_id": "p2-native-l8",
+                                    "extraction_method": "native",
+                                    "coordinate_status": "exact_from_document_engine",
+                                },
+                            }
+                        ],
+                    },
+                    "evidence_refs": ["dna-spatial:doc-1:fact-amount"],
+                }
+
+            with patch.dict(os.environ, {"SAYURI_CLOUDRU_API_KEY": "test-key-1234567890"}):
+                with patch.object(CloudRuClient, "chat", fake_chat):
+                    result = agent.chat(
+                        message="Проанализируй договор, проверь сумму и источник профессионально.",
+                        context={"view": "disk"},
+                        external_tool_handlers={"document.evidence_search": evidence_handler},
+                    )
+
+            self.assertEqual(len(calls), 3)
+            self.assertIn("[D1]", result["answer"])
+            self.assertNotIn("[D9]", result["answer"])
+            spatial = next(item for item in result["evidence"] if item["kind"] == "spatial_document")
+            self.assertEqual(spatial["citation_id"], "D1")
+            self.assertEqual(spatial["page"], 2)
+            self.assertEqual(spatial["line"], 18)
+            self.assertEqual(spatial["target"], {
+                "type": "disk_evidence",
+                "file_id": "doc-1",
+                "fact_id": "fact-amount",
+            })
+            self.assertNotIn("bbox", str(spatial))
+            self.assertNotIn("receipt:", str(result["evidence"]))
+            self.assertNotIn("document.evidence_search", str(result["evidence"]))
+            self.assertTrue(
+                any(
+                    "Spatial Evidence citations" in item.get("content", "")
+                    for item in calls[1]
+                    if item.get("role") == "system"
+                )
+            )
+
     def test_simple_chat_uses_one_model_call(self):
         with tempfile.TemporaryDirectory() as tmp:
             agent = SayuriAgent(Path(tmp))
