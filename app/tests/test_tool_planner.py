@@ -84,6 +84,55 @@ class EvidenceToolPlannerTests(unittest.TestCase):
             self.assertEqual(result["receipts"][0]["tool"], "system.status")
             self.assertEqual(result["receipts"][0]["status"], "completed")
 
+    def test_document_goal_can_trigger_cached_evidence_search(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            planner = EvidenceToolPlanner(Path(tmp) / "receipts.db")
+            seen = []
+
+            def evidence_handler(args):
+                seen.append(args)
+                return {
+                    "data": {
+                        "available": True,
+                        "document": {"id": "doc-1", "name": "Договор.pdf"},
+                        "items": [
+                            {
+                                "citation_id": "D1",
+                                "fact_id": "fact-1",
+                                "label": "Сумма",
+                                "value": "25000 руб.",
+                                "locator": {
+                                    "page": 2,
+                                    "line": 18,
+                                    "coordinate_status": "exact_from_document_engine",
+                                },
+                            }
+                        ],
+                    },
+                    "evidence_refs": ["dna-spatial:doc-1:fact-1"],
+                }
+
+            result = planner.execute_plan(
+                {
+                    "goal": "Проверить сумму в текущем договоре",
+                    "steps": ["Сверить документ"],
+                    "evidence_needed": ["Точная сумма и страница документа"],
+                    "tool_intents": [],
+                },
+                handlers={"document.evidence_search": evidence_handler},
+                request_id="req-doc-evidence",
+            )
+
+            self.assertEqual(len(seen), 1)
+            self.assertIn("договоре", seen[0]["query"])
+            self.assertEqual(seen[0]["limit"], 6)
+            receipt = next(
+                item for item in result["receipts"]
+                if item["tool"] == "document.evidence_search"
+            )
+            self.assertEqual(receipt["status"], "completed")
+            self.assertEqual(receipt["mode"], "read_only")
+
     def test_mutation_intent_never_executes_without_action_broker(self):
         with tempfile.TemporaryDirectory() as tmp:
             planner = EvidenceToolPlanner(Path(tmp) / "receipts.db")
@@ -134,6 +183,8 @@ class EvidenceToolPlannerTests(unittest.TestCase):
             catalog = {item["id"]: item for item in planner.catalog()}
             self.assertEqual(catalog["memory.search"]["mode"], "read_only")
             self.assertFalse(catalog["memory.search"]["confirmation_required"])
+            self.assertEqual(catalog["document.evidence_search"]["mode"], "read_only")
+            self.assertFalse(catalog["document.evidence_search"]["confirmation_required"])
             self.assertEqual(catalog["memory.remember"]["mode"], "confirmation_gated")
             self.assertTrue(catalog["memory.remember"]["confirmation_required"])
 

@@ -625,3 +625,34 @@
 - «Обзор», «Архитектура», «Quality Gate» и «Опыт» загружают собственные данные при первом открытии и кэшируют факт загрузки на время страницы.
 - После изменений перезагружаются только те тяжёлые секции, которые пользователь уже открывал.
 - Во время первого запроса используется skeleton + `aria-busy`, без новой постоянной панели.
+
+
+## D-066 — Spatial citation существует только при точной геометрии движка документа
+
+- Дата: 2026-10-06.
+- Статус: принято.
+- Источник: развитие v0.1.52 User-facing Evidence до page/line/bbox citations.
+- Решение: citation уровня `spatial_document` создаётся только для сохранённого DNA fact, у которого `source.locator.coordinate_status=exact_from_document_engine`.
+- Координаты не вычисляются LLM, браузером или эвристикой ответа.
+- Fact без exact locator может остаться обычным документным evidence, но не получает точную spatial citation.
+- Rejected facts не допускаются к evidence search.
+
+## D-067 — Evidence Focus принимает fact_id, а не координаты клиента
+
+- Дата: 2026-10-06.
+- Статус: принято.
+- Решение: `/api/disk/files/{id}/evidence-focus` принимает только `fact_id`.
+- Backend заново находит fact в сохранённой ДНК, проверяет quality gate и exact locator, после чего передаёт bbox в SpatialDNAEngine.
+- Клиент и DeepSeek не могут передать произвольный bbox и заставить интерфейс подсветить несвязанную область.
+- PDF Evidence Focus рендерится через локальный PDFium/Pillow; существующий iframe PDF viewer не используется как поверхность для ненадёжного overlay.
+
+## D-068 — Spatial D-citations ограничены D1..D6 и проходят runtime firewall
+
+- Дата: 2026-10-06.
+- Статус: принято.
+- `document.evidence_search` является read-only tool и использует только cached DNA текущего UI-документа.
+- Перед Cloud.ru найденные fact values/excerpts проходят существующий Memory 4.1 privacy/instruction-risk filter.
+- bbox не включается в Cloud evidence; модели передаются только citation_id, факт, excerpt, page/line и quality metadata.
+- Модель может использовать только выданные `D1..D6`; runtime удаляет неизвестные D-markers из финального ответа.
+- Result Verifier проверяет citations против completed evidence-search и при revised_answer не должен придумывать новые D-ID.
+- Citation UI не показывает receipt ID, tool name, raw args, output digest или внутренние координаты.

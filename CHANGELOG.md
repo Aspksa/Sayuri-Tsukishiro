@@ -2,6 +2,22 @@
 
 ## Невыпущенные изменения
 
+### 0.1.53 — 2026-10-06 — Spatial Evidence Citations
+
+- Добавлен read-only `document.evidence_search`: Planner может запросить проверяемые факты только из уже сохранённой ДНК текущего документа.
+- Evidence search не запускает новый ДНК/OCR-анализ, не изменяет файл и не пишет новые факты.
+- Spatial citation допускается только для факта с `coordinate_status=exact_from_document_engine` и нормализованным bbox, созданным Spatial Engine.
+- Модель получает citation IDs `D1..D6`, страницу/строку и безопасный факт, но bbox остаётся локальным и не отправляется в Cloud.ru.
+- Runtime удаляет неизвестные citation markers вида `[D9]`; Result Verifier инструктирован сохранять только реально поддержанные D-citations.
+- Public evidence скрывает tool/receipt IDs и показывает понятный источник: документ, факт, страницу и строку.
+- Добавлен `GET /api/disk/files/{id}/evidence-focus?fact_id=...`: endpoint принимает только fact_id и сам разрешает сохранённый locator; произвольный bbox от клиента не принимается.
+- SpatialDNAEngine 0.8.0 умеет рендерить PDF/image evidence page через PDFium/Pillow и локально подсвечивать точный bbox.
+- В чате `[D1]` превращается в компактную citation-кнопку; клик открывает существующий Disk viewer в режиме Evidence Focus.
+- Evidence Focus показывает отрендеренную страницу с подсветкой, страницу/строку, исходный excerpt и кнопку возврата в обычный просмотр.
+- Добавлены regressions на read-only policy, cached evidence search, fact-id-only focus, citation allowlist/privacy и Web/API contract.
+- Структура меню не менялась.
+- Проект: `0.1.53`; Ядро: `0.1.45`; Agent Core: `0.11.0`; Web UI: `0.29.0`; Disk: `0.8.0`.
+
 ### 0.1.52 — 2026-10-06 — Rich Answer UX & Lazy Diagnostics
 
 - Ответы Sayuri получили безопасный rich-text renderer без `innerHTML` и без внешней Markdown-зависимости.

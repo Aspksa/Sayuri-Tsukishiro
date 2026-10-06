@@ -27,7 +27,7 @@ class ReasoningDecision:
 class ReasoningEngine:
     """Adaptive task planner and result verifier without chain-of-thought storage."""
 
-    VERSION = "0.2"
+    VERSION = "0.3"
     MAX_CONTEXT_CHARS = 14000
     MAX_TASK_CHARS = 12000
 
@@ -285,6 +285,9 @@ class ReasoningEngine:
                     "Не раскрывай chain-of-thought. Receipt со status=completed доказывает факт запуска конкретного "
                     "локального инструмента и фиксирует его output digest, но не превращает неподтверждённый вывод модели "
                     "в факт. requires_action_broker означает, что изменяющее действие НЕ выполнено. "
+                    "Spatial citation вида [D1] допустима только если этот citation_id реально присутствует в "
+                    "completed document.evidence_search evidence; не придумывай D-ID. При revised_answer сохрани "
+                    "поддержанные citations рядом с теми утверждениями, которые они доказывают. "
                     "Не считай уверенный тон доказательством факта. Если ответ требует исправления, "
                     "верни полную исправленную версию в revised_answer, чтобы не делать четвёртый вызов модели. "
                     "Верни только JSON без Markdown: "
