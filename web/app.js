@@ -42,10 +42,121 @@ const sayuriState = {
   motionFrame: 0,
   activeCabinetTab: localStorage.getItem('sayuri-account-tab') || 'profile',
   activeMemoryTab: localStorage.getItem('sayuri-memory-tab') || 'overview',
+  chatMaximized: false,
+  commandPaletteIndex: 0,
   visible: localStorage.getItem('sayuri-visible') !== '0',
   rememberPosition: localStorage.getItem('sayuri-remember-position') !== '0',
   rememberHistory: localStorage.getItem('sayuri-remember-history') !== '0'
 };
+
+function showUiToast(message, kind = 'info') {
+  const region = byId('ui-toast-region');
+  if (!region || !message) return;
+  const toast = document.createElement('div');
+  toast.className = `ui-toast ${kind}`;
+  toast.textContent = message;
+  region.append(toast);
+  requestAnimationFrame(() => toast.classList.add('visible'));
+  window.setTimeout(() => {
+    toast.classList.remove('visible');
+    window.setTimeout(() => toast.remove(), 180);
+  }, 2600);
+}
+
+const commandPaletteCommands = [
+  {id: 'chat', label: 'Открыть чат Sayuri', hint: 'Sayuri', run: () => openSayuriChat()},
+  {id: 'account', label: 'Личный кабинет Sayuri', hint: 'Профиль', run: () => showView('sayuri')},
+  {id: 'home', label: 'Перейти на Главную', hint: 'Навигация', run: () => showView('home')},
+  {id: 'disk', label: 'Открыть Диск Sayuri', hint: 'Файлы', run: () => showView('disk')},
+  {id: 'settings', label: 'Открыть Настройки', hint: 'Система', run: () => showView('settings')},
+  {
+    id: 'memory',
+    label: 'Открыть Память Sayuri',
+    hint: 'Личный кабинет',
+    run: () => {
+      showView('sayuri');
+      setSayuriAccountTab('memory');
+    }
+  },
+  {
+    id: 'maximize-chat',
+    label: 'Развернуть / свернуть чат',
+    hint: 'Окно Sayuri',
+    run: () => {
+      openSayuriChat();
+      toggleSayuriChatMaximize();
+    }
+  }
+];
+
+function commandPaletteMatches() {
+  const query = (byId('command-palette-input')?.value || '').trim().toLocaleLowerCase('ru-RU');
+  if (!query) return commandPaletteCommands;
+  return commandPaletteCommands.filter((command) =>
+    `${command.label} ${command.hint}`.toLocaleLowerCase('ru-RU').includes(query)
+  );
+}
+
+function renderCommandPalette() {
+  const list = byId('command-palette-list');
+  if (!list) return;
+  const commands = commandPaletteMatches();
+  if (sayuriState.commandPaletteIndex >= commands.length) sayuriState.commandPaletteIndex = 0;
+  list.replaceChildren();
+  if (!commands.length) {
+    const empty = document.createElement('div');
+    empty.className = 'command-palette-empty';
+    empty.textContent = 'Команды не найдены';
+    list.append(empty);
+    return;
+  }
+  commands.forEach((command, index) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'command-palette-item';
+    button.classList.toggle('active', index === sayuriState.commandPaletteIndex);
+    button.setAttribute('role', 'option');
+    button.setAttribute('aria-selected', index === sayuriState.commandPaletteIndex ? 'true' : 'false');
+    const label = document.createElement('span');
+    label.textContent = command.label;
+    const hint = document.createElement('small');
+    hint.textContent = command.hint;
+    button.append(label, hint);
+    button.addEventListener('mouseenter', () => {
+      sayuriState.commandPaletteIndex = index;
+      list.querySelectorAll('.command-palette-item').forEach((item, itemIndex) => {
+        item.classList.toggle('active', itemIndex === index);
+        item.setAttribute('aria-selected', itemIndex === index ? 'true' : 'false');
+      });
+    });
+    button.addEventListener('click', () => executeCommandPalette(command));
+    list.append(button);
+  });
+}
+
+function openCommandPalette() {
+  const backdrop = byId('command-palette-backdrop');
+  if (!backdrop) return;
+  sayuriState.commandPaletteIndex = 0;
+  backdrop.classList.remove('hidden');
+  backdrop.setAttribute('aria-hidden', 'false');
+  byId('command-palette-input').value = '';
+  renderCommandPalette();
+  window.setTimeout(() => byId('command-palette-input').focus(), 0);
+}
+
+function closeCommandPalette() {
+  const backdrop = byId('command-palette-backdrop');
+  if (!backdrop) return;
+  backdrop.classList.add('hidden');
+  backdrop.setAttribute('aria-hidden', 'true');
+}
+
+function executeCommandPalette(command) {
+  if (!command) return;
+  closeCommandPalette();
+  command.run();
+}
 
 function setStatus(kind, text) {
   const pill = byId('status-pill');
@@ -3694,6 +3805,23 @@ function renderSayuriMessages() {
     if (reasoning) bubble.append(reasoning);
     const feedback = createSayuriFeedbackControls(messageIndex, message);
     if (feedback) bubble.append(feedback);
+    const actions = document.createElement('div');
+    actions.className = 'sayuri-message-actions';
+    const copy = document.createElement('button');
+    copy.type = 'button';
+    copy.textContent = '⧉';
+    copy.title = 'Копировать';
+    copy.setAttribute('aria-label', 'Копировать сообщение');
+    copy.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(message.content);
+        showUiToast('Сообщение скопировано', 'success');
+      } catch {
+        showUiToast('Не удалось скопировать сообщение', 'error');
+      }
+    });
+    actions.append(copy);
+    bubble.append(actions);
     row.append(bubble);
     container.append(row);
   });
@@ -3765,6 +3893,19 @@ function closeSayuriChat() {
   byId('sayuri-chat-window').classList.add('hidden');
 }
 
+function toggleSayuriChatMaximize(force) {
+  const chat = byId('sayuri-chat-window');
+  if (!chat) return;
+  const next = typeof force === 'boolean' ? force : !sayuriState.chatMaximized;
+  sayuriState.chatMaximized = next;
+  chat.classList.toggle('is-maximized', next);
+  byId('sayuri-chat-maximize').textContent = next ? '↙' : '↗';
+  byId('sayuri-chat-maximize').title = next ? 'Вернуть плавающее окно' : 'Развернуть чат';
+  byId('sayuri-chat-maximize').setAttribute('aria-label', next ? 'Вернуть плавающее окно' : 'Развернуть чат');
+  if (!next) keepFloatingInViewport(chat);
+  window.setTimeout(() => byId('sayuri-chat-input')?.focus(), 0);
+}
+
 async function sendSayuriMessage(text) {
   const message = text.trim();
   if (!message) return;
@@ -3778,7 +3919,7 @@ async function sendSayuriMessage(text) {
   byId('sayuri-chat-input').value = '';
   autoSizeSayuriComposer();
   byId('sayuri-chat-send').disabled = true;
-  byId('sayuri-chat-status').textContent = 'Sayuri думает через DeepSeek-V4-Flash…';
+  byId('sayuri-chat-status').textContent = 'Размышляет…';
 
   try {
     const context = currentSayuriContext();
@@ -3792,7 +3933,7 @@ async function sendSayuriMessage(text) {
         'Я подготовила изменение проекта. Проверьте его и подтвердите выполнение.',
         {action: planned.action}
       );
-      byId('sayuri-chat-status').textContent = 'Действие подготовлено · ожидает подтверждения';
+      byId('sayuri-chat-status').textContent = 'Нужно подтверждение';
       loadSayuriActions().catch(() => {});
       return;
     }
@@ -3828,13 +3969,15 @@ async function sendSayuriMessage(text) {
       loadSayuriMemoryCandidates().catch(() => {});
       loadSayuriProfile().catch(() => {});
     }
+    const checked = Number(result.reasoning?.automation?.evidence_receipts || 0);
     byId('sayuri-chat-status').textContent = result.model === 'local-memory'
-      ? 'Память Sayuri · сохранено локально'
-      : `DeepSeek-V4-Flash · память ${result.memory_used || 0} · знания ${result.memory_v3_used || 0} · цели/задачи ${result.memory_v4_used || 0} · опыт ${result.experience_used || 0}${result.reasoning?.mode === 'planned' ? ' · план+проверка' : ''}`;
+      ? 'Запомнила локально'
+      : `Готова${result.reasoning?.mode === 'planned' ? ' · результат проверен' : ''}${checked ? ` · автопроверка ${checked}` : ''}`;
   } catch (error) {
     const text = error instanceof Error ? error.message : String(error);
     addSayuriMessage('assistant', `Не удалось получить ответ: ${text}`);
-    byId('sayuri-chat-status').textContent = 'Ошибка подключения к AI';
+    byId('sayuri-chat-status').textContent = 'Ошибка';
+    showUiToast('Не удалось получить ответ Sayuri', 'error');
   } finally {
     byId('sayuri-chat-send').disabled = false;
   }
@@ -3957,7 +4100,12 @@ function setFloatingPosition(element, left, top) {
 }
 
 function keepFloatingInViewport(element) {
-  if (!element || element.classList.contains('hidden') || window.innerWidth <= 640) return;
+  if (
+    !element
+    || element.classList.contains('hidden')
+    || element.classList.contains('is-maximized')
+    || window.innerWidth <= 640
+  ) return;
   const rect = element.getBoundingClientRect();
   setFloatingPosition(element, rect.left, rect.top);
 }
@@ -4043,6 +4191,7 @@ function endOrbDrag(event) {
 
 function beginChatDrag(event) {
   if (event.button !== 0 || event.target.closest('button')) return;
+  if (sayuriState.chatMaximized) return;
   const drag = startSmoothDrag(event, byId('sayuri-chat-window'), 'chat');
   if (drag) byId('sayuri-chat-drag').setPointerCapture?.(event.pointerId);
 }
@@ -4073,7 +4222,7 @@ function clampChatSize(width, height) {
 }
 
 function beginChatResize(event) {
-  if (event.button !== 0 || window.innerWidth <= 640) return;
+  if (event.button !== 0 || window.innerWidth <= 640 || sayuriState.chatMaximized) return;
   event.preventDefault();
   const chat = byId('sayuri-chat-window');
   const rect = chat.getBoundingClientRect();
@@ -4176,6 +4325,7 @@ function initializeSayuri() {
   byId('sayuri-chat-resize').addEventListener('pointercancel', endChatResize);
 
   byId('sayuri-chat-close').addEventListener('click', closeSayuriChat);
+  byId('sayuri-chat-maximize').addEventListener('click', () => toggleSayuriChatMaximize());
   byId('sayuri-chat-reset-size').addEventListener('click', resetSayuriChatSize);
   byId('sayuri-chat-clear').addEventListener('click', () => {
     sayuriState.messages = [];
@@ -4187,6 +4337,36 @@ function initializeSayuri() {
     sendSayuriMessage(byId('sayuri-chat-input').value);
   });
   byId('sayuri-chat-input').addEventListener('input', autoSizeSayuriComposer);
+  byId('command-palette-input').addEventListener('input', () => {
+    sayuriState.commandPaletteIndex = 0;
+    renderCommandPalette();
+  });
+  byId('command-palette-input').addEventListener('keydown', (event) => {
+    const commands = commandPaletteMatches();
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      sayuriState.commandPaletteIndex = commands.length
+        ? (sayuriState.commandPaletteIndex + 1) % commands.length
+        : 0;
+      renderCommandPalette();
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      sayuriState.commandPaletteIndex = commands.length
+        ? (sayuriState.commandPaletteIndex - 1 + commands.length) % commands.length
+        : 0;
+      renderCommandPalette();
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      executeCommandPalette(commands[sayuriState.commandPaletteIndex]);
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      closeCommandPalette();
+    }
+  });
+  byId('command-palette-backdrop').addEventListener('click', (event) => {
+    if (event.target === byId('command-palette-backdrop')) closeCommandPalette();
+  });
+
   byId('sayuri-chat-input').addEventListener('keydown', (event) => {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
@@ -4411,11 +4591,25 @@ byId('move-modal').addEventListener('click', (event) => {
 });
 
 document.addEventListener('keydown', (event) => {
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+    event.preventDefault();
+    if (byId('command-palette-backdrop').classList.contains('hidden')) openCommandPalette();
+    else closeCommandPalette();
+    return;
+  }
   if (event.key === 'Escape') {
+    if (!byId('command-palette-backdrop').classList.contains('hidden')) {
+      closeCommandPalette();
+      return;
+    }
     closeContextMenu();
     closeSayuriContextMenu();
     if (!byId('move-modal').classList.contains('hidden')) closeMoveModal();
     if (!byId('file-viewer-modal').classList.contains('hidden')) closeViewer();
+    if (sayuriState.chatMaximized) {
+      toggleSayuriChatMaximize(false);
+      return;
+    }
     if (!byId('sayuri-chat-window').classList.contains('hidden')) closeSayuriChat();
   }
 });

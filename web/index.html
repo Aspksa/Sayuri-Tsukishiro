@@ -786,6 +786,7 @@
         <div><strong>Sayuri</strong><small id="sayuri-chat-context">Рядом с вами</small></div>
       </div>
       <div class="sayuri-chat-head-actions">
+        <button class="icon-button" id="sayuri-chat-maximize" type="button" title="Развернуть чат" aria-label="Развернуть чат">↗</button>
         <button class="icon-button" id="sayuri-chat-reset-size" type="button" title="Вернуть размер окна" aria-label="Вернуть размер окна">□</button>
         <button class="icon-button" id="sayuri-chat-clear" type="button" title="Очистить чат" aria-label="Очистить чат">↺</button>
         <button class="icon-button" id="sayuri-chat-close" type="button" aria-label="Закрыть">×</button>
@@ -802,6 +803,22 @@
     </div>
     <div class="sayuri-chat-resize-handle" id="sayuri-chat-resize" role="separator" aria-label="Изменить размер чата"></div>
   </aside>
+
+  <div class="command-palette-backdrop hidden" id="command-palette-backdrop" aria-hidden="true">
+    <section class="command-palette" id="command-palette" role="dialog" aria-modal="true" aria-label="Быстрые команды">
+      <div class="command-palette-search">
+        <span aria-hidden="true">⌘</span>
+        <input id="command-palette-input" type="search" autocomplete="off" placeholder="Перейти или выполнить действие…" aria-label="Поиск команд">
+        <kbd>Esc</kbd>
+      </div>
+      <div class="command-palette-list" id="command-palette-list" role="listbox"></div>
+      <div class="command-palette-foot">
+        <span>↑↓ выбрать</span><span>Enter выполнить</span><span>Ctrl/⌘ K открыть</span>
+      </div>
+    </section>
+  </div>
+
+  <div class="ui-toast-region" id="ui-toast-region" aria-live="polite" aria-atomic="true"></div>
 
   <script src="/app.js" defer></script>
 </body>

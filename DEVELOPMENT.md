@@ -1254,3 +1254,63 @@ Memory sub-tabs:
 `overview | architecture | quality | experience`.
 
 Скрытие выполняется нативным `hidden` на `data-sayuri-panel` и `data-sayuri-memory-panel`, поэтому функции остаются в DOM и существующие API/loaders не переписываются.
+
+
+## UI System & Chat Polish 0.27
+
+Релиз проекта: `0.1.51`.
+
+### Command palette
+
+DOM:
+
+- `#command-palette-backdrop`;
+- `#command-palette-input`;
+- `#command-palette-list`.
+
+Shortcut: `Ctrl+K` / `Cmd+K`.
+
+Команды остаются локальными UI actions: chat, personal cabinet, home, disk, settings, memory и maximize chat. Новых backend permissions command palette не создаёт.
+
+### Fullscreen chat
+
+`toggleSayuriChatMaximize()` переключает класс `.is-maximized` на существующем `#sayuri-chat-window`.
+
+- отдельного chat instance нет;
+- history/composer остаются теми же;
+- drag/resize блокируются в maximized mode;
+- Esc возвращает floating mode до закрытия chat;
+- desktop fullscreen сохраняет ограниченную читаемую ширину message stream/composer.
+
+### Message actions
+
+`renderSayuriMessages()` добавляет локальный action «Копировать». Clipboard failure не ломает message tree и показывается transient toast.
+
+### Status policy
+
+Постоянные значения:
+
+- `Размышляет…`;
+- `Готова`;
+- `Нужно подтверждение`;
+- `Ошибка`;
+- `Запомнила локально`.
+
+Подробности model/memory/reasoning остаются в metadata и reasoning summary, но не занимают постоянную status line.
+
+### Product tokens
+
+UI 0.27 расширяет существующий UI 0.12:
+
+- `--ui-space-*`;
+- `--ui-radius-*`;
+- `--ui-shadow-*`;
+- `--ui-duration-*`;
+- surface/text/line/focus tokens.
+
+### Accessibility
+
+- command palette keyboard navigation: Up/Down/Enter/Escape;
+- focus-visible для button/a/input/select/textarea/summary;
+- `prefers-reduced-motion: reduce`;
+- fullscreen и palette работают без декоративной animation dependency.
