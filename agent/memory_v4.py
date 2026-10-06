@@ -2727,6 +2727,121 @@ class MemorySystemV4:
             "dropped_count": max(0, total_candidates - total_selected),
         }
 
+    def continuity_context(self, query: str, *, limit: int = 6) -> dict[str, Any]:
+        """Return a deterministic, cloud-safe snapshot of unfinished goals/tasks for resuming work."""
+        bounded_limit = min(max(int(limit), 1), 12)
+        query_tokens = {
+            token
+            for token in re.findall(r"[a-zа-я0-9_-]{3,}", (query or "").casefold().replace("ё", "е"))
+        }
+
+        goals = [
+            item
+            for item in self.goals(status="active", limit=60)
+            if self._memory_cloud_allowed(item.get("source_memory_id"))
+            and self._cloud_text_allowed(item.get("title"), item.get("description"))
+        ]
+        goal_by_id = {item["id"]: item for item in goals}
+
+        tasks = [
+            item
+            for item in self.tasks(limit=180)
+            if item["status"] in {"planned", "in_progress", "blocked"}
+            and self._memory_cloud_allowed(item.get("source_memory_id"))
+            and self._cloud_text_allowed(
+                item.get("title"),
+                item.get("next_action"),
+                item.get("blocked_reason"),
+            )
+        ]
+
+        def token_overlap(*values: Any) -> int:
+            if not query_tokens:
+                return 0
+            text = " ".join(str(value or "") for value in values)
+            tokens = {
+                token
+                for token in re.findall(r"[a-zа-я0-9_-]{3,}", text.casefold().replace("ё", "е"))
+            }
+            return len(query_tokens & tokens)
+
+        status_weight = {"in_progress": 8, "planned": 5, "blocked": 2}
+        ranked_tasks: list[tuple[int, str, dict[str, Any]]] = []
+        for item in tasks:
+            linked_goal = goal_by_id.get(item.get("goal_id"))
+            overlap = token_overlap(
+                item.get("title"),
+                item.get("next_action"),
+                item.get("blocked_reason"),
+                linked_goal.get("title") if linked_goal else "",
+            )
+            score = (
+                int(item.get("priority") or 1) * 10
+                + status_weight.get(str(item.get("status") or ""), 0)
+                + overlap * 12
+                + (2 if item.get("next_action") else 0)
+            )
+            ranked_tasks.append((score, str(item.get("updated_at") or ""), item))
+        ranked_tasks.sort(key=lambda value: (value[0], value[1]), reverse=True)
+
+        ranked_goals: list[tuple[int, str, dict[str, Any]]] = []
+        for item in goals:
+            overlap = token_overlap(item.get("title"), item.get("description"))
+            score = int(item.get("priority") or 1) * 10 + overlap * 12
+            ranked_goals.append((score, str(item.get("updated_at") or ""), item))
+        ranked_goals.sort(key=lambda value: (value[0], value[1]), reverse=True)
+
+        compact_tasks = [
+            {
+                "id": item["id"],
+                "goal_id": item.get("goal_id"),
+                "title": item["title"],
+                "status": item["status"],
+                "priority": item["priority"],
+                "next_action": item.get("next_action"),
+                "blocked_reason": item.get("blocked_reason"),
+            }
+            for _, _, item in ranked_tasks[:bounded_limit]
+        ]
+        compact_goals = [
+            {
+                "id": item["id"],
+                "title": item["title"],
+                "description": item.get("description"),
+                "priority": item["priority"],
+            }
+            for _, _, item in ranked_goals[:bounded_limit]
+        ]
+
+        selected_task = compact_tasks[0] if compact_tasks else None
+        selected_goal = None
+        if selected_task and selected_task.get("goal_id"):
+            selected_goal = next(
+                (goal for goal in compact_goals if goal["id"] == selected_task["goal_id"]),
+                None,
+            )
+            if selected_goal is None:
+                raw_goal = goal_by_id.get(selected_task["goal_id"])
+                if raw_goal:
+                    selected_goal = {
+                        "id": raw_goal["id"],
+                        "title": raw_goal["title"],
+                        "description": raw_goal.get("description"),
+                        "priority": raw_goal["priority"],
+                    }
+        if selected_goal is None and compact_goals:
+            selected_goal = compact_goals[0]
+
+        return {
+            "engine": "goal-continuity-v1",
+            "active_goal_count": len(goals),
+            "open_task_count": len(tasks),
+            "selected_goal": selected_goal,
+            "selected_task": selected_task,
+            "goals": compact_goals,
+            "tasks": compact_tasks,
+        }
+
     def context(self, query: str, *, record_usage: bool = True) -> dict[str, Any]:
         recalled = self.recall(
             query,

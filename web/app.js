@@ -46,6 +46,8 @@ const sayuriState = {
   commandPaletteIndex: 0,
   recentCommands: readLocalJson('sayuri-command-recent', []),
   compactUi: localStorage.getItem('sayuri-compact-ui') === '1',
+  focusReturn: null,
+  chatFocusReturn: null,
   loadedSections: new Set(),
   loadingSections: new Map(),
   visible: localStorage.getItem('sayuri-visible') !== '0',
@@ -186,9 +188,47 @@ function renderCommandPalette() {
   });
 }
 
+function focusableIn(container) {
+  if (!container) return [];
+  return Array.from(container.querySelectorAll(
+    'button:not([disabled]), [href], input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+  )).filter((item) => !item.hidden && item.getClientRects().length > 0);
+}
+
+function trapDialogFocus(event, container) {
+  if (event.key !== 'Tab') return false;
+  const items = focusableIn(container);
+  if (!items.length) {
+    event.preventDefault();
+    container.focus?.();
+    return true;
+  }
+  const first = items[0];
+  const last = items[items.length - 1];
+  const active = document.activeElement;
+  if (event.shiftKey && (active === first || !container.contains(active))) {
+    event.preventDefault();
+    last.focus();
+    return true;
+  }
+  if (!event.shiftKey && (active === last || !container.contains(active))) {
+    event.preventDefault();
+    first.focus();
+    return true;
+  }
+  return false;
+}
+
+function restoreSayuriFocus(target) {
+  if (target && target.isConnected && typeof target.focus === 'function') {
+    window.setTimeout(() => target.focus({preventScroll: true}), 0);
+  }
+}
+
 function openCommandPalette() {
   const backdrop = byId('command-palette-backdrop');
   if (!backdrop) return;
+  sayuriState.focusReturn = document.activeElement;
   sayuriState.commandPaletteIndex = 0;
   backdrop.classList.remove('hidden');
   backdrop.setAttribute('aria-hidden', 'false');
@@ -200,8 +240,11 @@ function openCommandPalette() {
 function closeCommandPalette() {
   const backdrop = byId('command-palette-backdrop');
   if (!backdrop) return;
+  const focusReturn = sayuriState.focusReturn;
+  sayuriState.focusReturn = null;
   backdrop.classList.add('hidden');
   backdrop.setAttribute('aria-hidden', 'true');
+  restoreSayuriFocus(focusReturn);
 }
 
 function executeCommandPalette(command) {
@@ -4408,6 +4451,9 @@ function createSayuriReasoningSummary(metadata) {
 
 function openSayuriChat() {
   const chat = byId('sayuri-chat-window');
+  if (chat.classList.contains('hidden')) {
+    sayuriState.chatFocusReturn = document.activeElement || byId('sayuri-orb');
+  }
   chat.classList.remove('hidden');
   keepFloatingInViewport(chat);
   updateSayuriContextUI();
@@ -4421,6 +4467,9 @@ function openSayuriChat() {
 function closeSayuriChat() {
   if (sayuriState.chatMaximized) toggleSayuriChatMaximize(false);
   byId('sayuri-chat-window').classList.add('hidden');
+  const focusReturn = sayuriState.chatFocusReturn || byId('sayuri-orb');
+  sayuriState.chatFocusReturn = null;
+  restoreSayuriFocus(focusReturn);
 }
 
 function toggleSayuriChatMaximize(force) {
@@ -4429,7 +4478,10 @@ function toggleSayuriChatMaximize(force) {
   const next = typeof force === 'boolean' ? force : !sayuriState.chatMaximized;
   sayuriState.chatMaximized = next;
   chat.classList.toggle('is-maximized', next);
+  chat.setAttribute('aria-modal', next ? 'true' : 'false');
   document.body.classList.toggle('sayuri-workspace-open', next);
+  const orb = byId('sayuri-orb');
+  if (orb) orb.tabIndex = next ? -1 : 0;
   byId('sayuri-chat-maximize').textContent = next ? '↙' : '↗';
   byId('sayuri-chat-maximize').title = next ? 'Вернуть плавающее окно' : 'Развернуть чат';
   byId('sayuri-chat-maximize').setAttribute('aria-label', next ? 'Вернуть плавающее окно' : 'Развернуть чат');
@@ -5260,6 +5312,14 @@ byId('move-modal').addEventListener('click', (event) => {
 });
 
 document.addEventListener('keydown', (event) => {
+  if (event.key === 'Tab') {
+    const palette = byId('command-palette');
+    if (!byId('command-palette-backdrop').classList.contains('hidden')) {
+      if (trapDialogFocus(event, palette)) return;
+    } else if (sayuriState.chatMaximized) {
+      if (trapDialogFocus(event, byId('sayuri-chat-window'))) return;
+    }
+  }
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
     event.preventDefault();
     if (byId('command-palette-backdrop').classList.contains('hidden')) openCommandPalette();

@@ -24,6 +24,41 @@ class ReasoningEngineTests(unittest.TestCase):
         self.assertEqual(complex_task.mode, "planned")
         self.assertGreaterEqual(complex_task.score, 3)
 
+    def test_continuation_request_uses_goal_continuity_and_fallback_next_action(self):
+        engine = ReasoningEngine()
+        continuity = {
+            "selected_goal": {"id": "g1", "title": "Развивать мозг Sayuri", "priority": 5},
+            "selected_task": {
+                "id": "t1",
+                "goal_id": "g1",
+                "title": "Усилить Planner",
+                "status": "in_progress",
+                "priority": 5,
+                "next_action": "Добавить восстановление незавершённой задачи.",
+                "blocked_reason": None,
+            },
+        }
+
+        decision = engine.classify(
+            "Продолжай",
+            {"view": "sayuri"},
+            continuity_context=continuity,
+        )
+        fallback = engine.fallback_plan("Продолжай", continuity_context=continuity)
+        planner_messages = engine.planner_messages(
+            "Продолжай",
+            evidence_context={},
+            ui_context={},
+            tool_catalog=[],
+            continuity_context=continuity,
+        )
+
+        self.assertEqual(decision.mode, "planned")
+        self.assertIn("active_continuation", decision.reasons)
+        self.assertIn("Добавить восстановление", fallback["steps"][1])
+        self.assertTrue(engine.public_status()["goal_continuity_planner"])
+        self.assertIn("continuity_context", planner_messages[1]["content"])
+
     def test_plan_and_verifier_json_are_normalized_without_hidden_reasoning(self):
         engine = ReasoningEngine()
         plan = engine.parse_plan(

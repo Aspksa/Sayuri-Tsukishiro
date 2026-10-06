@@ -2,6 +2,18 @@
 
 ## Невыпущенные изменения
 
+### 0.1.55 — 2026-10-06 — Workspace Quality & Goal Continuity
+
+- Закрыт рассинхрон контрольной точки после опубликованного `0.1.54`; новая база разработки — проверенный `main dd4907a5ba`.
+- Memory 4.1 получила read-only `goal-continuity-v1`: активные цели и незавершённые задачи ранжируются детерминированно по приоритету, статусу и релевантности текущему запросу.
+- Для выбранной задачи Planner получает `next_action`, `blocked_reason` и связанную цель; короткие команды «продолжай / дальше / возобнови» переходят в planned-mode только при наличии реального незавершённого контекста.
+- Reasoning Planner обновлён до `0.4`; fallback-plan умеет безопасно продолжать выбранную задачу, не объявляя её завершённой и не меняя её статус.
+- Evidence Tool Planner обновлён до `0.3` и получил `memory.continuity` как отдельный read-only инструмент с execution receipt. Изменяющие действия по-прежнему не проходят мимо Action Broker.
+- Workspace получил возврат клавиатурного фокуса, focus-trap для Command Palette и maximized chat, корректный `aria-modal` и исключение скрытого аватара из tab-order.
+- Добавлены responsive-инварианты для maximized/floating chat на узких и низких экранах без уменьшения основного текста и без нового UI-фреймворка.
+- Добавлены regression tests для Goal Continuity, Planner continuation gate, read-only continuity tool и workspace accessibility/responsive contract.
+- Проект: `0.1.55`; Ядро/App: `0.1.47`; Agent Core: `0.12.0`; Web UI: `0.31.0`. Disk и dev-tools без изменений.
+
 ### 0.1.54 — 2026-10-06 — Visual Refinement & Workspace UX
 
 - Fullscreen chat переработан в полноценное AI workspace-состояние существующего окна: отдельный workspace badge, более спокойная композиция, центрированная читаемая колонка и sticky composer.

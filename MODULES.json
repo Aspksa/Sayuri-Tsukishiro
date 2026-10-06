@@ -4,13 +4,13 @@
     {
       "id": "sayuri-core",
       "display_name": "Ядро Саюри",
-      "description": "Системное ядро 0.1.46: API, диагностика, Memory 4.1, Reasoning/Verifier, evidence automation, spatial evidence bridge, Action Broker и Web UX regression contracts.",
+      "description": "Системное ядро 0.1.47: API, диагностика, Memory 4.1, Reasoning/Verifier, evidence automation, Goal Continuity integration contracts, spatial evidence bridge и Action Broker.",
       "path": "app"
     },
     {
       "id": "agent-core",
       "display_name": "Агентное ядро",
-      "description": "Sayuri Agent Core 0.11.0: DeepSeek-V4-Flash, Reasoning Planner 0.3, read-only document evidence search, D1..D6 citation firewall, Result Verifier, Memory 4.1 и confirmation-gated actions.",
+      "description": "Sayuri Agent Core 0.12.0: DeepSeek-V4-Flash, Reasoning Planner 0.4, Goal Continuity, read-only memory.continuity/evidence tools, Result Verifier, Memory 4.1 и confirmation-gated actions.",
       "path": "agent"
     },
     {
@@ -22,7 +22,7 @@
     {
       "id": "web-ui",
       "display_name": "Веб-интерфейс",
-      "description": "Единая оболочка Sayuri 0.30: refined AI workspace, avatar magnet/presence, compact density, unified UI states, recent command palette, Spatial Evidence UX и lazy diagnostics.",
+      "description": "Единая оболочка Sayuri 0.31.0: AI workspace, управляемый keyboard focus, responsive workspace contracts, avatar presence, compact density, Spatial Evidence UX и lazy diagnostics.",
       "path": "web"
     },
     {

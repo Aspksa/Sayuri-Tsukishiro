@@ -366,3 +366,33 @@
 - Сохранить Memory, Agent, Action Broker и Spatial Evidence backend без изменения permissions.
 - Добавить Web contract regressions на новые UX-инварианты и sidebar regression.
 - Приёмка: один атомарный commit от `main 0.1.53`, branch CI, PR CI, merge и зелёный финальный main workflow.
+
+
+## AI-009 / UI-008 — Goal Continuity & Workspace Quality
+
+- Статус: `implemented in target 0.1.55`; релиз считается проверенным после зелёного branch/PR/main CI.
+- База: `main 0.1.54`, commit `dd4907a5ba9626c7c171d064de1918e4426309a5`, Versions #37403591304 success.
+- Memory 4.1:
+  - добавить детерминированный read-only continuity snapshot;
+  - ранжировать active goals и planned/in_progress/blocked tasks;
+  - не отправлять в Cloud локально запрещённые goal/task источники;
+  - передавать selected task/goal, next_action и blocker в Planner.
+- Reasoning:
+  - Planner 0.4 распознаёт continuation intent только при реальном сохранённом контексте;
+  - fallback продолжает ближайший шаг, но не меняет статусы Goal/Task Memory;
+  - текущий явный запрос пользователя имеет приоритет над старой задачей.
+- Tools:
+  - `memory.continuity` — только read-only;
+  - mutation tools остаются только через confirmation-gated Action Broker.
+- Workspace:
+  - focus return после закрытия chat/palette;
+  - focus trap в modal workspace/palette;
+  - `aria-modal` только для maximized chat;
+  - скрытый avatar исключается из tab-order;
+  - responsive contract для узких/низких viewport.
+- Версии результата:
+  - проект `0.1.55`;
+  - Ядро/App `0.1.47`;
+  - Agent Core `0.12.0`;
+  - Web UI `0.31.0`.
+- Приёмка: unit tests, JS syntax, preflight, version each-commit, Windows launcher checks, PR merge и зелёный финальный workflow на `main`.

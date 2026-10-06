@@ -7439,3 +7439,53 @@ body.ui-compact .summary-card {
   from { transform: scale(.92); opacity: .72; }
   to { transform: scale(1.04); opacity: 1; }
 }
+
+
+/* SAYURI UI 0.31 — Workspace Quality & Accessibility */
+.sayuri-chat-window :is(button, textarea, input):focus-visible,
+.command-palette :is(button, input):focus-visible {
+  outline: 2px solid #6f86a6;
+  outline-offset: 2px;
+}
+.sayuri-chat-window[aria-modal="true"] {
+  overscroll-behavior: contain;
+}
+@media (max-width: 760px) {
+  body.sayuri-workspace-open .sayuri-chat-window.is-maximized {
+    inset: 0 !important;
+    border: 0;
+    border-radius: 0;
+  }
+  .sayuri-chat-window.is-maximized .sayuri-chat-head {
+    min-height: 54px;
+    padding-inline: 10px;
+  }
+  .sayuri-chat-window.is-maximized .sayuri-chat-messages {
+    padding: 18px 12px 22px;
+  }
+  .sayuri-chat-window.is-maximized .sayuri-chat-footer {
+    width: 100%;
+    padding-inline: 10px;
+  }
+  .sayuri-chat-window:not(.is-maximized) {
+    left: 8px !important;
+    right: 8px !important;
+    bottom: 8px !important;
+    width: auto !important;
+    max-width: none;
+    height: min(72vh, 620px);
+    min-width: 0;
+  }
+  .sayuri-workspace-badge {
+    display: none !important;
+  }
+}
+@media (max-height: 700px) and (min-width: 761px) {
+  .sayuri-chat-window.is-maximized {
+    inset: 6px !important;
+  }
+  .sayuri-chat-window.is-maximized .sayuri-chat-messages {
+    padding-top: 18px;
+    padding-bottom: 18px;
+  }
+}
