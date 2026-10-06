@@ -7,15 +7,15 @@
 - Проверенная исходная ревизия: `a609762d1f82763110d9b0a6fc88d3c1abbf389a` — опубликованный `main 0.2.3`, Versions #37415897573 success.
 - Рабочая ветка этапа: `portfolio-coordination-v0204`.
 - Старый PR #27 (`0.2.2`) закрыт как superseded и не должен сливаться поверх `main 0.2.3+`.
-- Текущий целевой результат: **0.2.4 — Portfolio Milestones & Cross-Project Coordination**.
+- Текущий целевой результат: **0.2.5 — Portfolio Milestones & Cross-Project Coordination (Acceptance Fix)**.
 - Задача: **AI-014**.
 
 ## Версии результата
 
-- Project: `0.2.4`.
+- Project: `0.2.5`.
 - App/Core: `0.1.53`.
-- Agent Core: `0.15.0`.
-- Cognitive Project Brain: `1.3`.
+- Agent Core: `0.15.1`.
+- Cognitive Project Brain: `1.3.1`.
 - Reasoning Planner: `1.1`.
 - Evidence Tool Planner: `0.4.2`.
 - Web UI: `0.31.0` — без изменений.
@@ -83,6 +83,13 @@
 8. Graph/portfolio integrity диагностика ничего не исправляет автоматически.
 9. Chain-of-thought не сохраняется.
 
+## Последняя неуспешная проверка
+
+- Candidate `0.2.4`: commit `5c0532f1c92c56d921ce49eba327b39277eb9747`, branch workflow #37417246205.
+- Version tooling прошёл.
+- Python core suite остановился на import-time `SyntaxError` в `agent/cognition.py`: двойная строка `def self_evaluation(`.
+- Исправление выполняется новым commit/version `0.2.5`; историю `0.2.4` не переписывать.
+
 ## Приёмка
 
 Релиз считается принятым только после:
@@ -100,6 +107,6 @@
 - squash merge;
 - финального зелёного workflow на `main`.
 
-## Следующий этап после 0.2.4
+## Следующий этап после 0.2.5
 
 После стабилизации portfolio coordination не добавлять ещё один абстрактный cognitive layer. Подключить первый реальный крупный прикладной модуль к canonical contract и измерить качество scheduler, milestones, blockers, completion criteria и strategy transfer на настоящем workflow.

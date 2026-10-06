@@ -2,6 +2,16 @@
 
 ## Невыпущенные изменения
 
+### 0.2.5 — 2026-10-06 — Portfolio Coordination Acceptance Fix
+
+- Исправлена синтаксическая ошибка branch candidate `0.2.4`: автоматическая сборка блока metacognition оставила двойную сигнатуру `def self_evaluation(`, из-за чего Python suite останавливался на import-time SyntaxError.
+- Архитектура Portfolio Coordination не откатывается: milestones, external blockers, strict project boundary, Cloud privacy и cycle guards остаются без изменения semantics.
+- Cognitive Project Brain повышен до `1.3.1`; Agent Core до `0.15.1`; Project до `0.2.5`.
+- App/Core остаётся `0.1.53`: исправление не меняет app source/tests/API после уже versioned candidate `0.2.4`.
+- Candidate `0.2.4` commit `5c0532f1c92c56d921ce49eba327b39277eb9747` не принят: branch workflow #37417246205 остановился на Python import SyntaxError. Версионная история не переписывается.
+- Новый acceptance candidate строится поверх `0.2.4` отдельным versioned commit согласно VERSIONING.md.
+
+
 ### 0.2.4 — 2026-10-06 — Portfolio Milestones & Cross-Project Coordination
 
 - Cognitive Project Brain обновлён до `1.3`: над существующим task graph добавлен портфельный уровень milestones и explicit external blockers без создания нового Planner или второй памяти.

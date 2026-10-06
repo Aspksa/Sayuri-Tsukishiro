@@ -20,7 +20,7 @@
     {
       "id": "agent-core",
       "display_name": "Агентное ядро",
-      "description": "Sayuri Agent Core 0.15.0: DeepSeek-V4-Flash, Reasoning Planner 1.1, Evidence Tool Planner 0.4.2, Memory 4.x, Cognitive Project Brain 1.3 Portfolio Coordination, milestones, external blockers, cross-project cycle guard, snapshot scheduler, guarded task graph, evidence-first uncertainty, strategy memory и metacognition.",
+      "description": "Sayuri Agent Core 0.15.1: DeepSeek-V4-Flash, Reasoning Planner 1.1, Evidence Tool Planner 0.4.2, Memory 4.x, Cognitive Project Brain 1.3.1 Portfolio Coordination, milestones, external blockers, cross-project cycle guard, snapshot scheduler, guarded task graph, evidence-first uncertainty, strategy memory и metacognition.",
       "path": "agent",
       "project_key": "sayuri-tsukishiro",
       "depends_on": [],

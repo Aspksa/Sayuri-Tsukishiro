@@ -1,6 +1,6 @@
 # Cognitive Project Brain
 
-Версия контракта: **1.2**  
+Версия контракта: **1.3.1**  
 Проект: **Sayuri-Tsukishiro**
 
 ## Назначение
@@ -251,3 +251,8 @@ Explicit local mutations:
 
 Новый проект регистрирует собственные modules/tasks/milestones. Если он зависит от результата другого проекта, он создаёт external blocker на подтверждённый source milestone вместо прямого cross-project task edge. Так каждый project task graph остаётся локальным DAG, а портфель координируется отдельным ограниченным слоем.
 
+
+
+### Acceptance patch 1.3.1
+
+Контракт 1.3.1 не меняет semantics Portfolio Coordination 1.3. Он исправляет только import-time syntax defect candidate 0.2.4. Milestone, external blocker, scheduler, privacy и mutation boundaries остаются теми же.

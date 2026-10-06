@@ -23,7 +23,7 @@ class CognitiveProjectBrain:
     statistics, replan proposals and metacognitive summaries.
     """
 
-    VERSION = "1.3"
+    VERSION = "1.3.1"
     PROJECT_KEY = "sayuri-tsukishiro"
     DEPENDENCY_RELATIONS = {"requires", "blocks", "unlocks", "follows"}
     OPEN_TASK_STATUSES = {"planned", "in_progress", "blocked"}
@@ -2792,7 +2792,6 @@ class CognitiveProjectBrain:
             "causal_trace": self.causal_links(task_id=str(task_id), limit=5),
         }
 
-    def self_evaluation(
     def self_evaluation(
         self,
         *,
