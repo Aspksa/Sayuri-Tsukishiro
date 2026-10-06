@@ -3749,6 +3749,38 @@ function createSayuriReasoningSummary(metadata) {
     });
     details.append(list);
   }
+  const receipts = reasoning.tool_execution?.receipts;
+  if (Array.isArray(receipts) && receipts.length) {
+    const tools = document.createElement('div');
+    tools.className = 'sayuri-tool-receipts';
+    const title = document.createElement('strong');
+    title.textContent = `Инструменты · ${receipts.length}`;
+    tools.append(title);
+    receipts.slice(0, 8).forEach((receipt) => {
+      const row = document.createElement('div');
+      row.className = `sayuri-tool-receipt ${receipt.status || ''}`;
+      const status = document.createElement('span');
+      if (receipt.status === 'completed') status.textContent = '✓';
+      else if (receipt.status === 'requires_action_broker') status.textContent = '!';
+      else if (receipt.status === 'failed' || receipt.status === 'rejected') status.textContent = '×';
+      else status.textContent = '•';
+      const body = document.createElement('div');
+      const name = document.createElement('b');
+      name.textContent = receipt.tool || 'tool';
+      const note = document.createElement('small');
+      if (receipt.status === 'completed') {
+        note.textContent = `шаг ${receipt.step_index || 1} · выполнено · ${receipt.duration_ms || 0} мс`;
+      } else if (receipt.status === 'requires_action_broker') {
+        note.textContent = 'изменение не выполнено · требуется подтверждение';
+      } else {
+        note.textContent = receipt.error || receipt.status || 'нет результата';
+      }
+      body.append(name, note);
+      row.append(status, body);
+      tools.append(row);
+    });
+    details.append(tools);
+  }
   if (Array.isArray(verification.issues) && verification.issues.length) {
     const note = document.createElement('p');
     note.className = 'sayuri-reasoning-issues';

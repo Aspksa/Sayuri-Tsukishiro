@@ -2,6 +2,22 @@
 
 ## Невыпущенные изменения
 
+### 0.1.48 — 2026-10-06 — Evidence-aware Tool Planner
+
+- Добавлен `agent/tool_planner.py`: deterministic allowlist для read-only инструментов и отдельная политика для confirmation-gated mutations.
+- Reasoning Planner 0.2 может предлагать структурированные `tool_intents`, привязанные к номеру шага плана.
+- DeepSeek не получает прямого execution path: unknown tools отклоняются, mutation payload от модели игнорируется, изменяющие действия помечаются `requires_action_broker`.
+- Автоматически разрешены только read-only инструменты: состояние системы, статистика памяти, Cloud-safe поиск Memory 4.1, integrity, статистика опыта и метаданные текущего документа.
+- Для каждого tool intent создаётся локальный SQLite execution receipt с нормализованными args, статусом, временем, duration, evidence refs и SHA-256 output.
+- Добавлены дедупликация одинаковых tool calls и лимит до 4 read-only вызовов на один planned request.
+- Tool output проходит secret-field sanitization и отдельный bounded evidence budget перед Cloud.ru.
+- `memory.search` использует `for_cloud=True`; дополнительные memory IDs объединяются с prepared recall и фиксируются только после успешного reasoning pipeline.
+- Result Verifier получает реальные execution receipts и отличает `completed` от `requires_action_broker`.
+- Добавлен `GET /api/sayuri/tools/receipts` для локальной диагностики журнала.
+- В чате reasoning summary показывает инструменты, статусы выполнения и необходимость подтверждения без изменения меню.
+- Добавлены regression tests allowlist, mutation isolation, dedup, secret sanitization, runtime evidence injection и HTTP contract.
+- Проект: `0.1.48`; Ядро: `0.1.40`; Agent Core: `0.10.0`; Web UI: `0.24.0`.
+
 ### 0.1.47 — 2026-10-06 — Reasoning Planner + Result Verifier
 
 - Добавлен adaptive complexity gate: простые запросы остаются на одном вызове DeepSeek-V4-Flash, сложные переходят в planned mode.

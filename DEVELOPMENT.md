@@ -1071,3 +1071,71 @@ Verifier получает:
 - verifier revision применяется как финальный answer;
 - direct режим использует один model call;
 - Web chat показывает только structured reasoning summary.
+
+## Evidence-aware Tool Planner 0.1
+
+Реализация: `agent/tool_planner.py`; интеграция: `agent/reasoning.py`, `agent/runtime.py`.
+
+### Pipeline
+
+```text
+planned task
+→ Planner JSON + tool_intents
+→ deterministic tool policy
+→ read-only execution / mutation block
+→ execution receipts + evidence refs
+→ primary answer
+→ Result Verifier with receipts
+→ post-success Memory 4.1 attribution
+```
+
+### Read-only allowlist
+
+- `system.status`;
+- `memory.stats`;
+- `memory.search`;
+- `memory.integrity`;
+- `experience.stats`;
+- `context.current_document`.
+
+Максимум 4 read-only вызова на planned request. Повтор одинакового tool+args не исполняется второй раз.
+
+### Mutation boundary
+
+Все IDs из `agent.actions.TOOL_DEFINITIONS` видны Planner как `confirmation_gated`, но Evidence Tool Planner не имеет mutation handler. Он создаёт receipt `requires_action_broker`. Изменение состояния по-прежнему выполняется только отдельным Action Broker после явного confirm.
+
+### Receipts
+
+SQLite: `data/sayuri-tool-receipts.db`.
+
+Receipt содержит:
+- request ID и step index;
+- tool/mode;
+- нормализованные args;
+- status;
+- started/finished/duration;
+- evidence refs;
+- SHA-256 output;
+- sanitized preview;
+- error class/message.
+
+Диагностика: `GET /api/sayuri/tools/receipts?limit=N`.
+
+### Privacy и Memory attribution
+
+`memory.search` вызывает Memory 4.1 с `for_cloud=True` и `record_usage=False`. IDs реально отправленной tool-memory объединяются с обычным prepared recall. Commit usage выполняется только после успешного answer/verifier pipeline.
+
+Tool evidence перед Cloud.ru ограничивается budget 9000 chars. Поля API key/password/authorization/cookie/token-like secrets удаляются до receipt preview и Cloud-context.
+
+### Проверки
+
+- allowlist и unknown-tool rejection;
+- mutation isolation;
+- duplicate suppression;
+- secret sanitization;
+- execution receipt persistence;
+- planned runtime остаётся на трёх model calls;
+- direct runtime остаётся на одном model call;
+- Result Verifier получает execution evidence;
+- API/Web contract.
+

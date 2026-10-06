@@ -253,3 +253,21 @@
 - Web chat показывает компактную раскрываемую сводку плана и результата проверки.
 - Chain-of-thought не сохраняется и не показывается.
 - Приёмка: один атомарный commit от `main 0.1.46`, полный workflow Versions, merge через PR и зелёный финальный main CI.
+
+## AI-006 — Evidence-aware Tool Planner
+
+- Статус: `implemented`; релиз считается проверенным только после зелёного atomic/main CI.
+- Версия проекта: `0.1.48`.
+- Structured plan расширен `tool_intents` с привязкой к шагам.
+- LLM может только предложить intent; deterministic Evidence Tool Planner решает, разрешён ли инструмент.
+- Read-only allowlist выполняется локально без подтверждения; неизвестные инструменты отклоняются.
+- Любое изменяющее действие получает `requires_action_broker`; модель не может передать исполняемый mutation payload.
+- Existing `SayuriActionBroker` остаётся единственным путём plan -> pending -> confirm -> execute.
+- Execution receipts хранят tool, args, status, timestamps, duration, evidence refs, output SHA-256 и sanitized preview.
+- Есть duplicate-call suppression и лимит read-only вызовов.
+- Cloud evidence bounded; секретные поля удаляются.
+- `memory.search` проходит Memory 4.1 `for_cloud=True`, а usage attribution остаётся post-success.
+- Result Verifier получает receipts как фактическое evidence.
+- Web chat показывает цепочку «План -> Инструменты -> Доказательства -> Проверка» без изменения меню.
+- Приёмка: один атомарный commit от `main 0.1.47`, полный workflow Versions, merge через PR и зелёный финальный main CI.
+

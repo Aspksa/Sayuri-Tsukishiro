@@ -461,6 +461,9 @@ class SayuriCore:
     def sayuri_actions(self, limit: int = 30) -> dict[str, Any]:
         return self.agent.recent_actions(limit)
 
+    def sayuri_tool_receipts(self, limit: int = 30) -> dict[str, Any]:
+        return self.agent.tool_receipts(limit)
+
     def _resolve_action_destination(self, destination: str) -> str | None:
         name = (destination or "").strip()
         if name.casefold() in {"", "/", "корень", "диск sayuri", "диск сayuри", "диск саюри"}:
@@ -608,6 +611,9 @@ class SayuriCore:
                 "memory_used": result.get("memory_used", 0),
                 "memory_saved": bool(result.get("memory_saved")),
                 "response_id": result.get("response_id"),
+                "tool_receipts": len(
+                    ((result.get("reasoning") or {}).get("tool_execution") or {}).get("receipts", [])
+                ),
             },
         )
         return result

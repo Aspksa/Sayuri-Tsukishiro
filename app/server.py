@@ -281,6 +281,14 @@ class SayuriRequestHandler(BaseHTTPRequestHandler):
                     limit = 30
                 self._json(self.server.core.sayuri_actions(limit))
                 return
+            if parsed.path == "/api/sayuri/tools/receipts":
+                raw_limit = query.get("limit", ["30"])[0]
+                try:
+                    limit = int(raw_limit)
+                except ValueError:
+                    limit = 30
+                self._json(self.server.core.sayuri_tool_receipts(limit))
+                return
             if parsed.path.startswith("/api/sayuri/avatar/"):
                 slot = parsed.path[len("/api/sayuri/avatar/"):].strip("/")
                 if not slot:

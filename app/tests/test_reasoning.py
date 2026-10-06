@@ -29,7 +29,8 @@ class ReasoningEngineTests(unittest.TestCase):
         plan = engine.parse_plan(
             '{"goal":"Собрать модуль","steps":["Шаг 1","Шаг 2"],'
             '"constraints":["Без второй LLM"],"evidence_needed":["Memory 4.1"],'
-            '"done_when":["Тесты зелёные"],"risk_level":"high"}'
+            '"done_when":["Тесты зелёные"],"risk_level":"high",'
+            '"tool_intents":[{"step":1,"tool":"memory.stats","args":{},"purpose":"Сверить память"}]}'
         )
         verification = engine.parse_verification(
             '{"status":"revise","score":0.82,'
@@ -40,6 +41,8 @@ class ReasoningEngineTests(unittest.TestCase):
         )
         self.assertEqual(plan["risk_level"], "high")
         self.assertEqual(plan["steps"], ["Шаг 1", "Шаг 2"])
+        self.assertEqual(plan["tool_intents"][0]["tool"], "memory.stats")
+        self.assertTrue(engine.public_status()["evidence_aware_tool_planner"])
         self.assertEqual(verification["status"], "revise")
         self.assertEqual(verification["revised_answer"], "Исправленный ответ")
         self.assertFalse(engine.public_status()["chain_of_thought_storage"])
@@ -57,8 +60,10 @@ class ReasoningEngineTests(unittest.TestCase):
                     return {
                         "answer": (
                             '{"goal":"Спроектировать модуль","steps":["Собрать требования","Проверить риски"],'
-                            '"constraints":["Одна внешняя LLM"],"evidence_needed":[],'
-                            '"done_when":["Ответ проверен"],"risk_level":"medium"}'
+                            '"constraints":["Одна внешняя LLM"],"evidence_needed":["Состояние памяти"],'
+                            '"done_when":["Ответ проверен"],"risk_level":"medium",'
+                            '"tool_intents":[{"step":1,"tool":"memory.stats","args":{},'
+                            '"purpose":"Получить фактические метрики памяти"}]}'
                         ),
                         "usage": usage,
                         "model": "deepseek-ai/DeepSeek-V4-Flash",
@@ -97,6 +102,17 @@ class ReasoningEngineTests(unittest.TestCase):
             self.assertEqual(result["reasoning"]["verification"]["status"], "revise")
             self.assertTrue(result["reasoning"]["revised"])
             self.assertEqual(result["reasoning"]["model_calls"], 3)
+            execution = result["reasoning"]["tool_execution"]
+            self.assertEqual(execution["read_only_calls"], 1)
+            self.assertEqual(execution["receipts"][0]["tool"], "memory.stats")
+            self.assertEqual(execution["receipts"][0]["status"], "completed")
+            self.assertTrue(
+                any(
+                    "Execution receipts" in item.get("content", "")
+                    for item in calls[1]
+                    if item.get("role") == "system"
+                )
+            )
             self.assertEqual(result["usage"]["total_tokens"], 6)
 
     def test_simple_chat_uses_one_model_call(self):
@@ -121,6 +137,7 @@ class ReasoningEngineTests(unittest.TestCase):
             self.assertEqual(result["reasoning"]["mode"], "direct")
             self.assertEqual(result["reasoning"]["model_calls"], 1)
             self.assertEqual(result["reasoning"]["verification"]["status"], "skipped")
+            self.assertEqual(result["reasoning"]["tool_execution"]["status"], "skipped")
 
     def test_web_chat_exposes_structured_reasoning_summary(self):
         script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
@@ -128,8 +145,9 @@ class ReasoningEngineTests(unittest.TestCase):
         self.assertIn("createSayuriReasoningSummary", script)
         self.assertIn("result.reasoning", script)
         self.assertIn("план+проверка", script)
-        self.assertIn("SAYURI UI 0.23 — Reasoning Planner + Result Verifier", css)
+        self.assertIn("SAYURI UI 0.24 — Evidence-aware Tool Planner", css)
         self.assertIn(".sayuri-reasoning-summary", css)
+        self.assertIn("sayuri-tool-receipts", css)
 
 
 if __name__ == "__main__":

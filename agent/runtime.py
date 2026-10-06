@@ -21,6 +21,7 @@ from .memory_v3 import MemorySystemError, MemorySystemV3
 from .memory_v4 import MemorySystemV4, MemorySystemV4Error
 from .reasoning import ReasoningEngine, ReasoningError
 from .semantic_memory import SemanticMemoryIndex
+from .tool_planner import EvidenceToolPlanner
 
 
 CLOUDRU_BASE_URL = "https://foundation-models.api.cloud.ru/v1"
@@ -318,6 +319,7 @@ class SayuriAgent:
             self.memory_v3,
         )
         self.reasoning = ReasoningEngine()
+        self.tool_planner = EvidenceToolPlanner(root / "data" / "sayuri-tool-receipts.db")
         self.memory_intelligence = MemoryIntelligence(
             root / "data" / "sayuri-memory.db",
             self.memory,
@@ -349,6 +351,7 @@ class SayuriAgent:
             },
             "experience": self.experience.stats(),
             "reasoning": self.reasoning.public_status(),
+            "tool_planner": self.tool_planner.public_status(),
             "tools_connected": True,
             "tools": self.actions.tools(),
             "message": (
@@ -374,6 +377,11 @@ class SayuriAgent:
             },
             "experience": self.experience.stats(),
             "reasoning": self.reasoning.public_status(),
+            "tool_planner": {
+                **self.tool_planner.public_status(),
+                "catalog": self.tool_planner.catalog(),
+                "recent_receipts": self.tool_planner.recent(8),
+            },
             "avatars": self.avatars.public(),
             "actions": {
                 "confirmation_required": True,
@@ -865,6 +873,145 @@ class SayuriAgent:
     def recent_actions(self, limit: int = 30) -> dict[str, Any]:
         return {"actions": self.actions.recent(limit), "tools": self.actions.tools()}
 
+    def tool_receipts(self, limit: int = 30) -> dict[str, Any]:
+        return {
+            "status": self.tool_planner.public_status(),
+            "catalog": self.tool_planner.catalog(),
+            "receipts": self.tool_planner.recent(limit),
+        }
+
+    def _tool_handlers(self, context: Any) -> dict[str, Any]:
+        safe_context = context if isinstance(context, dict) else {}
+
+        def system_status(_args: dict[str, Any]) -> dict[str, Any]:
+            provider = self.secrets.snapshot()
+            return {
+                "data": {
+                    "provider": {
+                        "provider": "Cloud.ru",
+                        "model": CLOUDRU_MODEL_ID,
+                        "configured": provider.configured,
+                        "key_source": provider.source,
+                    },
+                    "memory": {
+                        "base": self.memory.stats(),
+                        "semantic": self.semantic_memory.public_status(),
+                        "v3": self.memory_v3.stats(),
+                        "v4": self.memory_v4.stats(),
+                    },
+                    "reasoning": self.reasoning.public_status(),
+                    "tool_planner": self.tool_planner.public_status(),
+                },
+                "evidence_refs": ["system:runtime-status"],
+            }
+
+        def memory_stats(_args: dict[str, Any]) -> dict[str, Any]:
+            return {
+                "data": {
+                    "base": self.memory.stats(),
+                    "intelligence": self.memory_intelligence.stats(),
+                    "semantic": self.semantic_memory.public_status(),
+                    "v3": self.memory_v3.stats(),
+                    "v4": self.memory_v4.stats(),
+                },
+                "evidence_refs": ["memory:stats"],
+            }
+
+        def memory_search(args: dict[str, Any]) -> dict[str, Any]:
+            scope = str(args.get("scope") or "all")
+            scopes = ("personal", "project") if scope == "all" else (scope,)
+            recalled = self.memory_v4.recall(
+                str(args.get("query") or ""),
+                scopes=scopes,
+                limit=int(args.get("limit") or 4),
+                for_cloud=True,
+                record_usage=False,
+            )
+            entries: list[dict[str, Any]] = []
+            for target_scope in scopes:
+                for entry in recalled.get(target_scope, []):
+                    if not isinstance(entry, dict):
+                        continue
+                    v4 = entry.get("v4") if isinstance(entry.get("v4"), dict) else {}
+                    entries.append({
+                        "id": entry.get("id"),
+                        "scope": entry.get("scope"),
+                        "kind": entry.get("kind"),
+                        "content": str(entry.get("content") or "")[:1800],
+                        "importance": entry.get("importance"),
+                        "relevance": entry.get("relevance"),
+                        "source": entry.get("source"),
+                        "freshness": v4.get("freshness_score"),
+                        "source_trust": v4.get("source_trust"),
+                    })
+            prepared = recalled.get("prepared_recall")
+            selected_ids = (
+                list(prepared.get("selected_ids", []))
+                if isinstance(prepared, dict) and isinstance(prepared.get("selected_ids"), list)
+                else []
+            )
+            explanations = (
+                list(prepared.get("explanations", []))
+                if isinstance(prepared, dict) and isinstance(prepared.get("explanations"), list)
+                else []
+            )
+            return {
+                "data": {
+                    "retrieval": recalled.get("retrieval"),
+                    "query": str(args.get("query") or "")[:1200],
+                    "scope": scope,
+                    "entries": entries,
+                },
+                "evidence_refs": [f"memory:{memory_id}" for memory_id in selected_ids if isinstance(memory_id, str)],
+                "memory_ids": selected_ids,
+                "memory_explanations": explanations,
+            }
+
+        def memory_integrity(_args: dict[str, Any]) -> dict[str, Any]:
+            return {
+                "data": self.memory_v4.integrity_check(audit=False),
+                "evidence_refs": ["memory:integrity"],
+            }
+
+        def experience_stats(_args: dict[str, Any]) -> dict[str, Any]:
+            return {
+                "data": self.experience.stats(),
+                "evidence_refs": ["experience:stats"],
+            }
+
+        def current_document(_args: dict[str, Any]) -> dict[str, Any]:
+            current = safe_context.get("current_document")
+            if not isinstance(current, dict):
+                return {
+                    "data": {"available": False},
+                    "evidence_refs": ["ui:current-document:none"],
+                }
+            data = {
+                key: current.get(key)
+                for key in ("id", "name", "kind", "category")
+                if isinstance(current.get(key), str)
+            }
+            if not self.memory_v4._cloud_text_allowed(*data.values()):
+                return {
+                    "data": {"available": False, "local_only": True},
+                    "evidence_refs": ["ui:current-document:local-only"],
+                }
+            return {
+                "data": {"available": True, **data},
+                "evidence_refs": [
+                    "ui:current-document:" + str(data.get("id") or "current")[:120]
+                ],
+            }
+
+        return {
+            "system.status": system_status,
+            "memory.stats": memory_stats,
+            "memory.search": memory_search,
+            "memory.integrity": memory_integrity,
+            "experience.stats": experience_stats,
+            "context.current_document": current_document,
+        }
+
     def begin_action(self, action_id: str) -> dict[str, Any]:
         try:
             return self.actions.begin(action_id)
@@ -983,6 +1130,11 @@ class SayuriAgent:
                         **reasoning_decision.public(),
                         "planner_status": "skipped",
                         "plan": None,
+                        "tool_execution": {
+                            "status": "skipped",
+                            "receipts": [],
+                            "read_only_calls": 0,
+                        },
                         "verification": {"status": "skipped"},
                         "revised": False,
                         "model_calls": 0,
@@ -1025,10 +1177,24 @@ class SayuriAgent:
         client = CloudRuClient(api_key)
         model_calls = 0
         plan: dict[str, Any] | None = None
+        tool_execution: dict[str, Any] = {
+            "request_id": uuid.uuid4().hex,
+            "receipts": [],
+            "cloud_evidence": [],
+            "memory_ids": [],
+            "memory_explanations": [],
+            "read_only_calls": 0,
+        }
         reasoning_payload: dict[str, Any] = {
             **reasoning_decision.public(),
             "planner_status": "skipped",
             "plan": None,
+            "tool_execution": {
+                "status": "skipped",
+                "request_id": tool_execution["request_id"],
+                "receipts": [],
+                "read_only_calls": 0,
+            },
             "verification": {"status": "skipped"},
             "revised": False,
             "model_calls": 0,
@@ -1044,6 +1210,7 @@ class SayuriAgent:
                         text,
                         evidence_context=reasoning_evidence,
                         ui_context=safe_context,
+                        tool_catalog=self.tool_planner.catalog(),
                     ),
                     max_tokens=900,
                     temperature=0.2,
@@ -1055,6 +1222,18 @@ class SayuriAgent:
                 plan = self.reasoning.fallback_plan(text)
                 reasoning_payload["planner_status"] = "fallback"
             reasoning_payload["plan"] = plan
+            tool_execution = self.tool_planner.execute_plan(
+                plan,
+                handlers=self._tool_handlers(safe_context),
+                request_id=tool_execution["request_id"],
+            )
+            reasoning_payload["tool_execution"] = {
+                "status": "completed",
+                "request_id": tool_execution["request_id"],
+                "receipts": tool_execution["receipts"],
+                "read_only_calls": tool_execution["read_only_calls"],
+            }
+            reasoning_evidence["tool_receipts"] = tool_execution["cloud_evidence"]
 
         messages: list[dict[str, str]] = [
             {"role": "system", "content": SYSTEM_PROMPT},
@@ -1106,6 +1285,24 @@ class SayuriAgent:
                     ),
                 }
             )
+        if tool_execution.get("cloud_evidence"):
+            messages.append(
+                {
+                    "role": "system",
+                    "content": (
+                        "Execution receipts локального Evidence-aware Tool Planner. Это фактические результаты "
+                        "разрешённых read-only инструментов и статусы policy. completed означает, что инструмент "
+                        "реально выполнился; requires_action_broker означает, что изменение НЕ выполнялось и требует "
+                        "отдельного подтверждения пользователя через SayuriActionBroker. Не придумывай результатов "
+                        "вне receipts: "
+                        + json.dumps(
+                            tool_execution["cloud_evidence"],
+                            ensure_ascii=False,
+                            separators=(",", ":"),
+                        )[:9000]
+                    ),
+                }
+            )
         messages.append(
             {
                 "role": "system",
@@ -1154,9 +1351,31 @@ class SayuriAgent:
                 }
 
         reasoning_payload["model_calls"] = model_calls
+        prepared_recall = memory_v4_context.get("_prepared_recall")
+        if isinstance(prepared_recall, dict) and tool_execution.get("memory_ids"):
+            prepared_recall = dict(prepared_recall)
+            selected_ids = [
+                memory_id
+                for memory_id in prepared_recall.get("selected_ids", [])
+                if isinstance(memory_id, str) and memory_id
+            ]
+            for memory_id in tool_execution.get("memory_ids", []):
+                if isinstance(memory_id, str) and memory_id and memory_id not in selected_ids:
+                    selected_ids.append(memory_id)
+            explanations = [
+                item
+                for item in prepared_recall.get("explanations", [])
+                if isinstance(item, dict)
+            ]
+            for item in tool_execution.get("memory_explanations", []):
+                if isinstance(item, dict):
+                    explanations.append(item)
+            prepared_recall["selected_ids"] = selected_ids[:30]
+            prepared_recall["explanations"] = explanations[:30]
+            prepared_recall["for_cloud"] = True
         recall_id = self.memory_v4.commit_prepared_recall(
             text,
-            memory_v4_context.get("_prepared_recall"),
+            prepared_recall,
         )
         memory_used = sum(
             len(items)
@@ -1197,5 +1416,6 @@ class SayuriAgent:
             "memory_v4": self.memory_v4.stats(),
             "memory_v4_used": memory_v4_used,
             "experience_used": experience_used,
+            "memory_tool_used": len(tool_execution.get("memory_ids", [])),
             "reasoning": reasoning_payload,
         }
