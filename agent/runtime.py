@@ -1061,6 +1061,73 @@ class SayuriAgent:
         return result
 
     @staticmethod
+    def _public_evidence(
+        tool_execution: dict[str, Any],
+        memory_context: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        """Build a small user-facing evidence list without exposing tool receipts."""
+        evidence: list[dict[str, Any]] = []
+        seen: set[tuple[str, str]] = set()
+
+        for receipt in tool_execution.get("receipts", []):
+            if not isinstance(receipt, dict) or receipt.get("status") != "completed":
+                continue
+            tool = receipt.get("tool")
+            output = receipt.get("output_preview")
+            refs = receipt.get("evidence_refs")
+            refs = refs if isinstance(refs, list) else []
+
+            if tool == "context.current_document" and isinstance(output, dict) and output.get("available"):
+                document_id = output.get("id")
+                name = output.get("name")
+                item_kind = output.get("kind")
+                if not isinstance(document_id, str) or not document_id:
+                    continue
+                label = name if isinstance(name, str) and name else "Текущий документ"
+                key = ("document", document_id)
+                if key in seen:
+                    continue
+                seen.add(key)
+                evidence.append({
+                    "kind": "document",
+                    "label": label[:220],
+                    "ref": next(
+                        (
+                            ref[:220]
+                            for ref in refs
+                            if isinstance(ref, str) and ref.startswith("ui:current-document:")
+                        ),
+                        f"ui:current-document:{document_id[:120]}",
+                    ),
+                    "target": {
+                        "type": "disk_item",
+                        "kind": item_kind if item_kind in {"file", "folder"} else "file",
+                        "id": document_id[:220],
+                    },
+                })
+
+        memory_labels = {
+            "project": "Проектная память Sayuri",
+            "personal": "Личная память Sayuri",
+        }
+        for scope in ("project", "personal"):
+            items = memory_context.get(scope)
+            if not isinstance(items, list) or not items:
+                continue
+            key = ("memory", scope)
+            if key in seen:
+                continue
+            seen.add(key)
+            evidence.append({
+                "kind": "memory",
+                "label": memory_labels[scope],
+                "count": min(len(items), 99),
+                "ref": f"memory:{scope}",
+            })
+
+        return evidence[:6]
+
+    @staticmethod
     def _normalized_history(history: Any) -> list[dict[str, str]]:
         if not isinstance(history, list):
             return []
@@ -1134,6 +1201,7 @@ class SayuriAgent:
                     "memory_v4": self.memory_v4.stats(),
                     "memory_v4_used": 0,
                     "experience_used": 0,
+                    "evidence": [],
                     "reasoning": {
                         **reasoning_decision.public(),
                         "planner_status": "skipped",
@@ -1417,6 +1485,7 @@ class SayuriAgent:
             + len(memory_v4_context.get("failures_to_avoid", []))
             + len(memory_v4_context.get("questions", []))
         )
+        public_evidence = self._public_evidence(tool_execution, memory_context)
         response_id = uuid.uuid4().hex
         self.memory_v4.bind_response(response_id, recall_id)
         self.experience.record_chat_response(response_id, self._experience_context(context))
@@ -1436,5 +1505,6 @@ class SayuriAgent:
             "memory_v4_used": memory_v4_used,
             "experience_used": experience_used,
             "memory_tool_used": len(tool_execution.get("memory_ids", [])),
+            "evidence": public_evidence,
             "reasoning": reasoning_payload,
         }

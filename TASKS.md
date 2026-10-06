@@ -317,3 +317,19 @@
 - Усилить focus-visible, responsive behavior, scrollbars и prefers-reduced-motion.
 - Добавить Web contract regressions для всех новых UX-инвариантов.
 - Приёмка: один атомарный commit от подтверждённого `main 0.1.50`, Versions workflow success, PR merge и зелёный финальный main CI.
+
+
+## UI-006 — Rich Answer UX & Lazy Diagnostics
+
+- Статус: `implemented in target 0.1.52`; релиз считается проверенным только после зелёного branch/PR/main CI.
+- Версия проекта: `0.1.52`.
+- Добавить safe rich-text renderer для chat без `innerHTML` и сторонних Markdown dependencies.
+- Поддержать headings, lists, blockquotes, inline/fenced code, tables, safe links и copy code.
+- Вывести компактный пользовательский Evidence Summary без tool/receipt IDs.
+- Сделать evidence текущего документа кликабельным через существующий Disk viewer.
+- Не раскрывать внутренние memory IDs в evidence UI.
+- Перевести Memory 3.0, Memory 4.1 и Experience на lazy-load по активной memory-вкладке.
+- Добавить skeleton/loading state и `aria-busy` для ленивых панелей.
+- После mutations обновлять тяжёлые панели только если они уже были открыты.
+- Добавить regressions на XSS boundary, evidence privacy и lazy loading.
+- Приёмка: один атомарный commit от подтверждённого `main 0.1.51`, зелёный Versions workflow, PR merge и зелёный финальный main CI.

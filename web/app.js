@@ -44,6 +44,8 @@ const sayuriState = {
   activeMemoryTab: localStorage.getItem('sayuri-memory-tab') || 'overview',
   chatMaximized: false,
   commandPaletteIndex: 0,
+  loadedSections: new Set(),
+  loadingSections: new Map(),
   visible: localStorage.getItem('sayuri-visible') !== '0',
   rememberPosition: localStorage.getItem('sayuri-remember-position') !== '0',
   rememberHistory: localStorage.getItem('sayuri-remember-history') !== '0'
@@ -224,14 +226,9 @@ function showView(name) {
     loadDisk().catch(showDiskError);
   } else if (name === 'sayuri') {
     history.replaceState(null, '', '#sayuri');
-    Promise.all([
-      loadSayuriProfile(),
-      loadSayuriMemory(),
-      loadSayuriMemoryCandidates(),
-      loadSayuriMemoryV3(),
-      loadSayuriMemoryV4(),
-      loadSayuriExperience()
-    ]).catch(showSayuriProviderError);
+    loadSayuriProfile()
+      .then(() => ensureSayuriAccountTabLoaded(sayuriState.activeCabinetTab))
+      .catch(showSayuriProviderError);
   } else if (name === 'settings') {
     history.replaceState(null, '', '#settings');
   } else {
@@ -2133,7 +2130,11 @@ async function maintainSayuriMemoryV3() {
       `Готово: знаний ${result.stats?.knowledge ?? 0}, консолидаций +${result.consolidation?.created ?? 0}, устаревающих ${result.retention?.stale_count ?? 0}.`,
       'ready'
     );
-    await Promise.all([loadSayuriMemoryV3(), loadSayuriMemory(), loadSayuriProfile()]);
+    const refresh = [loadSayuriMemoryV3(), loadSayuriProfile()];
+    if (sayuriState.loadedSections.has('memory-overview')) {
+      refresh.push(loadSayuriMemory(), loadSayuriMemoryCandidates());
+    }
+    await Promise.all(refresh);
   } catch (error) {
     setMemoryV3Message(`Ошибка обслуживания: ${error instanceof Error ? error.message : String(error)}`, 'error');
   } finally {
@@ -2150,7 +2151,12 @@ async function resolveMemoryV3Conflict(conflictId, resolution) {
     renderSayuriMemoryV3(result.dashboard || {});
     if (result.memory_v4) renderSayuriMemoryV4(result.memory_v4);
     setMemoryV3Message('Противоречие разрешено, временная история и вопрос Memory 4.0 обновлены.', 'ready');
-    await Promise.all([loadSayuriMemory(), loadSayuriMemoryV4(), loadSayuriProfile()]);
+    const refresh = [loadSayuriProfile()];
+    if (sayuriState.loadedSections.has('memory-overview')) {
+      refresh.push(loadSayuriMemory(), loadSayuriMemoryCandidates());
+    }
+    if (sayuriState.loadedSections.has('memory-v4')) refresh.push(loadSayuriMemoryV4());
+    await Promise.all(refresh);
   } catch (error) {
     setMemoryV3Message(`Ошибка разрешения конфликта: ${error instanceof Error ? error.message : String(error)}`, 'error');
   }
@@ -2784,7 +2790,11 @@ async function maintainSayuriMemoryV4() {
       `Готово: hot ${result.stats?.hot ?? 0}, warm ${result.stats?.warm ?? 0}, cold ${result.stats?.cold ?? 0}; integrity ${result.integrity?.status || '—'}.`,
       result.integrity?.status === 'ok' ? 'ready' : 'error'
     );
-    await Promise.all([loadSayuriMemoryV4(), loadSayuriMemory(), loadSayuriProfile()]);
+    const refresh = [loadSayuriMemoryV4(), loadSayuriProfile()];
+    if (sayuriState.loadedSections.has('memory-overview')) {
+      refresh.push(loadSayuriMemory(), loadSayuriMemoryCandidates());
+    }
+    await Promise.all(refresh);
   } catch (error) {
     setMemoryV4Message(`Ошибка обслуживания: ${error instanceof Error ? error.message : String(error)}`, 'error');
   } finally {
@@ -2939,14 +2949,12 @@ async function restoreMemoryV4Snapshot(snapshotId) {
       `Память восстановлена. Integrity: ${result.integrity?.status || '—'}. Страховочный снимок сохранён.`,
       result.integrity?.status === 'ok' ? 'ready' : 'error'
     );
-    await Promise.all([
-      loadSayuriMemory(),
-      loadSayuriMemoryCandidates(),
-      loadSayuriMemoryV3(),
-      loadSayuriMemoryV4(),
-      loadSayuriExperience(),
-      loadSayuriProfile()
-    ]);
+    const refresh = [loadSayuriMemoryV4(), loadSayuriProfile()];
+    if (sayuriState.loadedSections.has('memory-overview')) {
+      refresh.push(loadSayuriMemory(), loadSayuriMemoryCandidates());
+    }
+    await Promise.all(refresh);
+    await refreshLoadedSayuriDiagnostics(['memory-v3', 'experience']);
   } catch (error) {
     setMemoryV4Message(`Ошибка восстановления: ${error instanceof Error ? error.message : String(error)}`, 'error');
   }
@@ -3013,9 +3021,8 @@ async function rateSayuriMessage(messageIndex, rating) {
     persistSayuriHistory();
     renderSayuriMessages();
     renderSayuriExperience(result.stats || {});
-    loadSayuriMemoryV3().catch(() => {});
-    loadSayuriMemoryV4().catch(() => {});
-    loadSayuriMemoryV4().catch(() => {});
+    sayuriState.loadedSections.add('experience');
+    refreshLoadedSayuriDiagnostics(['memory-v3', 'memory-v4']).catch(() => {});
   } catch (error) {
     byId('sayuri-chat-status').textContent = `Не удалось сохранить оценку: ${error instanceof Error ? error.message : String(error)}`;
   }
@@ -3187,12 +3194,10 @@ async function reviewSayuriMemoryCandidate(candidateId, decision) {
     await Promise.all([
       loadSayuriMemory(),
       loadSayuriMemoryCandidates(),
-      loadSayuriMemoryV3(),
-      loadSayuriMemoryV4(),
       loadSayuriProfile(),
-      loadSayuriExperience(),
       loadSystem()
     ]);
+    await refreshLoadedSayuriDiagnostics(['memory-v3', 'memory-v4', 'experience']);
   } catch (error) {
     setMemoryCandidateMessage(`Ошибка: ${error instanceof Error ? error.message : String(error)}`, 'error');
   }
@@ -3369,7 +3374,8 @@ async function saveSayuriMemory(event) {
     byId('sayuri-memory-content').value = '';
     renderSayuriMemoryStats(result.stats || {});
     setSayuriMemoryMessage('Запись сохранена в долговременную память.', 'ready');
-    await Promise.all([loadSayuriMemory(), loadSayuriMemoryV3(), loadSayuriMemoryV4(), loadSayuriProfile(), loadSystem()]);
+    await Promise.all([loadSayuriMemory(), loadSayuriProfile(), loadSystem()]);
+    await refreshLoadedSayuriDiagnostics(['memory-v3', 'memory-v4']);
   } catch (error) {
     setSayuriMemoryMessage(`Ошибка: ${error instanceof Error ? error.message : String(error)}`, 'error');
   }
@@ -3382,7 +3388,8 @@ async function deleteSayuriMemory(entryId) {
     const data = await response.json();
     if (!response.ok) throw new Error(data?.error?.message || `HTTP ${response.status}`);
     setSayuriMemoryMessage(data.deleted ? 'Запись удалена.' : 'Запись уже отсутствует.');
-    await Promise.all([loadSayuriMemory(), loadSayuriMemoryV3(), loadSayuriMemoryV4(), loadSayuriProfile(), loadSystem()]);
+    await Promise.all([loadSayuriMemory(), loadSayuriProfile(), loadSystem()]);
+    await refreshLoadedSayuriDiagnostics(['memory-v3', 'memory-v4']);
   } catch (error) {
     setSayuriMemoryMessage(`Ошибка: ${error instanceof Error ? error.message : String(error)}`, 'error');
   }
@@ -3711,14 +3718,12 @@ async function refreshAfterSayuriAction() {
   const tasks = [
     loadSystem(),
     loadSayuriProfile(),
-    loadSayuriActions(),
-    loadSayuriMemory(),
-    loadSayuriMemoryV3(),
-    loadSayuriMemoryV4(),
-    loadSayuriExperience()
+    loadSayuriActions()
   ];
+  if (sayuriState.loadedSections.has('memory-overview')) tasks.push(loadSayuriMemory(), loadSayuriMemoryCandidates());
   if (document.querySelector('#view-disk.active')) tasks.push(loadDisk());
   await Promise.allSettled(tasks);
+  await refreshLoadedSayuriDiagnostics(['memory-v3', 'memory-v4', 'experience']);
   updateSayuriContextUI();
 }
 
@@ -3762,6 +3767,267 @@ function addSayuriMessage(role, content, metadata = null) {
   renderSayuriMessages();
 }
 
+function appendSayuriInline(parent, source) {
+  const text = String(source ?? '');
+  const pattern = /(`[^`\n]+`|\*\*[^*\n]+?\*\*|~~[^~\n]+?~~|\[[^\]\n]+\]\(https?:\/\/[^\s)]+\)|\*[^*\n]+?\*)/g;
+  let offset = 0;
+  let match;
+  while ((match = pattern.exec(text)) !== null) {
+    if (match.index > offset) parent.append(document.createTextNode(text.slice(offset, match.index)));
+    const token = match[0];
+    if (token.startsWith('`') && token.endsWith('`')) {
+      const code = document.createElement('code');
+      code.textContent = token.slice(1, -1);
+      parent.append(code);
+    } else if (token.startsWith('**') && token.endsWith('**')) {
+      const strong = document.createElement('strong');
+      strong.textContent = token.slice(2, -2);
+      parent.append(strong);
+    } else if (token.startsWith('~~') && token.endsWith('~~')) {
+      const deleted = document.createElement('del');
+      deleted.textContent = token.slice(2, -2);
+      parent.append(deleted);
+    } else if (token.startsWith('[')) {
+      const split = token.lastIndexOf('](');
+      const label = token.slice(1, split);
+      const href = token.slice(split + 2, -1);
+      const link = document.createElement('a');
+      link.textContent = label;
+      link.href = href;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      parent.append(link);
+    } else {
+      const em = document.createElement('em');
+      em.textContent = token.slice(1, -1);
+      parent.append(em);
+    }
+    offset = pattern.lastIndex;
+  }
+  if (offset < text.length) parent.append(document.createTextNode(text.slice(offset)));
+}
+
+function sayuriMarkdownCells(line) {
+  return String(line)
+    .trim()
+    .replace(/^\|/, '')
+    .replace(/\|$/, '')
+    .split('|')
+    .map((cell) => cell.trim());
+}
+
+function isSayuriTableSeparator(line) {
+  const cells = sayuriMarkdownCells(line);
+  return cells.length > 1 && cells.every((cell) => /^:?-{3,}:?$/.test(cell));
+}
+
+function isSayuriBlockStart(lines, index) {
+  const line = lines[index] || '';
+  if (!line.trim()) return true;
+  if (/^\s*```/.test(line)) return true;
+  if (/^\s{0,3}#{1,4}\s+/.test(line)) return true;
+  if (/^\s*>\s?/.test(line)) return true;
+  if (/^\s*(?:[-*+]\s+|\d+[.)]\s+)/.test(line)) return true;
+  if (/^\s*(?:---+|___+|\*\*\*+)\s*$/.test(line)) return true;
+  return line.includes('|') && isSayuriTableSeparator(lines[index + 1] || '');
+}
+
+function createSayuriCodeBlock(language, codeText) {
+  const block = document.createElement('section');
+  block.className = 'sayuri-code-block';
+  const head = document.createElement('div');
+  head.className = 'sayuri-code-head';
+  const label = document.createElement('span');
+  label.textContent = language || 'код';
+  const copy = document.createElement('button');
+  copy.type = 'button';
+  copy.textContent = 'Копировать';
+  copy.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(codeText);
+      showUiToast('Код скопирован', 'success');
+    } catch {
+      showUiToast('Не удалось скопировать код', 'error');
+    }
+  });
+  head.append(label, copy);
+  const pre = document.createElement('pre');
+  const code = document.createElement('code');
+  code.textContent = codeText;
+  pre.append(code);
+  block.append(head, pre);
+  return block;
+}
+
+function renderSayuriRichText(container, source) {
+  container.replaceChildren();
+  const lines = String(source ?? '').replace(/\r\n?/g, '\n').split('\n');
+  let index = 0;
+
+  while (index < lines.length) {
+    const line = lines[index];
+    if (!line.trim()) {
+      index += 1;
+      continue;
+    }
+
+    const fence = line.match(/^\s*```\s*([^\s]*)\s*$/);
+    if (fence) {
+      const language = fence[1] || '';
+      const codeLines = [];
+      index += 1;
+      while (index < lines.length && !/^\s*```\s*$/.test(lines[index])) {
+        codeLines.push(lines[index]);
+        index += 1;
+      }
+      if (index < lines.length) index += 1;
+      container.append(createSayuriCodeBlock(language, codeLines.join('\n')));
+      continue;
+    }
+
+    if (line.includes('|') && isSayuriTableSeparator(lines[index + 1] || '')) {
+      const headers = sayuriMarkdownCells(line);
+      index += 2;
+      const rows = [];
+      while (index < lines.length && lines[index].includes('|') && lines[index].trim()) {
+        rows.push(sayuriMarkdownCells(lines[index]));
+        index += 1;
+      }
+      const wrap = document.createElement('div');
+      wrap.className = 'sayuri-rich-table-wrap';
+      const table = document.createElement('table');
+      const thead = document.createElement('thead');
+      const headRow = document.createElement('tr');
+      headers.forEach((cell) => {
+        const th = document.createElement('th');
+        appendSayuriInline(th, cell);
+        headRow.append(th);
+      });
+      thead.append(headRow);
+      const tbody = document.createElement('tbody');
+      rows.forEach((cells) => {
+        const tr = document.createElement('tr');
+        headers.forEach((_, cellIndex) => {
+          const td = document.createElement('td');
+          appendSayuriInline(td, cells[cellIndex] || '');
+          tr.append(td);
+        });
+        tbody.append(tr);
+      });
+      table.append(thead, tbody);
+      wrap.append(table);
+      container.append(wrap);
+      continue;
+    }
+
+    const heading = line.match(/^\s{0,3}(#{1,4})\s+(.+)$/);
+    if (heading) {
+      const level = Math.min(6, heading[1].length + 2);
+      const element = document.createElement(`h${level}`);
+      appendSayuriInline(element, heading[2]);
+      container.append(element);
+      index += 1;
+      continue;
+    }
+
+    if (/^\s*>\s?/.test(line)) {
+      const quote = document.createElement('blockquote');
+      while (index < lines.length && /^\s*>\s?/.test(lines[index])) {
+        const part = document.createElement('p');
+        appendSayuriInline(part, lines[index].replace(/^\s*>\s?/, ''));
+        quote.append(part);
+        index += 1;
+      }
+      container.append(quote);
+      continue;
+    }
+
+    const listMatch = line.match(/^\s*(?:([-*+])|(\d+)[.)])\s+(.+)$/);
+    if (listMatch) {
+      const ordered = Boolean(listMatch[2]);
+      const list = document.createElement(ordered ? 'ol' : 'ul');
+      while (index < lines.length) {
+        const itemMatch = lines[index].match(/^\s*(?:([-*+])|(\d+)[.)])\s+(.+)$/);
+        if (!itemMatch || Boolean(itemMatch[2]) !== ordered) break;
+        const item = document.createElement('li');
+        appendSayuriInline(item, itemMatch[3]);
+        list.append(item);
+        index += 1;
+      }
+      container.append(list);
+      continue;
+    }
+
+    if (/^\s*(?:---+|___+|\*\*\*+)\s*$/.test(line)) {
+      container.append(document.createElement('hr'));
+      index += 1;
+      continue;
+    }
+
+    const paragraphLines = [];
+    while (index < lines.length && lines[index].trim() && !isSayuriBlockStart(lines, index)) {
+      paragraphLines.push(lines[index]);
+      index += 1;
+    }
+    if (!paragraphLines.length) {
+      paragraphLines.push(lines[index]);
+      index += 1;
+    }
+    const paragraph = document.createElement('p');
+    paragraphLines.forEach((paragraphLine, lineIndex) => {
+      if (lineIndex) paragraph.append(document.createElement('br'));
+      appendSayuriInline(paragraph, paragraphLine);
+    });
+    container.append(paragraph);
+  }
+}
+
+function createSayuriEvidenceSummary(metadata) {
+  const evidence = Array.isArray(metadata?.evidence)
+    ? metadata.evidence.filter((item) => item && typeof item === 'object').slice(0, 6)
+    : [];
+  if (!evidence.length) return null;
+
+  const details = document.createElement('details');
+  details.className = 'sayuri-evidence-summary';
+  const summary = document.createElement('summary');
+  summary.textContent = `Источники · ${evidence.length}`;
+  details.append(summary);
+
+  const list = document.createElement('div');
+  list.className = 'sayuri-evidence-list';
+  evidence.forEach((source) => {
+    const row = source.kind === 'document' && source.target?.type === 'disk_item'
+      ? document.createElement('button')
+      : document.createElement('div');
+    row.className = `sayuri-evidence-item ${source.kind || 'source'}`;
+    if (row instanceof HTMLButtonElement) {
+      row.type = 'button';
+      row.addEventListener('click', () => {
+        showView('disk');
+        openViewer(
+          source.target.kind === 'folder' ? 'folder' : 'file',
+          String(source.target.id || ''),
+          'preview'
+        );
+      });
+    }
+    const kind = document.createElement('span');
+    kind.textContent = source.kind === 'document' ? 'Документ' : 'Память';
+    const label = document.createElement('strong');
+    label.textContent = String(source.label || 'Источник');
+    row.append(kind, label);
+    if (Number(source.count) > 0) {
+      const count = document.createElement('small');
+      count.textContent = `${Number(source.count)} фрагм.`;
+      row.append(count);
+    }
+    list.append(row);
+  });
+  details.append(list);
+  return details;
+}
+
 function renderSayuriMessages() {
   const container = byId('sayuri-chat-messages');
   if (!container) return;
@@ -3790,9 +4056,9 @@ function renderSayuriMessages() {
       row.append(avatar);
     }
     const bubble = document.createElement('div');
-    const text = document.createElement('p');
-    text.className = 'sayuri-message-text';
-    text.textContent = message.content;
+    const text = document.createElement('div');
+    text.className = 'sayuri-message-text sayuri-rich-text';
+    renderSayuriRichText(text, message.content);
     bubble.append(text);
     if (message.metadata?.action) {
       bubble.append(createSayuriActionCard(message.metadata.action, messageIndex));
@@ -3801,6 +4067,8 @@ function renderSayuriMessages() {
       const notice = createMemoryCandidateChatNotice(message.metadata.memory_candidates);
       if (notice) bubble.append(notice);
     }
+    const evidence = createSayuriEvidenceSummary(message.metadata);
+    if (evidence) bubble.append(evidence);
     const reasoning = createSayuriReasoningSummary(message.metadata);
     if (reasoning) bubble.append(reasoning);
     const feedback = createSayuriFeedbackControls(messageIndex, message);
@@ -3956,13 +4224,15 @@ async function sendSayuriMessage(text) {
       memory_v4: result.memory_v4 || null,
       memory_v4_used: result.memory_v4_used || 0,
       experience_used: result.experience_used || 0,
+      evidence: Array.isArray(result.evidence) ? result.evidence : [],
       reasoning: result.reasoning || null,
       prompt: message
     });
     if (result.memory_saved) {
-      loadSayuriMemory().catch(() => {});
-      loadSayuriMemoryV3().catch(() => {});
-      loadSayuriMemoryV4().catch(() => {});
+      if (sayuriState.loadedSections.has('memory-overview')) {
+        Promise.all([loadSayuriMemory(), loadSayuriMemoryCandidates()]).catch(() => {});
+      }
+      refreshLoadedSayuriDiagnostics(['memory-v3', 'memory-v4']).catch(() => {});
       loadSayuriProfile().catch(() => {});
     }
     if (result.memory_candidates?.length) {
@@ -4012,6 +4282,80 @@ function runSayuriAction(action) {
   if (prompts[action]) sendSayuriMessage(prompts[action]);
 }
 
+function setSayuriLazyLoading(tab, active) {
+  document.querySelectorAll(`[data-sayuri-memory-panel="${tab}"]`).forEach((panel) => {
+    panel.classList.toggle('sayuri-lazy-loading', active);
+    panel.setAttribute('aria-busy', active ? 'true' : 'false');
+  });
+}
+
+async function ensureSayuriMemoryTabLoaded(tab, {force = false} = {}) {
+  const definitions = {
+    overview: {
+      key: 'memory-overview',
+      load: () => Promise.all([loadSayuriMemory(), loadSayuriMemoryCandidates()])
+    },
+    architecture: {key: 'memory-v3', load: () => loadSayuriMemoryV3()},
+    quality: {key: 'memory-v4', load: () => loadSayuriMemoryV4()},
+    experience: {key: 'experience', load: () => loadSayuriExperience()}
+  };
+  const definition = definitions[tab];
+  if (!definition) return;
+  if (!force && sayuriState.loadedSections.has(definition.key)) return;
+  if (sayuriState.loadingSections.has(definition.key)) {
+    return sayuriState.loadingSections.get(definition.key);
+  }
+
+  setSayuriLazyLoading(tab, true);
+  const pending = Promise.resolve()
+    .then(definition.load)
+    .then((value) => {
+      sayuriState.loadedSections.add(definition.key);
+      return value;
+    })
+    .finally(() => {
+      sayuriState.loadingSections.delete(definition.key);
+      setSayuriLazyLoading(tab, false);
+    });
+  sayuriState.loadingSections.set(definition.key, pending);
+  return pending;
+}
+
+async function ensureSayuriAccountTabLoaded(tab) {
+  if (tab === 'memory') {
+    return ensureSayuriMemoryTabLoaded(sayuriState.activeMemoryTab);
+  }
+  if (tab === 'diagnostics' && !sayuriState.loadedSections.has('actions')) {
+    const pending = loadSayuriActions().then((value) => {
+      sayuriState.loadedSections.add('actions');
+      return value;
+    });
+    return pending;
+  }
+  return undefined;
+}
+
+async function refreshLoadedSayuriDiagnostics(keys = ['memory-v3', 'memory-v4', 'experience']) {
+  const mapping = {
+    'memory-v3': ['architecture', () => loadSayuriMemoryV3()],
+    'memory-v4': ['quality', () => loadSayuriMemoryV4()],
+    experience: ['experience', () => loadSayuriExperience()]
+  };
+  const tasks = [];
+  for (const key of keys) {
+    if (!sayuriState.loadedSections.has(key)) continue;
+    const definition = mapping[key];
+    if (!definition) continue;
+    const [tab, loader] = definition;
+    setSayuriLazyLoading(tab, true);
+    const task = Promise.resolve()
+      .then(loader)
+      .finally(() => setSayuriLazyLoading(tab, false));
+    tasks.push(task);
+  }
+  await Promise.allSettled(tasks);
+}
+
 function setSayuriAccountTab(tab, {persist = true} = {}) {
   const allowed = new Set(['profile', 'ai', 'behavior', 'memory', 'appearance', 'diagnostics']);
   const next = allowed.has(tab) ? tab : 'profile';
@@ -4026,6 +4370,8 @@ function setSayuriAccountTab(tab, {persist = true} = {}) {
   });
   if (next === 'memory') {
     setSayuriMemoryTab(sayuriState.activeMemoryTab, {persist: false});
+  } else {
+    ensureSayuriAccountTabLoaded(next).catch(showSayuriProviderError);
   }
   if (persist) localStorage.setItem('sayuri-account-tab', next);
 }
@@ -4042,6 +4388,7 @@ function setSayuriMemoryTab(tab, {persist = true} = {}) {
   document.querySelectorAll('[data-sayuri-memory-panel]').forEach((panel) => {
     panel.hidden = panel.dataset.sayuriMemoryPanel !== next;
   });
+  ensureSayuriMemoryTabLoaded(next).catch(showSayuriProviderError);
   if (persist) localStorage.setItem('sayuri-memory-tab', next);
 }
 
@@ -4076,7 +4423,6 @@ function applySayuriPreferences() {
     setFloatingPosition(chat, chatPosition.left, chatPosition.top);
   }
   setSayuriAccountTab(sayuriState.activeCabinetTab, {persist: false});
-  setSayuriMemoryTab(sayuriState.activeMemoryTab, {persist: false});
 }
 
 function clampFloating(element, left, top) {
