@@ -2,6 +2,21 @@
 
 ## Невыпущенные изменения
 
+### 0.2.9 — 2026-10-06 — Reasoning Logic 2.0
+
+- Добавлен request-scoped deterministic `ReasoningLogic 2.0` без отдельной памяти, БД или второй LLM.
+- Реализована state machine UNDERSTAND/RETRIEVE/FRAME/PLAN/CHECK/ACT/VERIFY/REFLECT/CONTINUE с ветвями UNCERTAIN/GATHER_EVIDENCE/REPLAN/READY_FOR_CONFIRMATION.
+- Planner обновлён до 2.0 и возвращает краткие assumptions, hypotheses, options, selected option, decision summary и counterfactual checks без chain-of-thought.
+- Active blockers и high uncertainty стали локальными gates: модель не может текстом протолкнуть заблокированную задачу в ACT.
+- Evidence gate требует completed read-only receipt, если structured plan явно запросил evidence.
+- Verifier получает logic context, возвращает confidence, а revise/unsupported claims переводят state machine в REPLAN.
+- completion-ready остаётся READY_FOR_CONFIRMATION; автоматический done по-прежнему запрещён.
+- Direct path сохраняет один model call и не изображает запуск Verifier.
+- Existing reasoning UI расширен текущим state/confidence и последними безопасными Decision Trace entries без новой панели.
+- Добавлен `REASONING_LOGIC.md` и regression suite для state transitions/security boundaries.
+- Project `0.2.9`; App/Core `0.1.56`; Agent Core `0.16.0`; Reasoning Logic/Planner `2.0`; Web UI `0.31.1`.
+
+
 ### 0.2.8 — 2026-10-06 — GitHub Publication Sync
 
 - Проверен удалённый GitHub, а не локальная/чатовая копия: default branch `main` указывает на функциональный merge `bb7151baf72d7d681e84cd124f52e623bb3588c1`.
